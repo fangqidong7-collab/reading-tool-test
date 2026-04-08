@@ -270,9 +270,8 @@ export default function Home() {
       const savedPage = currentBook.lastReadPage || 1;
       setCurrentPage(Math.min(savedPage, Math.max(1, processed?.length || 1)));
       
-      // Restore sidebar state from localStorage (default closed)
-      const savedSidebarState = getSidebarState(currentBook.id);
-      setSidebarOpen(savedSidebarState);
+      // 始终默认关闭词汇表，不自动打开
+      setSidebarOpen(false);
       
     } else {
       currentBookIdRef.current = null;
