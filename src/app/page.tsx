@@ -152,6 +152,9 @@ export default function Home() {
   // Dictionary loading status
   const [dictLoadStatus, setDictLoadStatus] = useState<DictLoadStatus>('idle');
   const dictStatusTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Mobile more menu state
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
 
   // Load external dictionary on mount (force reload to get latest dict.json)
   useEffect(() => {
@@ -786,9 +789,9 @@ export default function Home() {
             </svg>
           </button>
           
-          {/* TOC Button */}
+          {/* TOC Button - Hidden on mobile */}
           <button 
-            className={`toc-btn ${isDarkMode ? 'dark' : ''}`}
+            className={`toc-btn nav-btn-catalog ${isDarkMode ? 'dark' : ''}`}
             onClick={handleTocClick}
             style={{ 
               backgroundColor: leftDrawerOpen && leftDrawerTab === 'toc' ? (isDarkMode ? "#3a3a4e" : "#e0e0e0") : "transparent",
@@ -815,34 +818,11 @@ export default function Home() {
           </button>
           
           <h1 className="app-title" title={currentBook.title} style={{ color: headerTextColor }}>
-            {currentBook.title}
+            {currentBook.title.length > 15 ? currentBook.title.substring(0, 15) + '...' : currentBook.title}
           </h1>
         </div>
         
         <div className="header-right">
-          {/* Bookmark Button */}
-          <button
-            className={`bookmark-btn ${isDarkMode ? 'dark' : ''}`}
-            onClick={handleBookmarkClick}
-            title="书签"
-            style={{ 
-              backgroundColor: leftDrawerOpen && leftDrawerTab === 'bookmarks' ? (isDarkMode ? "#3a3a4e" : "#e0e0e0") : "transparent",
-              borderColor: isDarkMode ? "#444" : "#ddd",
-              color: headerTextColor,
-            }}
-          >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill={currentBook?.bookmarks?.some(bm => bm.page === currentPage) ? "currentColor" : "none"}
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-            </svg>
-          </button>
-
           {/* Search Button */}
           <button
             className={`search-btn ${isDarkMode ? "dark" : ""}`}
@@ -865,9 +845,27 @@ export default function Home() {
             </svg>
           </button>
 
-          {/* Settings Button */}
+          {/* More Menu Button - Only visible on mobile */}
           <button
-            className="settings-btn"
+            className={`more-menu-btn nav-btn-more ${isDarkMode ? "dark" : ""}`}
+            onClick={() => setMoreMenuOpen(!moreMenuOpen)}
+            title="更多"
+            style={{ 
+              backgroundColor: moreMenuOpen ? (isDarkMode ? "#3a3a4e" : "#e0e0e0") : "transparent",
+              borderColor: isDarkMode ? "#444" : "#ddd",
+              color: headerTextColor,
+            }}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="1" />
+              <circle cx="19" cy="12" r="1" />
+              <circle cx="5" cy="12" r="1" />
+            </svg>
+          </button>
+
+          {/* Settings Button - Hidden on mobile */}
+          <button
+            className="settings-btn nav-btn-font"
             onClick={() => setSettingsPanelOpen(!settingsPanelOpen)}
             title="阅读设置"
             style={{ 
@@ -877,6 +875,29 @@ export default function Home() {
             }}
           >
             <span style={{ fontSize: "14px", fontWeight: "bold" }}>Aa</span>
+          </button>
+
+          {/* Bookmark Button - Hidden on mobile */}
+          <button
+            className={`bookmark-btn nav-btn-bookmark ${isDarkMode ? 'dark' : ''}`}
+            onClick={handleBookmarkClick}
+            title="书签"
+            style={{ 
+              backgroundColor: leftDrawerOpen && leftDrawerTab === 'bookmarks' ? (isDarkMode ? "#3a3a4e" : "#e0e0e0") : "transparent",
+              borderColor: isDarkMode ? "#444" : "#ddd",
+              color: headerTextColor,
+            }}
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill={currentBook?.bookmarks?.some(bm => bm.page === currentPage) ? "currentColor" : "none"}
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+            </svg>
           </button>
 
           {/* Dictionary Loading Status */}
@@ -916,7 +937,7 @@ export default function Home() {
             </span>
           </div>
           <button
-            className={`sidebar-toggle ${isDarkMode ? "dark" : ""}`}
+            className={`sidebar-toggle nav-btn-vocab ${isDarkMode ? "dark" : ""}`}
             onClick={handleSidebarToggle}
             title={sidebarOpen ? "收起词汇表" : "展开词汇表"}
             style={{ 
@@ -939,6 +960,74 @@ export default function Home() {
           </button>
         </div>
       </header>
+
+      {/* Mobile More Menu Dropdown */}
+      {moreMenuOpen && (
+        <>
+          <div className="more-menu-overlay" onClick={() => setMoreMenuOpen(false)} />
+          <div className={`more-menu-dropdown ${isDarkMode ? 'dark' : ''}`} style={{ backgroundColor: isDarkMode ? "#2a2a3e" : "#ffffff" }}>
+            <button
+              className="more-menu-item"
+              onClick={() => {
+                handleTocClick();
+                setMoreMenuOpen(false);
+              }}
+              style={{ color: isDarkMode ? "#ccc" : "#333" }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="8" y1="6" x2="21" y2="6" />
+                <line x1="8" y1="12" x2="21" y2="12" />
+                <line x1="8" y1="18" x2="21" y2="18" />
+                <line x1="3" y1="6" x2="3.01" y2="6" />
+                <line x1="3" y1="12" x2="3.01" y2="12" />
+                <line x1="3" y1="18" x2="3.01" y2="18" />
+              </svg>
+              <span>目录</span>
+            </button>
+            <button
+              className="more-menu-item"
+              onClick={() => {
+                setSettingsPanelOpen(!settingsPanelOpen);
+                setMoreMenuOpen(false);
+              }}
+              style={{ color: isDarkMode ? "#ccc" : "#333" }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 20h9" />
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+              </svg>
+              <span>字体设置</span>
+            </button>
+            <button
+              className="more-menu-item"
+              onClick={() => {
+                handleBookmarkClick();
+                setMoreMenuOpen(false);
+              }}
+              style={{ color: isDarkMode ? "#ccc" : "#333" }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill={currentBook?.bookmarks?.some(bm => bm.page === currentPage) ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2">
+                <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+              </svg>
+              <span>书签</span>
+            </button>
+            <button
+              className="more-menu-item"
+              onClick={() => {
+                handleSidebarToggle();
+                setMoreMenuOpen(false);
+              }}
+              style={{ color: isDarkMode ? "#ccc" : "#333" }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                <line x1="15" y1="3" x2="15" y2="21" />
+              </svg>
+              <span>词汇表</span>
+            </button>
+          </div>
+        </>
+      )}
 
       {/* Search Bar */}
       {searchOpen && (
@@ -1524,6 +1613,102 @@ export default function Home() {
           to {
             transform: rotate(360deg);
           }
+        }
+
+        /* Mobile Navigation - Hide buttons on mobile */
+        @media (max-width: 768px) {
+          .nav-btn-catalog,
+          .nav-btn-font,
+          .nav-btn-bookmark,
+          .nav-btn-vocab {
+            display: none !important;
+          }
+          
+          .nav-btn-more {
+            display: flex !important;
+          }
+
+          .app-title {
+            max-width: 120px;
+            font-size: 14px;
+          }
+
+          .header-stats {
+            display: none;
+          }
+
+          .dict-status span {
+            display: none;
+          }
+
+          .app-header {
+            padding: 8px 12px;
+          }
+        }
+
+        /* PC Navigation - Hide more menu */
+        @media (min-width: 769px) {
+          .nav-btn-more {
+            display: none !important;
+          }
+        }
+
+        /* More Menu Dropdown */
+        .more-menu-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.3);
+          z-index: 100;
+        }
+
+        .more-menu-dropdown {
+          position: fixed;
+          top: 50px;
+          right: 12px;
+          width: 150px;
+          border-radius: 8px;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+          z-index: 101;
+          overflow: hidden;
+          animation: fadeIn 0.15s ease;
+        }
+
+        .more-menu-dropdown.dark {
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .more-menu-item {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          width: 100%;
+          padding: 12px 16px;
+          border: none;
+          background: transparent;
+          font-size: 14px;
+          cursor: pointer;
+          text-align: left;
+          transition: background 0.15s ease;
+        }
+
+        .more-menu-item:hover {
+          background: rgba(0, 0, 0, 0.05);
+        }
+
+        .more-menu-dropdown.dark .more-menu-item:hover {
+          background: rgba(255, 255, 255, 0.1);
+        }
+
+        .more-menu-item span {
+          flex: 1;
+        }
+
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(-8px); }
+          to { opacity: 1; transform: translateY(0); }
         }
       `}</style>
     </div>

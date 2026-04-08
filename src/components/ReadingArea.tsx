@@ -370,7 +370,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
           </div>
         </div>
 
-        {/* Pagination Bar - Fixed at bottom */}
+        {/* Pagination Bar - Fixed at bottom (PC only) */}
         <div
           className={`pagination-bar ${isDarkMode ? 'dark' : ''}`}
           style={{
@@ -404,6 +404,11 @@ export const ReadingArea = forwardRef(function ReadingArea({
               <ChevronRight size={18} />
             </button>
           </div>
+        </div>
+
+        {/* Mobile Page Indicator - Fixed at bottom right */}
+        <div className={`mobile-page-indicator ${isDarkMode ? 'dark' : ''}`}>
+          {safeCurrentPage}/{totalPagesState}
         </div>
 
         <style jsx>{`
@@ -513,6 +518,41 @@ export const ReadingArea = forwardRef(function ReadingArea({
           @media (max-width: ${MOBILE_BREAKPOINT}px) {
             .reading-area {
               padding: 16px !important;
+            }
+          }
+
+          /* Mobile Page Indicator - Only show on mobile */
+          .mobile-page-indicator {
+            display: none;
+            position: fixed;
+            bottom: 12px;
+            right: 16px;
+            font-size: 12px;
+            color: #999999;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 12px;
+            padding: 4px 10px;
+            z-index: 50;
+          }
+
+          .mobile-page-indicator.dark {
+            background: rgba(0, 0, 0, 0.5);
+            color: #888888;
+          }
+
+          @media (max-width: 768px) {
+            .pagination-bar {
+              display: none !important;
+            }
+
+            .mobile-page-indicator {
+              display: block;
+            }
+          }
+
+          @media (min-width: 769px) {
+            .mobile-page-indicator {
+              display: none;
             }
           }
         `}</style>
