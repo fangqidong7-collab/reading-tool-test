@@ -5,7 +5,9 @@ import { Bookshelf } from "@/components/Bookshelf";
 import { ReadingArea } from "@/components/ReadingArea";
 import { WordTooltip } from "@/components/WordTooltip";
 import { VocabularySidebar } from "@/components/VocabularySidebar";
+import { SettingsPanel } from "@/components/SettingsPanel";
 import { useBookshelf, ProcessedContent, ProcessedSegment } from "@/hooks/useBookshelf";
+import { useReadingSettings } from "@/hooks/useReadingSettings";
 import { lemmatize, getWordMeaning, findWordFamily } from "@/lib/dictionary";
 import { translateWord } from "@/lib/translate";
 import { forceReloadDictionary, lookupExternalDict, type DictLoadStatus } from "@/lib/dictLoader";
@@ -80,6 +82,30 @@ export default function Home() {
     closeBook,
   } = useBookshelf();
 
+  // Reading settings
+  const {
+    isLoaded: settingsLoaded,
+    fontSize,
+    lineHeight,
+    backgroundColor,
+    textColor,
+    headerBg,
+    headerTextColor,
+    annotationColor,
+    annotationFontSize,
+    highlightBg,
+    highlightBgHover,
+    sidebarBg,
+    isDarkMode,
+    currentTheme,
+    setFontSize,
+    setLineHeight,
+    setBackgroundTheme,
+    getSidebarState,
+    setSidebarState,
+    resetToDefault,
+  } = useReadingSettings();
+
   // Reading state
   const [text, setText] = useState<string>("");
   const [processedContent, setProcessedContent] = useState<ProcessedContent | null>(null);
@@ -91,13 +117,13 @@ export default function Home() {
     position: { x: number; y: number };
   } | null>(null);
   const [loading, setLoading] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Pagination state
+  // Pagination state - managed by ReadingArea internally
   const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
   
   // Ref to track if we're currently in a programmatic scroll
   const isProgrammaticScrollRef = useRef(false);
@@ -149,7 +175,7 @@ export default function Home() {
         setAnnotations(currentBook.annotations);
       }
       
-      // Process content and calculate pages
+      // Process content
       let processed = currentBook.processedContent;
       if (!processed) {
         processed = processTextToSegments(currentBook.content);
@@ -159,14 +185,13 @@ export default function Home() {
         setProcessedContent(processed);
       }
       
-      // Calculate total pages (30 paragraphs per page)
-      const paraCount = processed?.length || 1;
-      const pages = Math.max(1, Math.ceil(paraCount / 30));
-      setTotalPages(pages);
-      
       // Restore last read page (default to page 1)
       const savedPage = currentBook.lastReadPage || 1;
-      setCurrentPage(Math.min(savedPage, pages));
+      setCurrentPage(Math.min(savedPage, Math.max(1, processed?.length || 1)));
+      
+      // Restore sidebar state from localStorage (default closed)
+      const savedSidebarState = getSidebarState(currentBook.id);
+      setSidebarOpen(savedSidebarState);
       
     } else {
       currentBookIdRef.current = null;
@@ -174,9 +199,19 @@ export default function Home() {
       currentBookAnnotationsRef.current = {};
       setProcessedContent(null);
       setCurrentPage(1);
-      setTotalPages(1);
+      setSidebarOpen(false);
     }
-  }, [currentBook, saveProcessedContent]);
+  }, [currentBook, saveProcessedContent, getSidebarState]);
+
+  // Handle sidebar toggle with localStorage memory
+  const handleSidebarToggle = useCallback(() => {
+    const newState = !sidebarOpen;
+    setSidebarOpen(newState);
+    const bookId = currentBookIdRef.current;
+    if (bookId) {
+      setSidebarState(bookId, newState);
+    }
+  }, [sidebarOpen, setSidebarState]);
 
   // Save annotations when they change
   useEffect(() => {
@@ -362,13 +397,13 @@ export default function Home() {
     setSelectedWord(null);
     setProcessedContent(null);
     setCurrentPage(1);
-    setTotalPages(1);
+    setSettingsPanelOpen(false);
   }, [closeBook]);
 
   // Show loading while initializing
-  if (!isLoaded) {
+  if (!isLoaded || !settingsLoaded) {
     return (
-      <div className="loading-screen">
+      <div className="loading-screen" style={{ backgroundColor }}>
         <div className="loading-spinner"></div>
       </div>
     );
@@ -377,7 +412,7 @@ export default function Home() {
   // Bookshelf view (when no book is open)
   if (!currentBook) {
     return (
-      <div className="bookshelf-page">
+      <div className="bookshelf-page" style={{ backgroundColor }}>
         <Bookshelf
           books={books}
           getProgress={getProgress}
@@ -389,14 +424,12 @@ export default function Home() {
         <style jsx>{`
           .bookshelf-page {
             min-height: 100vh;
-            background: #fff8f0;
           }
           .loading-screen {
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
-            background: #fff8f0;
           }
           .loading-spinner {
             width: 40px;
@@ -418,11 +451,35 @@ export default function Home() {
 
   // Reading view
   return (
-    <div className="app-container">
+    <div className="app-container" style={{ backgroundColor }}>
+      {/* Settings Panel */}
+      <SettingsPanel
+        isOpen={settingsPanelOpen}
+        onClose={() => setSettingsPanelOpen(false)}
+        fontSize={fontSize}
+        lineHeight={lineHeight}
+        currentTheme={currentTheme}
+        onFontSizeChange={setFontSize}
+        onLineHeightChange={setLineHeight}
+        onThemeChange={setBackgroundTheme}
+        onReset={resetToDefault}
+        headerBg={headerBg}
+        headerTextColor={headerTextColor}
+        textColor={textColor}
+        isDarkMode={isDarkMode}
+      />
+
       {/* Reading Header */}
-      <header className="app-header">
+      <header className="app-header" style={{ backgroundColor: headerBg, color: headerTextColor }}>
         <div className="header-left">
-          <button className="back-btn" onClick={handleReturnToBookshelf}>
+          <button 
+            className="back-btn" 
+            onClick={handleReturnToBookshelf}
+            style={{ 
+              backgroundColor: isDarkMode ? "#2a2a3e" : "#f5f5f5",
+              color: isDarkMode ? "#ccc" : "#666",
+            }}
+          >
             <svg
               width="20"
               height="20"
@@ -435,11 +492,25 @@ export default function Home() {
             </svg>
             书架
           </button>
-          <h1 className="app-title" title={currentBook.title}>
+          <h1 className="app-title" title={currentBook.title} style={{ color: headerTextColor }}>
             {currentBook.title}
           </h1>
         </div>
         <div className="header-right">
+          {/* Settings Button */}
+          <button
+            className="settings-btn"
+            onClick={() => setSettingsPanelOpen(!settingsPanelOpen)}
+            title="阅读设置"
+            style={{ 
+              backgroundColor: settingsPanelOpen ? (isDarkMode ? "#3a3a4e" : "#e0e0e0") : "transparent",
+              borderColor: isDarkMode ? "#444" : "#ddd",
+              color: headerTextColor,
+            }}
+          >
+            <span style={{ fontSize: "14px", fontWeight: "bold" }}>Aa</span>
+          </button>
+
           {/* Dictionary Loading Status */}
           {dictLoadStatus !== 'idle' && (
             <div className={`dict-status dict-status-${dictLoadStatus}`}>
@@ -469,15 +540,22 @@ export default function Home() {
               )}
             </div>
           )}
-          <div className="header-stats">
+          <div className="header-stats" style={{ color: isDarkMode ? "#999" : "#666" }}>
             <span className="stat">
-              词汇: <strong>{Object.keys(annotations).length}</strong>
+              词汇: <strong style={{ color: isDarkMode ? "#6ba3e0" : "#4a90d9" }}>
+                {Object.keys(annotations).length}
+              </strong>
             </span>
           </div>
           <button
-            className="sidebar-toggle"
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            title={sidebarOpen ? "收起侧边栏" : "展开侧边栏"}
+            className={`sidebar-toggle ${isDarkMode ? "dark" : ""}`}
+            onClick={handleSidebarToggle}
+            title={sidebarOpen ? "收起词汇表" : "展开词汇表"}
+            style={{ 
+              backgroundColor: sidebarOpen ? (isDarkMode ? "#3a3a4e" : "#e0e0e0") : "transparent",
+              borderColor: isDarkMode ? "#444" : "#ddd",
+              color: headerTextColor,
+            }}
           >
             <svg
               width="20"
@@ -495,7 +573,7 @@ export default function Home() {
       </header>
 
       {/* Main Content */}
-      <main className="main-content">
+      <main className="main-content" style={{ backgroundColor }}>
         <div ref={containerRef} className="reading-container">
           <ReadingArea
             text={text}
@@ -505,8 +583,16 @@ export default function Home() {
             getWordAnnotation={getWordAnnotation}
             isClickable={isClickable}
             currentPage={currentPage}
-            totalPages={totalPages}
             onPageChange={handlePageChange}
+            fontSize={fontSize}
+            lineHeight={lineHeight}
+            textColor={textColor}
+            backgroundColor={backgroundColor}
+            annotationColor={annotationColor}
+            annotationFontSize={annotationFontSize}
+            highlightBg={highlightBg}
+            highlightBgHover={highlightBgHover}
+            isDarkMode={isDarkMode}
           />
         </div>
 
@@ -517,6 +603,12 @@ export default function Home() {
           onClose={() => setSidebarOpen(false)}
           onClearAll={clearAllAnnotations}
           onWordClick={scrollToWord}
+          isDarkMode={isDarkMode}
+          sidebarBg={sidebarBg}
+          headerBg={headerBg}
+          textColor={textColor}
+          annotationColor={annotationColor}
+          highlightBg={isDarkMode ? "#2a2a3e" : "#f8f9fa"}
         />
       </main>
 
@@ -530,6 +622,9 @@ export default function Home() {
           onClose={closeTooltip}
           isAnnotated={!!annotations[selectedWord.word.toLowerCase()]}
           annotation={annotations[selectedWord.word.toLowerCase()] || null}
+          isDarkMode={isDarkMode}
+          textColor={textColor}
+          accentColor={annotationColor}
         />
       )}
 
@@ -537,14 +632,13 @@ export default function Home() {
       {loading && (
         <div className="loading-overlay">
           <div className="loading-spinner"></div>
-          <span>正在标注...</span>
+          <span style={{ color: isDarkMode ? "#ccc" : "#666" }}>正在标注...</span>
         </div>
       )}
 
       <style jsx>{`
         .app-container {
           min-height: 100vh;
-          background: #fff8f0;
         }
 
         .app-header {
@@ -555,7 +649,6 @@ export default function Home() {
           align-items: center;
           justify-content: space-between;
           padding: 12px 24px;
-          background: white;
           box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
         }
 
@@ -572,25 +665,21 @@ export default function Home() {
           align-items: center;
           gap: 4px;
           padding: 8px 12px;
-          background: #f5f5f5;
           border: none;
           border-radius: 6px;
           font-size: 14px;
-          color: #666;
           cursor: pointer;
           transition: all 0.15s ease;
           white-space: nowrap;
         }
 
         .back-btn:hover {
-          background: #e8e8e8;
-          color: #333;
+          filter: brightness(0.95);
         }
 
         .app-title {
           font-size: 18px;
           font-weight: 600;
-          color: #333;
           margin: 0;
           overflow: hidden;
           text-overflow: ellipsis;
@@ -600,15 +689,26 @@ export default function Home() {
         .header-right {
           display: flex;
           align-items: center;
-          gap: 16px;
+          gap: 12px;
           flex-shrink: 0;
+        }
+
+        .settings-btn {
+          padding: 8px 12px;
+          border: 1px solid;
+          border-radius: 6px;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .settings-btn:hover {
+          filter: brightness(0.95);
         }
 
         .header-stats {
           display: flex;
           gap: 16px;
           font-size: 14px;
-          color: #666;
         }
 
         .stat strong {
@@ -660,15 +760,13 @@ export default function Home() {
           padding: 8px;
           border-radius: 6px;
           cursor: pointer;
-          color: #666;
           display: flex;
           align-items: center;
           transition: all 0.15s ease;
         }
 
         .sidebar-toggle:hover {
-          background: #f5f5f5;
-          color: #333;
+          filter: brightness(0.95);
         }
 
         .main-content {
@@ -710,11 +808,6 @@ export default function Home() {
           to {
             transform: rotate(360deg);
           }
-        }
-
-        .loading-overlay span {
-          font-size: 14px;
-          color: #666;
         }
       `}</style>
     </div>
