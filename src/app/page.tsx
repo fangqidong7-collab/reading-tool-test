@@ -105,7 +105,9 @@ function shortenTranslation(text: string): string {
 
 // Process text into structured segments with lemmas
 // Handles EPUB heading markers like [H2]Chapter 1[/H2]
-function processTextToSegments(text: string): ProcessedContent {
+function processTextToSegments(text: string | undefined | null): ProcessedContent {
+  if (!text) return [];
+  
   // Split by double newlines to get raw paragraphs
   const rawParagraphs = text.split(/\n\n+/).filter(p => p.trim());
   const result: ProcessedParagraph[] = [];
