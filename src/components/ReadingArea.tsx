@@ -123,23 +123,21 @@ export const ReadingArea = forwardRef(function ReadingArea({
   
   const [currentPageState, setCurrentPageState] = useState(currentPage || 1);
   const [totalPagesState, setTotalPagesState] = useState(1);
-  const [viewHeight, setViewHeight] = useState(600);
   
   // Touch tracking refs
   const touchStartXRef = useRef<number>(0);
   const touchStartYRef = useRef<number>(0);
 
-  // Calculate view height
+  // Calculate line-aligned page height
+  const lineHeightPx = fontSize * lineHeight;
+  const rawViewHeight = window.innerHeight - HEADER_HEIGHT - PAGINATION_HEIGHT - (READING_PADDING_VERTICAL * 2);
+  const pageHeight = Math.floor(rawViewHeight / lineHeightPx) * lineHeightPx;
+  const viewHeight = Math.max(400, pageHeight);
+
+  // Calculate view height (recalculated on resize)
   useEffect(() => {
-    const calculateViewHeight = () => {
-      const vh = window.innerHeight - HEADER_HEIGHT - PAGINATION_HEIGHT - (READING_PADDING_VERTICAL * 2);
-      setViewHeight(Math.max(400, vh));
-    };
-    
-    calculateViewHeight();
-    window.addEventListener('resize', calculateViewHeight);
-    return () => window.removeEventListener('resize', calculateViewHeight);
-  }, []);
+    // viewHeight is now calculated from pageHeight which is already line-aligned
+  }, [fontSize, lineHeight]);
 
   // Calculate total pages based on content height
   useEffect(() => {
@@ -147,7 +145,11 @@ export const ReadingArea = forwardRef(function ReadingArea({
     
     const calculatePages = () => {
       const contentHeight = contentRef.current?.scrollHeight || 0;
-      const total = Math.ceil(contentHeight / viewHeight) || 1;
+      // Use pageHeight (line-aligned) for pagination
+      const pageHeight = Math.floor(
+        (window.innerHeight - HEADER_HEIGHT - PAGINATION_HEIGHT - (READING_PADDING_VERTICAL * 2)) / lineHeightPx
+      ) * lineHeightPx;
+      const total = Math.ceil(contentHeight / pageHeight) || 1;
       setTotalPagesState(total);
       
       if (onTotalPagesChange) {
@@ -172,7 +174,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
       clearTimeout(timer);
       resizeObserver.disconnect();
     };
-  }, [processedContent, fontSize, lineHeight, viewHeight, onTotalPagesChange]);
+  }, [processedContent, fontSize, lineHeight, lineHeightPx, onTotalPagesChange]);
 
   // Update state when props change
   useEffect(() => {
@@ -184,8 +186,16 @@ export const ReadingArea = forwardRef(function ReadingArea({
   // Clamp current page to valid range
   const safeCurrentPage = Math.min(Math.max(1, currentPageState), totalPagesState);
 
-  // Calculate transform offset for current page
-  const offset = (safeCurrentPage - 1) * viewHeight;
+  // Calculate line-aligned page height for offset calculation
+  const getPageHeight = () => {
+    return Math.floor(
+      (window.innerHeight - HEADER_HEIGHT - PAGINATION_HEIGHT - (READING_PADDING_VERTICAL * 2)) / lineHeightPx
+    ) * lineHeightPx;
+  };
+
+  // Calculate transform offset for current page (aligned to line height)
+  const currentPageHeight = getPageHeight();
+  const offset = (safeCurrentPage - 1) * currentPageHeight;
 
   // Handle page navigation
   const goToPrevPage = useCallback(() => {
@@ -215,14 +225,15 @@ export const ReadingArea = forwardRef(function ReadingArea({
     const element = contentRef.current.querySelector(`[data-paragraph-index="${paragraphIndex}"]`);
     if (element) {
       const offsetTop = (element as HTMLElement).offsetTop;
-      const targetPage = Math.floor(offsetTop / viewHeight) + 1;
+      const pageHeight = getPageHeight();
+      const targetPage = Math.floor(offsetTop / pageHeight) + 1;
       const clampedPage = Math.min(Math.max(1, targetPage), totalPagesState);
       setCurrentPageState(clampedPage);
       if (onPageChange) {
         onPageChange(clampedPage);
       }
     }
-  }, [viewHeight, totalPagesState, onPageChange]);
+  }, [lineHeightPx, totalPagesState, onPageChange]);
 
   // Expose jumpToParagraph via ref
   useImperativeHandle(ref, () => ({

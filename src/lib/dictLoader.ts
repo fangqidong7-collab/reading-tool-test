@@ -126,6 +126,111 @@ function getStemVariantsExternal(word: string): string[] {
 	const vowelEnding = /[aeiou]$/;
 	const consonantYEnding = /[bcdfghjklmnpqrstvwxyz]y$/i;
 	
+	// ================== 后缀处理 ==================
+	
+	// 去-ness时
+	if (lower.endsWith('ness')) {
+		const base = lower.slice(0, -4);
+		variants.push(base);
+		// happiness -> happy, laziness -> lazy
+		if (lower.endsWith('iness')) {
+			variants.push(base + 'y');
+		}
+		// kindness -> kind
+	}
+	
+	// 去-ment时
+	if (lower.endsWith('ment')) {
+		const base = lower.slice(0, -4);
+		variants.push(base);
+		// excitement -> excite
+		if (base.endsWith('e')) {
+			variants.push(base);
+		} else {
+			variants.push(base + 'e');
+		}
+	}
+	
+	// 去-tion时
+	if (lower.endsWith('tion')) {
+		const base = lower.slice(0, -4);
+		variants.push(base);
+		variants.push(base + 'e');
+		// education -> educate
+		if (!base.endsWith('e')) {
+			variants.push(base + 'e');
+		}
+	}
+	
+	// 去-able时
+	if (lower.endsWith('able')) {
+		const base = lower.slice(0, -4);
+		variants.push(base);
+		// comfortable -> comfort
+		if (!base.endsWith('e')) {
+			variants.push(base + 'e');
+		}
+	}
+	
+	// 去-ible时
+	if (lower.endsWith('ible')) {
+		const base = lower.slice(0, -4);
+		variants.push(base);
+	}
+	
+	// 去-ful时
+	if (lower.endsWith('ful')) {
+		const base = lower.slice(0, -3);
+		variants.push(base);
+		// careful -> care
+		if (base.endsWith(' ')) {
+			// shouldn't happen
+		}
+		// beautiful -> beauty (特殊处理)
+		if (lower.endsWith('iful') || lower.endsWith('tiful')) {
+			const base2 = base.slice(0, -1); // beauti
+			variants.push(base2 + 'y'); // beauty
+		}
+	}
+	
+	// 去-ous时
+	if (lower.endsWith('ous')) {
+		const base = lower.slice(0, -3);
+		variants.push(base);
+		// dangerous -> danger
+	}
+	
+	// 去-ive时
+	if (lower.endsWith('ive')) {
+		const base = lower.slice(0, -3);
+		variants.push(base);
+		// active -> act
+		variants.push(base + 'e');
+		// creative -> create
+		if (!base.endsWith('e')) {
+			variants.push(base + 'e');
+		}
+	}
+	
+	// 去-al时
+	if (lower.endsWith('al')) {
+		const base = lower.slice(0, -2);
+		variants.push(base);
+		// national -> nation
+		variants.push(base + 'ity');
+		// personal -> person
+		if (base.endsWith('al')) {
+			variants.push(base.slice(0, -2));
+		}
+	}
+	
+	// 去-en时
+	if (lower.endsWith('en')) {
+		const base = lower.slice(0, -2);
+		variants.push(base);
+		// wooden -> wood
+	}
+	
 	// 去-ed时
 	if (lower.endsWith('ed')) {
 		const base = lower.slice(0, -2);
@@ -214,6 +319,24 @@ function getStemVariantsExternal(word: string): string[] {
 		}
 	}
 	
+	// ================== 前缀处理 ==================
+	
+	// 去常见前缀
+	const prefixes = ['un', 're', 'dis', 'mis', 'pre', 'over', 'im', 'in', 'ir', 'il'];
+	
+	for (const prefix of prefixes) {
+		if (lower.startsWith(prefix) && lower.length > prefix.length + 2) {
+			const withoutPrefix = lower.slice(prefix.length);
+			variants.push(withoutPrefix);
+			
+			// 对去前缀后的词也尝试后缀处理
+			const subVariants = getStemVariantsExternal(withoutPrefix);
+			for (const sv of subVariants) {
+				variants.push(sv);
+			}
+		}
+	}
+	
 	// 递归尝试更短的词根
 	if (variants.length > 0) {
 		const uniqueVariants = [...new Set(variants)];
@@ -252,7 +375,38 @@ export function smartLookupExternal(word: string): string | null {
 		}
 	}
 	
+	// 3. 去前缀处理
+	const prefixVariants = getPrefixVariants(lower);
+	for (const variant of prefixVariants) {
+		if (externalDict[variant]) {
+			return externalDict[variant];
+		}
+	}
+	
+	// Debug: log words not found
+	// console.log('词典未找到:', word, '尝试过的候选词:', [...new Set([lower, ...variants, ...prefixVariants])]);
+	
 	return null;
+}
+
+/**
+ * 获取去掉前缀后的变体
+ */
+function getPrefixVariants(word: string): string[] {
+	const variants: string[] = [];
+	const lower = word.toLowerCase();
+	
+	// 常见前缀
+	const prefixes = ['un', 're', 'dis', 'mis', 'pre', 'over', 'im', 'in', 'ir', 'il'];
+	
+	for (const prefix of prefixes) {
+		if (lower.startsWith(prefix) && lower.length > prefix.length + 2) {
+			const withoutPrefix = lower.slice(prefix.length);
+			variants.push(withoutPrefix);
+		}
+	}
+	
+	return [...new Set(variants)];
 }
 
 /**
