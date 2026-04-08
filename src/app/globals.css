@@ -198,23 +198,12 @@ rt {
   border-radius: 12px;
 }
 
-/* Book Grid - 8 per row on desktop, 4 on tablet, 2 on mobile */
+/* Book Grid - fixed column width on desktop */
 .book-grid {
-  display: grid;
-  grid-template-columns: repeat(8, 1fr);
+  display: flex;
+  flex-wrap: wrap;
   gap: 24px;
-}
-
-@media (max-width: 1200px) {
-  .book-grid {
-    grid-template-columns: repeat(6, 1fr);
-  }
-}
-
-@media (max-width: 900px) {
-  .book-grid {
-    grid-template-columns: repeat(4, 1fr);
-  }
+  justify-content: flex-start;
 }
 
 @media (max-width: 600px) {
@@ -233,21 +222,30 @@ rt {
   }
 
   .book-grid {
+    display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: 16px;
+  }
+  
+  .book-card {
+    width: 100%;
+    max-width: none;
   }
 }
 
 /* Book Card */
 .book-card {
   position: relative;
+  width: 150px;
+  max-width: 150px;
   background: white;
   border-radius: 12px;
-  padding: 20px;
+  padding: 16px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
   cursor: pointer;
   transition: all 0.2s ease;
   animation: fadeIn 0.3s ease;
+  overflow: hidden;
 }
 
 .book-card:hover {
@@ -261,14 +259,16 @@ rt {
 
 /* Add Card */
 .book-card.add-card {
+  width: 150px;
+  max-width: 150px;
   border: 2px dashed #ddd;
   background: #fafafa;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 200px;
   box-shadow: none;
+  min-height: 240px;
 }
 
 .book-card.add-card:hover {
@@ -302,22 +302,28 @@ rt {
 /* Book Cover */
 .book-cover {
   width: 100%;
-  aspect-ratio: 3 / 4;
+  height: 150px;
   background: linear-gradient(135deg, #4a90d9 0%, #357abd 100%);
   border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
+  overflow: hidden;
+  flex-shrink: 0;
 }
 
 .book-icon {
   color: rgba(255, 255, 255, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Book Info */
 .book-info {
-  min-height: 80px;
+  min-height: 70px;
+  overflow: hidden;
 }
 
 .book-title {

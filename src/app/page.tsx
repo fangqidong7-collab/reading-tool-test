@@ -5,9 +5,32 @@ import { Bookshelf } from "@/components/Bookshelf";
 import { ReadingArea } from "@/components/ReadingArea";
 import { WordTooltip } from "@/components/WordTooltip";
 import { VocabularySidebar } from "@/components/VocabularySidebar";
-import { useBookshelf } from "@/hooks/useBookshelf";
+import { useBookshelf, ProcessedContent, ProcessedSegment } from "@/hooks/useBookshelf";
 import { lemmatize, getWordMeaning, findWordFamily } from "@/lib/dictionary";
 import { translateWord } from "@/lib/translate";
+
+// Process text into structured segments with lemmas
+function processTextToSegments(text: string): ProcessedContent {
+  const paragraphs = text.split(/\n\n+/);
+  return paragraphs.map((paragraph) => {
+    const segments: ProcessedSegment[] = [];
+    const regex = /([a-zA-Z]+|[^a-zA-Z\s]+|\s+)/g;
+    let match;
+    
+    while ((match = regex.exec(paragraph)) !== null) {
+      const token = match[0];
+      if (/^\s+$/.test(token)) {
+        segments.push({ text: token, lemma: "", type: "space" });
+      } else if (/^[a-zA-Z]+$/.test(token)) {
+        segments.push({ text: token, lemma: lemmatize(token.toLowerCase()), type: "word" });
+      } else {
+        segments.push({ text: token, lemma: "", type: "punctuation" });
+      }
+    }
+    
+    return segments;
+  });
+}
 
 export default function Home() {
   const {
@@ -19,12 +42,15 @@ export default function Home() {
     addBook,
     deleteBook,
     updateBookAnnotations,
+    updateScrollPosition,
+    saveProcessedContent,
     openBook,
     closeBook,
   } = useBookshelf();
 
   // Reading state
   const [text, setText] = useState<string>("");
+  const [processedContent, setProcessedContent] = useState<ProcessedContent | null>(null);
   const [annotations, setAnnotations] = useState<
     Record<string, { root: string; meaning: string; pos: string; count: number }>
   >({});
@@ -35,6 +61,8 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const scrollPositionSavedRef = useRef(false);
 
   // Store current book data in refs to avoid dependency issues
   const currentBookIdRef = useRef<string | null>(null);
@@ -57,12 +85,29 @@ export default function Home() {
         currentBookAnnotationsRef.current = currentBook.annotations;
         setAnnotations(currentBook.annotations);
       }
+      // Check if processed content exists, if not, generate it
+      if (currentBook.processedContent) {
+        setProcessedContent(currentBook.processedContent);
+      } else {
+        // Process text and save to localStorage
+        const processed = processTextToSegments(currentBook.content);
+        setProcessedContent(processed);
+        saveProcessedContent(currentBook.id, processed);
+      }
+      // Restore scroll position after a delay to allow content to render
+      scrollPositionSavedRef.current = false;
+      setTimeout(() => {
+        if (currentBook.lastScrollPosition && currentBook.lastScrollPosition > 0) {
+          window.scrollTo({ top: currentBook.lastScrollPosition, behavior: "auto" });
+        }
+      }, 300);
     } else {
       currentBookIdRef.current = null;
       currentBookContentRef.current = "";
       currentBookAnnotationsRef.current = {};
+      setProcessedContent(null);
     }
-  }, [currentBook]);
+  }, [currentBook, saveProcessedContent]);
 
   // Save annotations when they change
   useEffect(() => {
@@ -71,6 +116,31 @@ export default function Home() {
       updateBookAnnotations(bookId, annotations);
     }
   }, [annotations, updateBookAnnotations]);
+
+  // Handle scroll - save position with debounce
+  useEffect(() => {
+    if (!currentBook) return;
+
+    const handleScroll = () => {
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+      scrollTimeoutRef.current = setTimeout(() => {
+        const bookId = currentBookIdRef.current;
+        if (bookId && !scrollPositionSavedRef.current) {
+          updateScrollPosition(bookId, window.scrollY);
+        }
+      }, 500);
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+    };
+  }, [currentBook, updateScrollPosition]);
 
   // Handle word click
   const handleWordClick = useCallback(
@@ -184,11 +254,18 @@ export default function Home() {
 
   // Handle return to bookshelf
   const handleReturnToBookshelf = useCallback(() => {
+    // Save scroll position before leaving
+    const bookId = currentBookIdRef.current;
+    if (bookId) {
+      updateScrollPosition(bookId, window.scrollY);
+    }
+    scrollPositionSavedRef.current = true;
     closeBook();
     setText("");
     setAnnotations({});
     setSelectedWord(null);
-  }, [closeBook]);
+    setProcessedContent(null);
+  }, [closeBook, updateScrollPosition]);
 
   // Show loading while initializing
   if (!isLoaded) {
@@ -295,6 +372,7 @@ export default function Home() {
         <div ref={containerRef} className="reading-container">
           <ReadingArea
             text={text}
+            processedContent={processedContent}
             annotations={annotations}
             onWordClick={handleWordClick}
             getWordAnnotation={getWordAnnotation}

@@ -2,6 +2,16 @@
 
 import { useState, useCallback, useEffect } from "react";
 
+// Processed content segment type
+export interface ProcessedSegment {
+  text: string;
+  lemma: string;
+  type: "word" | "space" | "punctuation";
+}
+
+// Processed content: array of paragraphs, each paragraph is array of segments
+export type ProcessedContent = ProcessedSegment[][];
+
 export interface Book {
   id: string;
   title: string;
@@ -10,6 +20,8 @@ export interface Book {
   createdAt: number;
   lastReadAt: number;
   isSample: boolean;
+  lastScrollPosition?: number;
+  processedContent?: ProcessedContent;
 }
 
 const STORAGE_KEY = "english-reader-books";
@@ -39,6 +51,8 @@ So whether you are a student in a classroom or an adult pursuing a hobby, rememb
   createdAt: Date.now(),
   lastReadAt: Date.now(),
   isSample: true,
+  lastScrollPosition: 0,
+  processedContent: undefined,
 };
 
 export function useBookshelf() {
@@ -71,10 +85,19 @@ export function useBookshelf() {
   }, []);
 
   // Save books to localStorage
+  // Only save when books change, debounced to avoid excessive writes
   useEffect(() => {
-    if (isLoaded && typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(books));
-    }
+    if (!isLoaded || typeof window === "undefined") return;
+    
+    const timeoutId = setTimeout(() => {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(books));
+      } catch (error) {
+        console.warn("Failed to save books to localStorage:", error);
+      }
+    }, 500);
+    
+    return () => clearTimeout(timeoutId);
   }, [books, isLoaded]);
 
   // Get current book
@@ -163,6 +186,34 @@ export function useBookshelf() {
     );
   }, []);
 
+  // Update book scroll position
+  const updateScrollPosition = useCallback((id: string, position: number) => {
+    setBooks((prev) =>
+      prev.map((b) =>
+        b.id === id
+          ? { ...b, lastScrollPosition: position }
+          : b
+      )
+    );
+  }, []);
+
+  // Save processed content for faster loading
+  const saveProcessedContent = useCallback((id: string, processedContent: ProcessedContent) => {
+    // Only save processed content if it's not too large (to avoid quota issues)
+    const contentSize = JSON.stringify(processedContent).length;
+    if (contentSize > 2 * 1024 * 1024) { // 2MB limit
+      console.warn("Processed content too large, skipping save");
+      return;
+    }
+    setBooks((prev) =>
+      prev.map((b) =>
+        b.id === id
+          ? { ...b, processedContent }
+          : b
+      )
+    );
+  }, []);
+
   // Open a book for reading
   const openBook = useCallback((id: string) => {
     setBooks((prev) =>
@@ -202,6 +253,8 @@ export function useBookshelf() {
     deleteBook,
     updateBookAnnotations,
     updateBookContent,
+    updateScrollPosition,
+    saveProcessedContent,
     openBook,
     closeBook,
     reorderBooks,
