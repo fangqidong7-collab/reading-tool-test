@@ -283,6 +283,8 @@ export const ReadingArea = forwardRef(function ReadingArea({
     // 每页实际高度 = 完整行数 × 行高
     const pageH = linesPerPage * lineHeightPx;
     
+    console.log('行高对齐调试 - fontSize:', fontSize, 'lineHeight:', lineHeight, '行高px:', fontSize * lineHeight, '容器高度:', containerRef.current?.clientHeight, '对齐后页高:', pageH, 'linesPerPage:', linesPerPage);
+    
     return pageH > 0 ? pageH : containerH;
   }, [containerHeight, fontSize, lineHeight]);
 
