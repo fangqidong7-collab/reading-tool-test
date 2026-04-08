@@ -59,13 +59,17 @@ interface ContentBlock {
   text: string;
 }
 
-function extractContentBlocksFromHtml(html: string): ContentBlock[] {
+function extractContentBlocksFromHtml(html: string, debugChapter: boolean = false): ContentBlock[] {
   const blocks: ContentBlock[] = [];
   
   // Remove script and style tags first
   const cleanHtml = html
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "");
+  
+  if (debugChapter) {
+    console.log('章节HTML前2000字符:', cleanHtml.substring(0, 2000));
+  }
   
   // Try to use DOMParser for better parsing
   try {
@@ -75,11 +79,28 @@ function extractContentBlocksFromHtml(html: string): ContentBlock[] {
     // Use querySelectorAll to get all headings and paragraphs in document order
     const elements = doc.querySelectorAll('h1, h2, h3, h4, h5, h6, p');
     
+    if (debugChapter) {
+      // Check for chapter elements
+      const allElements = doc.body ? doc.body.innerHTML : '';
+      if (allElements.toLowerCase().includes('chapter')) {
+        const chapterElements = doc.querySelectorAll('*');
+        chapterElements.forEach(el => {
+          if (el.textContent && el.textContent.trim().toLowerCase().includes('chapter') && el.textContent.trim().length < 30) {
+            console.log('包含chapter的元素:', el.tagName, el.className, '内容:', el.textContent.trim());
+          }
+        });
+      }
+    }
+    
     elements.forEach(el => {
       const tagName = el.tagName.toLowerCase();
       let text = el.textContent || "";
       text = decodeHtmlEntities(text);
       text = cleanText(text);
+      
+      if (debugChapter) {
+        console.log('标签:', tagName, '内容长度:', text.length, '前30字符:', text.substring(0, 30));
+      }
       
       if (!text) return; // Skip empty content
       
@@ -270,8 +291,14 @@ async function parseEpub(file: File, onProgress: ProgressCallback): Promise<{ ti
       const chapterHtml = await zip.file(chapterPath)?.async("string");
       
       if (chapterHtml) {
+        // DEBUG: 只在前两个章节打印详细日志
+        const debugChapter = i < 2;
+        if (debugChapter) {
+          console.log('=== 解析第', i+1, '个章节文件 ===');
+        }
+        
         // Extract content blocks (headings and paragraphs in order)
-        const blocks = extractContentBlocksFromHtml(chapterHtml);
+        const blocks = extractContentBlocksFromHtml(chapterHtml, debugChapter);
         
         // Process blocks and build content
         for (const block of blocks) {
