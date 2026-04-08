@@ -10,6 +10,36 @@ import { lemmatize, getWordMeaning, findWordFamily } from "@/lib/dictionary";
 import { translateWord } from "@/lib/translate";
 import { forceReloadDictionary, lookupExternalDict, type DictLoadStatus } from "@/lib/dictLoader";
 
+/**
+ * Clean translation text - remove parts of speech and extra info
+ */
+function cleanTranslation(text: string): string {
+  if (!text) return "";
+  
+  let cleaned = text;
+  
+  // Remove leading parts of speech like "n. " "v. " "adj. " etc.
+  // Common patterns: "n.", "v.", "adj.", "adv.", "prep.", "conj.", "pron.", "det.", "vi.", "vt.", "n.v.", etc.
+  cleaned = cleaned.replace(/^[a-z]+\.(?:\/[a-z]+\.)*\s*/gi, '');
+  
+  // Remove leading Chinese parts of speech
+  cleaned = cleaned.replace(/^(名词|动词|形容词|副词|介词|连词|代词|冠词|感叹词|数词|前缀|后缀)[;；\s]*/g, '');
+  
+  // Remove leading dots and colons
+  cleaned = cleaned.replace(/^[.。:：]+/, '');
+  
+  // Remove content in brackets like [计], [军], etc.
+  cleaned = cleaned.replace(/\[[^\]]+\]/g, '');
+  
+  // Remove multiple spaces
+  cleaned = cleaned.replace(/\s+/g, ' ');
+  
+  // Remove leading/trailing punctuation that might be left
+  cleaned = cleaned.replace(/^[，。、；：.!?,]+/, '').replace(/[，。、；：.!?,]+$/, '');
+  
+  return cleaned.trim();
+}
+
 // Process text into structured segments with lemmas
 function processTextToSegments(text: string): ProcessedContent {
   const paragraphs = text.split(/\n\n+/);
@@ -208,31 +238,29 @@ export default function Home() {
       setLoading(true);
 
       try {
-        let meaning = "";
-        let pos = "";
+        let rawMeaning = "";
 
         // 1. 先查内置词典
         const entry = getWordMeaning(root);
         if (entry?.meaning) {
-          meaning = entry.meaning;
-          pos = entry.pos;
+          rawMeaning = entry.meaning;
         }
 
         // 2. 查外部词典（带智能后缀去除）
-        if (!meaning) {
+        if (!rawMeaning) {
           const extMeaning = lookupExternalDict(cleanWord);
           if (extMeaning) {
-            meaning = extMeaning;
-            pos = "";
+            rawMeaning = extMeaning;
           }
         }
 
         // 3. 最后才调用AI翻译
-        if (!meaning) {
-          meaning = await translateWord(root);
-          pos = "";
+        if (!rawMeaning) {
+          rawMeaning = await translateWord(root);
         }
 
+        // 清洗释义，去除词性标注
+        const meaning = cleanTranslation(rawMeaning);
         const family = findWordFamily(root, text);
 
         setAnnotations((prev) => ({
@@ -240,7 +268,7 @@ export default function Home() {
           [root]: {
             root,
             meaning,
-            pos,
+            pos: "",
             count: family.length,
           },
         }));

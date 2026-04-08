@@ -41,7 +41,17 @@ const Segment = memo(({
   if (isAnnotated) {
     return (
       <span key={key} className="annotated">
-        {word}<span className="annotation">({annotation.meaning})</span>
+        {word}<span 
+          className="annotation"
+          style={{ 
+            color: '#E74C3C', 
+            fontSize: '0.7em', 
+            fontFamily: '"Microsoft YaHei", "PingFang SC", sans-serif',
+            fontWeight: 'normal',
+            marginLeft: '1px',
+            marginRight: '1px'
+          }}
+        >({annotation.meaning})</span>
       </span>
     );
   }
@@ -239,14 +249,14 @@ export function ReadingArea({
           ))}
         </div>
         
-        <style jsx>{`
+        <style>{`
           .reading-area {
             padding: 2rem;
             max-width: 800px;
             margin: 0 auto;
           }
           
-          .text-content {
+          .reading-area .text-content {
             font-family: Georgia, "Times New Roman", serif;
             font-size: 18px;
             line-height: 1.8;
@@ -254,42 +264,44 @@ export function ReadingArea({
             text-align: justify;
           }
           
-          .paragraph {
+          .reading-area .paragraph {
             margin-bottom: 1.2em;
           }
           
-          .whitespace {
+          .reading-area .whitespace {
             white-space: pre-wrap;
           }
           
-          .punctuation {
+          .reading-area .punctuation {
             color: #666;
           }
           
-          .word.clickable {
+          .reading-area .word.clickable {
             cursor: pointer;
           }
           
-          .word.clickable:hover {
+          .reading-area .word.clickable:hover {
             color: #4A90D9;
           }
           
-          .annotated {
+          .reading-area .annotated {
             cursor: pointer;
             background-color: #FFF3CD;
             padding: 1px 0;
             border-radius: 2px;
           }
           
-          .annotated:hover {
+          .reading-area .annotated:hover {
             background-color: #FFE69C;
           }
           
-          .annotation {
-            color: #E74C3C;
-            font-size: 70%;
-            font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
-            font-weight: normal;
+          .reading-area .annotation {
+            color: #E74C3C !important;
+            font-size: 0.7em !important;
+            font-family: "Microsoft YaHei", "PingFang SC", sans-serif !important;
+            font-weight: normal !important;
+            margin-left: 1px;
+            margin-right: 1px;
           }
         `}</style>
       </div>
@@ -302,13 +314,13 @@ export function ReadingArea({
       <div className="text-content" style={{ whiteSpace: "pre-wrap" }}>
         {text}
       </div>
-      <style jsx>{`
+      <style>{`
         .reading-area {
           padding: 2rem;
           max-width: 800px;
           margin: 0 auto;
         }
-        .text-content {
+        .reading-area .text-content {
           font-family: Georgia, "Times New Roman", serif;
           font-size: 18px;
           line-height: 1.8;
