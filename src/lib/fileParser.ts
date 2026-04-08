@@ -5,6 +5,7 @@ export interface TocEntry {
   title: string;
   href: string;
   page: number;
+  paragraphIndex?: number; // Paragraph index for navigation
 }
 
 // Types for file parsing
@@ -232,17 +233,17 @@ async function parseEpub(file: File, onProgress: ProgressCallback): Promise<{ ti
     const chapterContents: string[] = [];
     const allHeadings: string[] = [];
     
-    // Track chapter start pages for TOC
-    let currentPage = 1;
-    const chapterStartPages: { href: string; page: number }[] = [];
+    // Track chapter start paragraph indices for TOC
+    let currentParagraphIndex = 0;
+    const chapterStartIndices: { href: string; paragraphIndex: number }[] = [];
     
     for (let i = 0; i < spineIds.length; i++) {
       const id = spineIds[i];
       const href = manifest[id as string];
       if (!href) continue;
 
-      // Record chapter start page
-      chapterStartPages.push({ href, page: currentPage });
+      // Record chapter start paragraph index
+      chapterStartIndices.push({ href, paragraphIndex: currentParagraphIndex });
 
       const chapterPath = opfPrefix + href;
       const chapterHtml = await zip.file(chapterPath)?.async("string");
@@ -251,8 +252,9 @@ async function parseEpub(file: File, onProgress: ProgressCallback): Promise<{ ti
         // Extract paragraphs and headings from chapter
         const { paragraphs, headings } = extractParagraphsFromHtml(chapterHtml);
         
-        // Update page count for next chapter (rough estimate)
-        currentPage += Math.ceil(paragraphs.length / 10) || 1;
+        // Update paragraph index for next chapter (count separator lines)
+        const separatorLine = headings[0] && paragraphs.length > 0 ? 1 : 0;
+        currentParagraphIndex += paragraphs.length + separatorLine;
         
         // Add headings to chapter headings list
         allHeadings.push(...headings);
@@ -272,6 +274,20 @@ async function parseEpub(file: File, onProgress: ProgressCallback): Promise<{ ti
       // Update progress
       const progress = 30 + Math.round((i / spineIds.length) * 40);
       onProgress({ stage: "parsing", percent: progress, message: "正在解析文本..." });
+    }
+    
+    // Map TOC entries to paragraph indices
+    // Each TOC entry has an href that matches a chapter, so we find the corresponding chapter
+    for (const tocEntry of tableOfContents) {
+      // Find the chapter that matches this TOC entry's href
+      const matchedChapter = chapterStartIndices.find(chapter => 
+        tocEntry.href === chapter.href || 
+        tocEntry.href.includes(chapter.href) || 
+        chapter.href.includes(tocEntry.href)
+      );
+      if (matchedChapter) {
+        tocEntry.paragraphIndex = matchedChapter.paragraphIndex;
+      }
     }
 
     // Join all content with clear separation

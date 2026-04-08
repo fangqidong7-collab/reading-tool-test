@@ -17,6 +17,7 @@ export interface TocEntry {
   title: string;
   href: string;
   page: number;
+  paragraphIndex?: number; // The paragraph index this TOC entry corresponds to
 }
 
 // Bookmark Entry

@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { Bookshelf } from "@/components/Bookshelf";
-import { ReadingArea } from "@/components/ReadingArea";
+import { ReadingArea, type ReadingAreaRef } from "@/components/ReadingArea";
 import { WordTooltip } from "@/components/WordTooltip";
 import { VocabularySidebar } from "@/components/VocabularySidebar";
 import { SettingsPanel } from "@/components/SettingsPanel";
@@ -125,6 +125,7 @@ export default function Home() {
   const [leftDrawerTab, setLeftDrawerTab] = useState<'toc' | 'bookmarks'>('toc');
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const readingAreaRef = useRef<ReadingAreaRef | null>(null);
   
   // Pagination state - managed by ReadingArea internally
   const [currentPage, setCurrentPage] = useState(1);
@@ -429,6 +430,14 @@ export default function Home() {
     setLeftDrawerOpen(false);
   }, [handlePageChange]);
 
+  // Go to specific paragraph from TOC
+  const goToParagraph = useCallback((paragraphIndex: number) => {
+    if (readingAreaRef.current) {
+      readingAreaRef.current.jumpToParagraph(paragraphIndex);
+    }
+    setLeftDrawerOpen(false);
+  }, []);
+
   // Handle return to bookshelf
   const handleReturnToBookshelf = useCallback(() => {
     isProgrammaticScrollRef.current = true;
@@ -557,7 +566,13 @@ export default function Home() {
                   <button
                     key={index}
                     className="toc-item"
-                    onClick={() => goToPage(entry.page)}
+                    onClick={() => {
+                      if (entry.paragraphIndex !== undefined) {
+                        goToParagraph(entry.paragraphIndex);
+                      } else {
+                        goToPage(entry.page);
+                      }
+                    }}
                     style={{ color: isDarkMode ? "#ccc" : "#333" }}
                   >
                     {entry.title}
@@ -800,6 +815,7 @@ export default function Home() {
       <main className="main-content" style={{ backgroundColor }}>
         <div ref={containerRef} className="reading-container">
           <ReadingArea
+            ref={readingAreaRef}
             text={text}
             processedContent={processedContent}
             annotations={annotations}
