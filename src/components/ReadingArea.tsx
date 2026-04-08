@@ -303,6 +303,21 @@ export const ReadingArea = forwardRef(function ReadingArea({
       
       console.log('翻页调试 - 容器高度:', container.clientHeight, '行高px:', fontSize * lineHeight, '每页行数:', Math.floor(container.clientHeight / (fontSize * lineHeight)), '对齐后每页高度:', pageH, '总页数:', total);
       
+      // 检查 reader-content 的实际渲染尺寸
+      const contentStyle = window.getComputedStyle(contentRef.current);
+      console.log('content实际样式 - paddingTop:', contentStyle.paddingTop, 'paddingBottom:', contentStyle.paddingBottom, 'marginTop:', contentStyle.marginTop, 'marginBottom:', contentStyle.marginBottom);
+
+      // 检查第一个段落的位置
+      const firstP = contentRef.current.querySelector('.paragraph');
+      if (firstP) {
+        const firstPStyle = window.getComputedStyle(firstP);
+        console.log('第一个段落 - offsetTop:', (firstP as HTMLElement).offsetTop, 'marginTop:', firstPStyle.marginTop, 'marginBottom:', firstPStyle.marginBottom, 'lineHeight:', firstPStyle.lineHeight, 'fontSize:', firstPStyle.fontSize);
+      }
+
+      // 检查 reading-container 的实际样式
+      const containerStyle = window.getComputedStyle(containerRef.current);
+      console.log('容器实际样式 - paddingTop:', containerStyle.paddingTop, 'paddingBottom:', containerStyle.paddingBottom, 'height:', containerStyle.height, 'clientHeight:', containerRef.current.clientHeight);
+      
       setTotalPagesState(total);
       if (onTotalPagesChange) {
         onTotalPagesChange(total);
