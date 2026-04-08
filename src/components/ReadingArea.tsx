@@ -1,19 +1,15 @@
 "use client";
 
 import React, { useCallback, useRef, useEffect, useState, forwardRef, useImperativeHandle } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
 import { ProcessedContent } from "@/hooks/useBookshelf";
 
 // Layout constants
 const HEADER_HEIGHT = 56;
 const MOBILE_HEADER_HEIGHT = 48;
-const PAGINATION_HEIGHT = 50;
-const MOBILE_PAGINATION_HEIGHT = 0;
 const READING_PADDING_HORIZONTAL = 32;
 const MOBILE_READING_PADDING_HORIZONTAL = 12;
 const PARAGRAPH_GAP = 16;
 const MOBILE_BREAKPOINT = 768;
-const TOUCH_SWIPE_THRESHOLD = 50;
 const MOBILE_TOP_GAP = 5;
 const MOBILE_BOTTOM_SAFE_ZONE = 60;
 
@@ -21,6 +17,18 @@ const MOBILE_BOTTOM_SAFE_ZONE = 60;
 export interface ReadingAreaRef {
   jumpToParagraph: (paragraphIndex: number) => void;
   jumpToSearchResult: (result: { paragraphIndex: number; charIndex: number }) => void;
+  getScrollPercent: () => number;
+  addBookmark: () => void;
+  restoreScrollPosition: (percent: number) => void;
+}
+
+// Bookmark interface
+export interface Bookmark {
+  id: string;
+  scrollRatio: number;
+  percent: number;
+  preview: string;
+  createdAt: number;
 }
 
 // Memoized paragraph component
@@ -210,9 +218,6 @@ interface ReadingAreaProps {
   onWordClick: (word: string, lemma: string, event: React.MouseEvent) => void;
   getWordAnnotation: (word: string) => { root: string; meaning: string; pos: string; count: number } | null;
   isClickable: (word: string) => boolean;
-  currentPage?: number;
-  onPageChange?: (page: number) => void;
-  onTotalPagesChange?: (total: number) => void;
   fontSize?: number;
   lineHeight?: number;
   textColor?: string;
@@ -226,6 +231,9 @@ interface ReadingAreaProps {
   searchQuery?: string;
   searchResults?: Array<{ paragraphIndex: number; charIndex: number }>;
   currentSearchIndex?: number;
+  bookId?: string;
+  onProgressChange?: (percent: number) => void;
+  onAddBookmark?: () => void;
 }
 
 export const ReadingArea = forwardRef(function ReadingArea({
@@ -235,9 +243,6 @@ export const ReadingArea = forwardRef(function ReadingArea({
   onWordClick,
   getWordAnnotation,
   isClickable,
-  currentPage = 1,
-  onPageChange,
-  onTotalPagesChange,
   fontSize = 18,
   lineHeight = 1.8,
   textColor = "#333333",
@@ -250,112 +255,153 @@ export const ReadingArea = forwardRef(function ReadingArea({
   searchQuery = "",
   searchResults = [],
   currentSearchIndex = 0,
+  bookId = "",
+  onProgressChange,
+  onAddBookmark,
 }: ReadingAreaProps, ref: React.Ref<ReadingAreaRef>) {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   
-  const [currentPageState, setCurrentPageState] = useState(currentPage || 1);
-  const [totalPagesState, setTotalPagesState] = useState(1);
+  const [readProgress, setReadProgress] = useState(0);
   
-  const touchStartXRef = useRef<number>(0);
-  const touchStartYRef = useRef<number>(0);
-
   const isMobile = typeof window !== 'undefined' && window.innerWidth <= MOBILE_BREAKPOINT;
   const currentHeaderHeight = isMobile ? MOBILE_HEADER_HEIGHT : HEADER_HEIGHT;
-  const currentPaginationHeight = isMobile ? MOBILE_PAGINATION_HEIGHT : PAGINATION_HEIGHT;
 
   // 计算容器高度
   const containerHeight = isMobile
     ? window.innerHeight - currentHeaderHeight - MOBILE_TOP_GAP - MOBILE_BOTTOM_SAFE_ZONE
-    : window.innerHeight - currentHeaderHeight - currentPaginationHeight;
+    : window.innerHeight - currentHeaderHeight;
 
-  const getPageContentHeight = useCallback(() => {
+  // 计算滚动百分比
+  const getScrollPercent = useCallback(() => {
     if (!containerRef.current) return 0;
-    return containerRef.current.clientHeight;
-  }, [containerHeight]);
+    const el = containerRef.current;
+    if (el.scrollHeight <= el.clientHeight) return 100;
+    return Math.round((el.scrollTop / (el.scrollHeight - el.clientHeight)) * 100);
+  }, []);
 
-  // 使用 transform 方式翻页，计算总页数
+  // 监听滚动，更新进度
   useEffect(() => {
-    const calculatePages = () => {
-      const contentEl = contentRef.current;
-      const container = containerRef.current;
-      if (!contentEl || !container) return;
-      
-      const totalContentHeight = contentEl.scrollHeight;
-      const pageH = getPageContentHeight();
-      if (pageH <= 0) return;
-      
-      const total = Math.max(1, Math.ceil(totalContentHeight / pageH));
-      
-      setTotalPagesState(total);
-      if (onTotalPagesChange) {
-        onTotalPagesChange(total);
+    const el = containerRef.current;
+    if (!el) return;
+
+    let ticking = false;
+    const onScroll = () => {
+      if (!ticking) {
+        requestAnimationFrame(() => {
+          const percent = getScrollPercent();
+          setReadProgress(percent);
+          if (onProgressChange) {
+            onProgressChange(percent);
+          }
+          ticking = false;
+        });
+        ticking = true;
       }
     };
-    
-    const timer = setTimeout(calculatePages, 200);
-    
-    const resizeObserver = new ResizeObserver(() => {
-      calculatePages();
-    });
-    
-    if (contentRef.current) {
-      resizeObserver.observe(contentRef.current);
-    }
-    
-    return () => {
-      clearTimeout(timer);
-      resizeObserver.disconnect();
-    };
-  }, [processedContent, fontSize, lineHeight, onTotalPagesChange, containerHeight, getPageContentHeight]);
 
-  // 更新状态当 props 变化时
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [getScrollPercent, onProgressChange]);
+
+  // 保存滚动位置
   useEffect(() => {
-    if (currentPage && currentPage !== currentPageState) {
-      setCurrentPageState(currentPage);
-    }
-  }, [currentPage]);
+    const el = containerRef.current;
+    if (!el || !bookId) return;
 
-  const safeCurrentPage = Math.min(Math.max(1, currentPageState), totalPagesState);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const savePosition = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        const scrollRatio = el.scrollTop / Math.max(1, el.scrollHeight - el.clientHeight);
+        localStorage.setItem(`book_${bookId}_scrollRatio`, String(scrollRatio));
+        const percent = getScrollPercent();
+        localStorage.setItem(`book_${bookId}_progress`, String(percent));
+      }, 500);
+    };
 
-  // 翻到指定页 - 使用 transform 方式，不再操作 scrollTop
-  const goToPage = useCallback((page: number) => {
-    const clamped = Math.max(1, Math.min(page, totalPagesState));
-    setCurrentPageState(clamped);
-    if (onPageChange) {
-      onPageChange(clamped);
-    }
-  }, [totalPagesState, onPageChange]);
-
-  // 上一页
-  const goToPrevPage = useCallback(() => {
-    if (safeCurrentPage > 1) {
-      goToPage(safeCurrentPage - 1);
-    }
-  }, [safeCurrentPage, goToPage]);
-
-  // 下一页
-  const goToNextPage = useCallback(() => {
-    if (safeCurrentPage < totalPagesState) {
-      goToPage(safeCurrentPage + 1);
-    }
-  }, [safeCurrentPage, totalPagesState, goToPage]);
-
-  // 跳转到段落（目录跳转）
-  const jumpToParagraph = useCallback((paragraphIndex: number) => {
-    const contentEl = contentRef.current;
-    if (!contentEl) return;
+    el.addEventListener('scroll', savePosition, { passive: true });
     
-    const element = contentEl.querySelector(`[data-paragraph-index="${paragraphIndex}"]`);
-    if (element) {
-      const elementTop = (element as HTMLElement).offsetTop;
-      const pageH = getPageContentHeight();
-      if (pageH <= 0) return;
-      const targetPage = Math.max(1, Math.floor(elementTop / pageH) + 1);
-      const clamped = Math.min(targetPage, totalPagesState);
-      goToPage(clamped);
+    // 页面关闭/离开时也保存
+    const onBeforeUnload = () => {
+      const scrollRatio = el.scrollTop / Math.max(1, el.scrollHeight - el.clientHeight);
+      localStorage.setItem(`book_${bookId}_scrollRatio`, String(scrollRatio));
+      localStorage.setItem(`book_${bookId}_progress`, String(getScrollPercent()));
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+
+    return () => {
+      el.removeEventListener('scroll', savePosition);
+      window.removeEventListener('beforeunload', onBeforeUnload);
+      if (timer) clearTimeout(timer);
+    };
+  }, [bookId, getScrollPercent]);
+
+  // 恢复滚动位置
+  useEffect(() => {
+    if (!containerRef.current || !bookId || processedContent?.length === 0) return;
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const savedRatio = localStorage.getItem(`book_${bookId}_scrollRatio`);
+        if (savedRatio !== null) {
+          const ratio = parseFloat(savedRatio);
+          const el = containerRef.current;
+          if (el && !isNaN(ratio)) {
+            el.scrollTop = ratio * (el.scrollHeight - el.clientHeight);
+          }
+        }
+      });
+    });
+  }, [bookId, processedContent?.length]);
+
+  // 跳转到段落（滚动方式）
+  const jumpToParagraph = useCallback((paragraphIndex: number) => {
+    if (!contentRef.current || !containerRef.current) return;
+    const paragraphEls = contentRef.current.querySelectorAll('.paragraph');
+    if (paragraphIndex >= 0 && paragraphIndex < paragraphEls.length) {
+      const targetEl = paragraphEls[paragraphIndex] as HTMLElement;
+      containerRef.current.scrollTop = targetEl.offsetTop - 20;
     }
-  }, [totalPagesState, goToPage, getPageContentHeight]);
+  }, []);
+
+  // 添加书签
+  const addBookmarkFn = useCallback(() => {
+    if (!containerRef.current || !contentRef.current || !bookId) return;
+    
+    const el = containerRef.current;
+    const scrollRatio = el.scrollTop / Math.max(1, el.scrollHeight - el.clientHeight);
+    const percent = getScrollPercent();
+    
+    // 获取当前可视区域第一个段落的文字作为预览
+    const paragraphEls = contentRef.current.querySelectorAll('.paragraph');
+    let preview = '';
+    for (const pEl of paragraphEls) {
+      const rect = (pEl as HTMLElement).getBoundingClientRect();
+      const containerRect = el.getBoundingClientRect();
+      if (rect.top >= containerRect.top && rect.top < containerRect.bottom) {
+        preview = (pEl as HTMLElement).textContent?.substring(0, 50) || '';
+        break;
+      }
+    }
+    
+    const bookmark: Bookmark = {
+      id: `bm_${Date.now()}`,
+      scrollRatio,
+      percent,
+      preview,
+      createdAt: Date.now(),
+    };
+    
+    const key = `book_${bookId}_bookmarks`;
+    const existing = JSON.parse(localStorage.getItem(key) || '[]');
+    existing.push(bookmark);
+    localStorage.setItem(key, JSON.stringify(existing));
+    
+    if (onAddBookmark) {
+      onAddBookmark();
+    }
+  }, [bookId, getScrollPercent, onAddBookmark]);
 
   // 暴露方法给父组件
   useImperativeHandle(ref, () => ({
@@ -363,67 +409,16 @@ export const ReadingArea = forwardRef(function ReadingArea({
     jumpToSearchResult: (result: { paragraphIndex: number; charIndex: number }) => {
       jumpToParagraph(result.paragraphIndex);
     },
+    getScrollPercent,
+    addBookmark: addBookmarkFn,
+    restoreScrollPosition: (percent: number) => {
+      const el = containerRef.current;
+      if (!el) return;
+      const ratio = percent / 100;
+      const maxScroll = el.scrollHeight - el.clientHeight;
+      el.scrollTop = maxScroll * ratio;
+    },
   }));
-
-  // 键盘导航
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
-      ) {
-        return;
-      }
-
-      const tooltip = document.querySelector('.word-tooltip, .tooltip');
-      const settingsPanel = document.querySelector('.settings-panel');
-      if (tooltip || settingsPanel) {
-        return;
-      }
-
-      if (e.key === 'ArrowDown' || e.key === ' ' || e.key === 'PageDown') {
-        e.preventDefault();
-        goToNextPage();
-      } else if (e.key === 'ArrowUp' || e.key === 'PageUp') {
-        e.preventDefault();
-        goToPrevPage();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [goToNextPage, goToPrevPage]);
-
-  // 触摸翻页
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    touchStartXRef.current = e.touches[0].clientX;
-    touchStartYRef.current = e.touches[0].clientY;
-  }, []);
-
-  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
-    const touchEndX = e.changedTouches[0].clientX;
-    const touchEndY = e.changedTouches[0].clientY;
-    
-    const deltaX = touchEndX - touchStartXRef.current;
-    const deltaY = touchEndY - touchStartYRef.current;
-    
-    // 垂直滑动翻页
-    if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > TOUCH_SWIPE_THRESHOLD) {
-      if (deltaY < 0) {
-        goToNextPage();
-      } else {
-        goToPrevPage();
-      }
-    } else if (Math.abs(deltaX) < 10 && Math.abs(deltaY) < 10) {
-      // 点击分区翻页
-      const screenWidth = window.innerWidth;
-      if (touchEndX < screenWidth / 3) {
-        goToPrevPage();
-      } else if (touchEndX > screenWidth * 2 / 3) {
-        goToNextPage();
-      }
-    }
-  }, [goToNextPage, goToPrevPage]);
 
   if (processedContent && processedContent.length > 0) {
     const currentHorizPadding = isMobile ? MOBILE_READING_PADDING_HORIZONTAL : READING_PADDING_HORIZONTAL;
@@ -439,42 +434,28 @@ export const ReadingArea = forwardRef(function ReadingArea({
           overflow: "hidden",
         }}
       >
-        {/* 阅读容器 - 使用 transform 方式翻页 */}
+        {/* 阅读容器 - 滚动模式 */}
         <div 
           ref={containerRef}
           className="reading-container"
           style={{
             height: containerHeight,
-            overflow: "hidden",
+            overflowY: "auto",
+            overflowX: "hidden",
             position: "relative",
             padding: "0px",
             boxSizing: "border-box",
+            WebkitOverflowScrolling: "touch",
           }}
-          onTouchStart={handleTouchStart}
-          onTouchEnd={handleTouchEnd}
         >
-          {/* 顶部遮罩 - 盖住翻页后可能露出的上一页半行文字 */}
-          <div style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            height: "40px",
-            background: `linear-gradient(to bottom, ${backgroundColor} 0%, ${backgroundColor} 50%, transparent 100%)`,
-            zIndex: 10,
-            pointerEvents: "none",
-          }} />
-
-          {/* 内容区域 */}
           <div 
             ref={contentRef}
             className="reader-content"
             style={{
-              transform: `translateY(-${(safeCurrentPage - 1) * getPageContentHeight()}px)`,
               paddingLeft: `${currentHorizPadding}px`,
               paddingRight: `${currentHorizPadding}px`,
-              paddingTop: "0px",
-              paddingBottom: "0px",
+              paddingTop: "20px",
+              paddingBottom: "40px",
             }}
           >
             {processedContent.map((paragraph, pIndex) => (
@@ -492,64 +473,23 @@ export const ReadingArea = forwardRef(function ReadingArea({
               />
             ))}
           </div>
-
-          {/* 底部遮罩 - 盖住页面底部可能露出的下一页半行文字 */}
-          <div style={{
-            position: "absolute",
-            bottom: 0,
-            left: 0,
-            right: 0,
-            height: "40px",
-            background: `linear-gradient(to top, ${backgroundColor} 0%, ${backgroundColor} 50%, transparent 100%)`,
-            zIndex: 10,
-            pointerEvents: "none",
-          }} />
         </div>
 
-        {/* PC 端分页栏 */}
-        {!isMobile && (
-          <div
-            className={`pagination-bar ${isDarkMode ? 'dark' : ''}`}
-            style={{
-              height: `${PAGINATION_HEIGHT}px`,
-              backgroundColor,
-              borderTopColor: isDarkMode ? "#333" : "#e0e0e0",
-            }}
-          >
-            <div className="pagination-controls">
-              <button
-                className={`pagination-btn ${isDarkMode ? 'dark' : ''}`}
-                onClick={goToPrevPage}
-                disabled={safeCurrentPage <= 1}
-                title="上一页 (↑)"
-              >
-                <ChevronLeft size={18} />
-                <span>上一页</span>
-              </button>
-
-              <div className={`pagination-info ${isDarkMode ? 'dark' : ''}`}>
-                <span>第 {safeCurrentPage} / {totalPagesState} 页 · {safeCurrentPage === totalPagesState ? 100 : Math.max(1, Math.round((safeCurrentPage / totalPagesState) * 100))}%</span>
-              </div>
-
-              <button
-                className={`pagination-btn ${isDarkMode ? 'dark' : ''}`}
-                onClick={goToNextPage}
-                disabled={safeCurrentPage >= totalPagesState}
-                title="下一页 (↓)"
-              >
-                <span>下一页</span>
-                <ChevronRight size={18} />
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* 移动端页码指示器 */}
-        {isMobile && (
-          <div className={`mobile-page-indicator ${isDarkMode ? 'dark' : ''}`}>
-            {safeCurrentPage}/{totalPagesState} · {safeCurrentPage === totalPagesState ? 100 : Math.max(1, Math.round((safeCurrentPage / totalPagesState) * 100))}%
-          </div>
-        )}
+        {/* 滚动进度指示器 */}
+        <div style={{
+          position: "fixed",
+          bottom: 12,
+          right: 16,
+          fontSize: "12px",
+          color: isDarkMode ? "#888" : "#999",
+          background: isDarkMode ? "rgba(0,0,0,0.5)" : "rgba(255,255,255,0.85)",
+          padding: "4px 10px",
+          borderRadius: "12px",
+          zIndex: 100,
+          pointerEvents: "none",
+        }}>
+          {readProgress}%
+        </div>
 
         <style jsx>{`
           .reading-wrapper {
@@ -567,7 +507,6 @@ export const ReadingArea = forwardRef(function ReadingArea({
             color: ${textColor};
             font-family: Georgia, "Times New Roman", serif;
             text-align: justify;
-            will-change: transform;
           }
 
           .reader-content :global(.paragraph) {
@@ -590,104 +529,10 @@ export const ReadingArea = forwardRef(function ReadingArea({
             font-family: "Microsoft YaHei", "微软雅黑", sans-serif;
           }
 
-          .pagination-bar {
-            border-top: 1px solid;
-            flex-shrink: 0;
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            z-index: 50;
-          }
-
-          .pagination-controls {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 2rem;
-            height: 100%;
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 0 1rem;
-          }
-
-          .pagination-btn {
-            display: flex;
-            align-items: center;
-            gap: 0.25rem;
-            padding: 0.5rem 1rem;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            background: white;
-            color: #333;
-            font-size: 14px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-          }
-
-          .pagination-btn.dark {
-            background: #1a1a2e;
-            border-color: #333;
-            color: #ccc;
-          }
-
-          .pagination-btn:hover:not(:disabled) {
-            background: #f5f5f5;
-            border-color: #ccc;
-          }
-
-          .pagination-btn.dark:hover:not(:disabled) {
-            background: #2a2a3e;
-            border-color: #444;
-          }
-
-          .pagination-btn:disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
-          }
-
-          .pagination-info {
-            font-size: 14px;
-            color: #666;
-            min-width: 120px;
-            text-align: center;
-          }
-
-          .pagination-info.dark {
-            color: #ccc;
-          }
-
-          .mobile-page-indicator {
-            position: fixed;
-            bottom: 12px;
-            right: 16px;
-            font-size: 12px;
-            color: #999;
-            background: rgba(255, 255, 255, 0.8);
-            border-radius: 12px;
-            padding: 4px 10px;
-            z-index: 100;
-          }
-
-          .mobile-page-indicator.dark {
-            background: rgba(0, 0, 0, 0.5);
-            color: #888;
-          }
-
           @media (max-width: 768px) {
             .reading-wrapper {
               min-height: 100dvh !important;
               height: 100dvh !important;
-            }
-
-            .pagination-bar {
-              display: none !important;
-            }
-          }
-
-          @media (min-width: 769px) {
-            .mobile-page-indicator {
-              display: none;
             }
           }
         `}</style>

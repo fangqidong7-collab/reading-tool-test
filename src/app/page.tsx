@@ -225,10 +225,6 @@ export default function Home() {
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const readingAreaRef = useRef<ReadingAreaRef | null>(null);
   
-  // Pagination state - managed by ReadingArea internally
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPagesState, setTotalPagesState] = useState(1);
-  
   // Search state
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -341,9 +337,11 @@ export default function Home() {
         setProcessedContent(processed);
         setLoading(false);
         
-        // Restore last read page (default to page 1)
-        const savedPage = currentBook.lastReadPage || 1;
-        setCurrentPage(Math.min(savedPage, Math.max(1, processed?.length || 1)));
+        // Restore last read scroll position (default to top)
+        const savedScrollPercent = currentBook.lastReadPage || 0;
+        if (savedScrollPercent > 0 && readingAreaRef.current) {
+          readingAreaRef.current.restoreScrollPosition(savedScrollPercent);
+        }
       }, 50);
       
       // 始终默认关闭词汇表，不自动打开
@@ -354,7 +352,6 @@ export default function Home() {
       currentBookContentRef.current = "";
       currentBookAnnotationsRef.current = {};
       setProcessedContent(null);
-      setCurrentPage(1);
       setLoading(false);
       setSidebarOpen(false);
     }
@@ -382,29 +379,28 @@ export default function Home() {
     setLeftDrawerOpen(true);
   }, []);
 
-  // Toggle bookmark for current page
+  // Current scroll percent for bookmarks
+  const [currentScrollPercent, setCurrentScrollPercent] = useState(0);
+
+  // Toggle bookmark for current position
   const toggleCurrentBookmark = useCallback(() => {
     const bookId = currentBookIdRef.current;
-    if (!bookId || !currentBook || !processedContent) return;
+    if (!bookId || !currentBook) return;
     
     const bookmarks = currentBook.bookmarks || [];
-    const hasBookmark = bookmarks.some((bm) => bm.page === currentPage);
+    const hasBookmark = bookmarks.some((bm) => bm.page === currentScrollPercent);
     
     if (hasBookmark) {
-      const bookmark = bookmarks.find((bm) => bm.page === currentPage);
+      const bookmark = bookmarks.find((bm) => bm.page === currentScrollPercent);
       if (bookmark) {
         removeBookmark(bookId, bookmark.id);
       }
     } else {
-      // Get preview text from current page (paragraph)
-      const pageIndex = currentPage - 1;
-      const paragraphs = processedContent;
-      const previewText = paragraphs[pageIndex]
-        ? paragraphs[pageIndex].segments.map(s => s.text).join('').substring(0, 50)
-        : '';
-      addBookmark(bookId, currentPage, previewText);
+      // Get preview text from current scroll position (first visible paragraph)
+      const previewText = `位置 ${Math.round(currentScrollPercent)}%`;
+      addBookmark(bookId, currentScrollPercent, previewText);
     }
-  }, [currentBook, currentPage, processedContent, addBookmark, removeBookmark]);
+  }, [currentBook, currentScrollPercent, addBookmark, removeBookmark]);
 
   // Save annotations when they change
   useEffect(() => {
@@ -685,23 +681,6 @@ export default function Home() {
     return /^[a-zA-Z]+$/.test(word);
   }, []);
 
-  // Handle page change
-  const handlePageChange = useCallback((page: number) => {
-    const bookId = currentBookIdRef.current;
-    if (bookId) {
-      updateReadPage(bookId, page);
-    }
-    setCurrentPage(page);
-    // Scroll to top of reading area
-    window.scrollTo({ top: 0, behavior: "auto" });
-  }, [updateReadPage]);
-
-  // Go to page from TOC or bookmark
-  const goToPage = useCallback((page: number) => {
-    handlePageChange(page);
-    setLeftDrawerOpen(false);
-  }, [handlePageChange]);
-
   // Go to specific paragraph from TOC
   const goToParagraph = useCallback((paragraphIndex: number) => {
     if (readingAreaRef.current) {
@@ -718,7 +697,6 @@ export default function Home() {
     setAnnotations({});
     setSelectedWord(null);
     setProcessedContent(null);
-    setCurrentPage(1);
     setSettingsPanelOpen(false);
   }, [closeBook]);
 
@@ -850,7 +828,7 @@ export default function Home() {
                       if (entry.paragraphIndex !== undefined) {
                         goToParagraph(entry.paragraphIndex);
                       } else {
-                        goToPage(entry.page);
+                        readingAreaRef.current?.restoreScrollPosition(entry.page);
                       }
                     }}
                     style={{ color: isDarkMode ? "#ccc" : "#333" }}
@@ -879,7 +857,7 @@ export default function Home() {
                       color: isDarkMode ? "#6ba3e0" : "#4a90d9",
                     }}
                   >
-                    {currentBook.bookmarks.some(bm => bm.page === currentPage) ? "移除当前页书签" : "添加当前页书签"}
+                    {currentBook.bookmarks.some(bm => bm.page === currentScrollPercent) ? "移除当前位置书签" : "添加当前位置书签"}
                   </button>
                   {currentBook.bookmarks
                     .sort((a, b) => a.page - b.page)
@@ -891,10 +869,10 @@ export default function Home() {
                       >
                         <button
                           className="bookmark-page"
-                          onClick={() => goToPage(bookmark.page)}
+                          onClick={() => readingAreaRef.current?.restoreScrollPosition(bookmark.page)}
                           style={{ color: isDarkMode ? "#ccc" : "#333" }}
                         >
-                          第 {bookmark.page} 页
+                          {bookmark.previewText || `位置 ${Math.round(bookmark.page)}%`}
                         </button>
                         <button
                           className="bookmark-delete"
@@ -1056,7 +1034,7 @@ export default function Home() {
               width="20"
               height="20"
               viewBox="0 0 24 24"
-              fill={currentBook?.bookmarks?.some(bm => bm.page === currentPage) ? "currentColor" : "none"}
+              fill={currentBook?.bookmarks?.some(bm => bm.page === currentScrollPercent) ? "currentColor" : "none"}
               stroke="currentColor"
               strokeWidth="2"
             >
@@ -1171,7 +1149,7 @@ export default function Home() {
               }}
               style={{ color: isDarkMode ? "#ccc" : "#333" }}
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill={currentBook?.bookmarks?.some(bm => bm.page === currentPage) ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill={currentBook?.bookmarks?.some(bm => bm.page === currentScrollPercent) ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2">
                 <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
               </svg>
               <span>书签</span>
@@ -1285,9 +1263,6 @@ export default function Home() {
             onWordClick={handleWordClick}
             getWordAnnotation={getWordAnnotation}
             isClickable={isClickable}
-            currentPage={currentPage}
-            onPageChange={handlePageChange}
-            onTotalPagesChange={setTotalPagesState}
             fontSize={fontSize}
             lineHeight={lineHeight}
             textColor={textColor}
@@ -1300,6 +1275,8 @@ export default function Home() {
             searchQuery={searchQuery}
             searchResults={searchResults}
             currentSearchIndex={currentSearchIndex}
+            bookId={currentBook?.id || ""}
+            onProgressChange={setCurrentScrollPercent}
           />
         </div>
 
