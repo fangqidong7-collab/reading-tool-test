@@ -29,7 +29,8 @@ function decodeHtmlEntities(text: string): string {
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
-    .replace(/&apos;/g, "'");
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, num) => String.fromCharCode(parseInt(num, 10)));
 }
 
 // Helper function to clean text
@@ -39,8 +40,57 @@ function cleanText(text: string): string {
     .trim();
 }
 
-// Helper function to extract text from HTML, preserving paragraph structure
+// Helper function to extract text from HTML using DOMParser for proper parsing
 function extractParagraphsFromHtml(html: string): { paragraphs: string[]; headings: string[] } {
+  const paragraphs: string[] = [];
+  const headings: string[] = [];
+  
+  // Remove script and style tags first
+  const cleanHtml = html
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "");
+  
+  // Try to use DOMParser for better parsing
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(cleanHtml, "text/html");
+    
+    // Extract headings (h1-h6) directly
+    const headingElements = doc.querySelectorAll("h1, h2, h3, h4, h5, h6");
+    headingElements.forEach((el) => {
+      const text = cleanText(decodeHtmlEntities(el.textContent || ""));
+      if (text.length > 0) {
+        headings.push(text);
+      }
+    });
+    
+    // Extract paragraphs directly using querySelector
+    const paragraphElements = doc.querySelectorAll("p");
+    paragraphElements.forEach((el) => {
+      // Get text content, removing nested tags but preserving structure
+      let text = el.textContent || "";
+      text = decodeHtmlEntities(text);
+      text = cleanText(text);
+      // Only add non-empty paragraphs with meaningful content (at least 10 characters)
+      if (text.length >= 10) {
+        paragraphs.push(text);
+      }
+    });
+    
+    // If no paragraphs found via querySelector, fall back to regex approach
+    if (paragraphs.length === 0) {
+      return extractParagraphsFromHtmlFallback(html);
+    }
+    
+    return { paragraphs, headings };
+  } catch {
+    // Fallback to regex-based extraction
+    return extractParagraphsFromHtmlFallback(html);
+  }
+}
+
+// Fallback function for extracting paragraphs when DOMParser fails
+function extractParagraphsFromHtmlFallback(html: string): { paragraphs: string[]; headings: string[] } {
   const paragraphs: string[] = [];
   const headings: string[] = [];
   
@@ -49,7 +99,7 @@ function extractParagraphsFromHtml(html: string): { paragraphs: string[]; headin
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "");
   
-  // Extract headings first (h1-h6)
+  // Extract headings using regex
   const headingRegex = /<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/gi;
   let headingMatch;
   while ((headingMatch = headingRegex.exec(cleanHtml)) !== null) {
@@ -59,27 +109,42 @@ function extractParagraphsFromHtml(html: string): { paragraphs: string[]; headin
     }
   }
   
-  // Replace block-level elements with double newlines
-  // Order matters: replace <br> first, then block elements
-  cleanHtml = cleanHtml.replace(/<br\s*\/?>/gi, "\n\n");
-  cleanHtml = cleanHtml.replace(/<\/p>/gi, "\n\n");
-  cleanHtml = cleanHtml.replace(/<\/div>/gi, "\n\n");
-  cleanHtml = cleanHtml.replace(/<\/h[1-6]>/gi, "\n\n");
+  // Extract paragraphs using regex - match <p> tags with their content
+  const paragraphRegex = /<p[^>]*>([\s\S]*?)<\/p>/gi;
+  let paragraphMatch;
+  while ((paragraphMatch = paragraphRegex.exec(cleanHtml)) !== null) {
+    let text = paragraphMatch[1];
+    // Remove any nested HTML tags within the paragraph
+    text = text.replace(/<[^>]+>/g, " ");
+    text = decodeHtmlEntities(text);
+    text = cleanText(text);
+    if (text.length >= 10) {
+      paragraphs.push(text);
+    }
+  }
   
-  // Remove all remaining HTML tags
-  cleanHtml = cleanHtml.replace(/<[^>]+>/g, " ");
-  
-  // Decode HTML entities
-  cleanHtml = decodeHtmlEntities(cleanHtml);
-  
-  // Split by newlines and clean up
-  const lines = cleanHtml.split(/\n+/);
-  
-  for (const line of lines) {
-    const cleaned = cleanText(line);
-    // Only add non-empty paragraphs with meaningful content (at least 10 characters)
-    if (cleaned.length >= 10) {
-      paragraphs.push(cleaned);
+  // If still no paragraphs, use the old approach of splitting by block elements
+  if (paragraphs.length === 0) {
+    // Replace block-level elements with double newlines
+    cleanHtml = cleanHtml.replace(/<br\s*\/?>/gi, "\n\n");
+    cleanHtml = cleanHtml.replace(/<\/p>/gi, "\n\n");
+    cleanHtml = cleanHtml.replace(/<\/div>/gi, "\n\n");
+    cleanHtml = cleanHtml.replace(/<\/h[1-6]>/gi, "\n\n");
+    
+    // Remove all remaining HTML tags
+    cleanHtml = cleanHtml.replace(/<[^>]+>/g, " ");
+    
+    // Decode HTML entities
+    cleanHtml = decodeHtmlEntities(cleanHtml);
+    
+    // Split by newlines and clean up
+    const lines = cleanHtml.split(/\n+/);
+    
+    for (const line of lines) {
+      const cleaned = cleanText(line);
+      if (cleaned.length >= 10) {
+        paragraphs.push(cleaned);
+      }
     }
   }
   

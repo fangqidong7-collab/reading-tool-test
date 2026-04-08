@@ -356,6 +356,11 @@ rt {
   transition: width 0.3s ease;
 }
 
+.progress-fill.unread {
+  background: #ccc;
+  width: 100% !important;
+}
+
 .progress-text {
   display: flex;
   justify-content: space-between;
@@ -366,6 +371,11 @@ rt {
 .progress-value {
   font-weight: 600;
   color: #4a90d9;
+}
+
+.progress-value.unread-text {
+  color: #999;
+  font-weight: normal;
 }
 
 .book-time {

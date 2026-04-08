@@ -74,6 +74,7 @@ export default function Home() {
     deleteBook,
     updateBookAnnotations,
     updateScrollPosition,
+    updateReadPage,
     saveProcessedContent,
     openBook,
     closeBook,
@@ -93,6 +94,10 @@ export default function Home() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   
   // Ref to track if we're currently in a programmatic scroll
   const isProgrammaticScrollRef = useRef(false);
@@ -143,31 +148,33 @@ export default function Home() {
         currentBookAnnotationsRef.current = currentBook.annotations;
         setAnnotations(currentBook.annotations);
       }
-      // Check if processed content exists, if not, generate it
-      if (currentBook.processedContent) {
-        setProcessedContent(currentBook.processedContent);
-      } else {
-        // Process text and save to localStorage
-        const processed = processTextToSegments(currentBook.content);
+      
+      // Process content and calculate pages
+      let processed = currentBook.processedContent;
+      if (!processed) {
+        processed = processTextToSegments(currentBook.content);
         setProcessedContent(processed);
         saveProcessedContent(currentBook.id, processed);
+      } else {
+        setProcessedContent(processed);
       }
-      // Restore scroll position after a delay to allow content to render
-      isProgrammaticScrollRef.current = true;
-      setTimeout(() => {
-        if (currentBook.lastScrollPosition && currentBook.lastScrollPosition > 0) {
-          window.scrollTo({ top: currentBook.lastScrollPosition, behavior: "auto" });
-        }
-        // Reset the flag after scroll completes
-        setTimeout(() => {
-          isProgrammaticScrollRef.current = false;
-        }, 100);
-      }, 300);
+      
+      // Calculate total pages (30 paragraphs per page)
+      const paraCount = processed?.length || 1;
+      const pages = Math.max(1, Math.ceil(paraCount / 30));
+      setTotalPages(pages);
+      
+      // Restore last read page (default to page 1)
+      const savedPage = currentBook.lastReadPage || 1;
+      setCurrentPage(Math.min(savedPage, pages));
+      
     } else {
       currentBookIdRef.current = null;
       currentBookContentRef.current = "";
       currentBookAnnotationsRef.current = {};
       setProcessedContent(null);
+      setCurrentPage(1);
+      setTotalPages(1);
     }
   }, [currentBook, saveProcessedContent]);
 
@@ -335,20 +342,28 @@ export default function Home() {
     return /^[a-zA-Z]+$/.test(word);
   }, []);
 
-  // Handle return to bookshelf
-  const handleReturnToBookshelf = useCallback(() => {
-    // Save scroll position before leaving
+  // Handle page change
+  const handlePageChange = useCallback((page: number) => {
     const bookId = currentBookIdRef.current;
     if (bookId) {
-      updateScrollPosition(bookId, window.scrollY);
+      updateReadPage(bookId, page);
     }
+    setCurrentPage(page);
+    // Scroll to top of reading area
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }, [updateReadPage]);
+
+  // Handle return to bookshelf
+  const handleReturnToBookshelf = useCallback(() => {
     isProgrammaticScrollRef.current = true;
     closeBook();
     setText("");
     setAnnotations({});
     setSelectedWord(null);
     setProcessedContent(null);
-  }, [closeBook, updateScrollPosition]);
+    setCurrentPage(1);
+    setTotalPages(1);
+  }, [closeBook]);
 
   // Show loading while initializing
   if (!isLoaded) {
@@ -489,6 +504,9 @@ export default function Home() {
             onWordClick={handleWordClick}
             getWordAnnotation={getWordAnnotation}
             isClickable={isClickable}
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={handlePageChange}
           />
         </div>
 

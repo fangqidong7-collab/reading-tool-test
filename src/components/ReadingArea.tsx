@@ -1,11 +1,11 @@
 "use client";
 
-import React, { useRef, useState, useEffect, useCallback, memo } from "react";
+import React, { useMemo, useCallback, memo } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { ProcessedContent } from "@/hooks/useBookshelf";
 
-// Virtual scroll configuration
-const BUFFER_SIZE = 5;
-const ESTIMATED_PARAGRAPH_HEIGHT = 80;
+// Pagination configuration
+const PARAGRAPHS_PER_PAGE = 30;
 
 // Memoized segment component - simpler rendering
 const Segment = memo(({
@@ -109,6 +109,9 @@ interface ReadingAreaProps {
   onWordClick: (word: string, event: React.MouseEvent) => void;
   getWordAnnotation: (word: string) => { root: string; meaning: string; pos: string; count: number } | null;
   isClickable: (word: string) => boolean;
+  currentPage?: number;
+  totalPages?: number;
+  onPageChange?: (page: number) => void;
 }
 
 export function ReadingArea({
@@ -117,136 +120,85 @@ export function ReadingArea({
   onWordClick,
   getWordAnnotation,
   isClickable,
+  currentPage = 1,
+  totalPages = 1,
+  onPageChange,
 }: ReadingAreaProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [visibleRange, setVisibleRange] = useState({ start: 0, end: 20 });
-  const [paragraphHeights, setParagraphHeights] = useState<Record<number, number>>({});
+  // Calculate total pages based on content
+  const computedTotalPages = useMemo(() => {
+    if (!processedContent || processedContent.length === 0) return 1;
+    return Math.max(1, Math.ceil(processedContent.length / PARAGRAPHS_PER_PAGE));
+  }, [processedContent]);
 
-  // Calculate visible paragraphs
-  const visibleParagraphs = React.useMemo(() => {
-    if (!processedContent) return [];
-    const total = processedContent.length;
-    const start = Math.max(0, visibleRange.start - BUFFER_SIZE);
-    const end = Math.min(total, visibleRange.end + BUFFER_SIZE);
-    return processedContent.slice(start, end).map((p, i) => ({ paragraph: p, pIndex: start + i }));
-  }, [processedContent, visibleRange]);
+  // Use computed total pages if not provided
+  const actualTotalPages = totalPages > 0 ? totalPages : computedTotalPages;
 
-  // Total height calculation
-  const totalHeight = React.useMemo(() => {
-    if (!processedContent) return 0;
-    let height = 0;
-    for (let i = 0; i < processedContent.length; i++) {
-      height += paragraphHeights[i] || ESTIMATED_PARAGRAPH_HEIGHT;
+  // Get paragraphs for current page
+  const visibleParagraphs = useMemo(() => {
+    if (!processedContent || processedContent.length === 0) return [];
+    const startIndex = (currentPage - 1) * PARAGRAPHS_PER_PAGE;
+    const endIndex = Math.min(startIndex + PARAGRAPHS_PER_PAGE, processedContent.length);
+    return processedContent.slice(startIndex, endIndex).map((p, i) => ({ 
+      paragraph: p, 
+      pIndex: startIndex + i 
+    }));
+  }, [processedContent, currentPage]);
+
+  // Handle page navigation
+  const goToPrevPage = useCallback(() => {
+    if (currentPage > 1 && onPageChange) {
+      onPageChange(currentPage - 1);
     }
-    return height;
-  }, [processedContent, paragraphHeights]);
+  }, [currentPage, onPageChange]);
 
-  // Top spacer height
-  const topSpacerHeight = React.useMemo(() => {
-    if (!processedContent) return 0;
-    let height = 0;
-    const start = Math.max(0, visibleRange.start - BUFFER_SIZE);
-    for (let i = 0; i < start; i++) {
-      height += paragraphHeights[i] || ESTIMATED_PARAGRAPH_HEIGHT;
+  const goToNextPage = useCallback(() => {
+    if (currentPage < actualTotalPages && onPageChange) {
+      onPageChange(currentPage + 1);
     }
-    return height;
-  }, [processedContent, paragraphHeights, visibleRange.start]);
+  }, [currentPage, actualTotalPages, onPageChange]);
 
-  // Handle scroll
-  const handleScroll = useCallback(() => {
-    if (!containerRef.current || !processedContent) return;
-    
-    const scrollTop = window.scrollY;
-    const containerTop = containerRef.current.offsetTop || 0;
-    const viewportHeight = window.innerHeight;
-    
-    let accumulatedHeight = 0;
-    let startIndex = 0;
-    let endIndex = processedContent.length;
-    
-    for (let i = 0; i < processedContent.length; i++) {
-      const height = paragraphHeights[i] || ESTIMATED_PARAGRAPH_HEIGHT;
-      if (accumulatedHeight + height >= scrollTop - containerTop - viewportHeight) {
-        startIndex = i;
-        break;
-      }
-      accumulatedHeight += height;
-    }
-    
-    for (let i = startIndex; i < processedContent.length; i++) {
-      const height = paragraphHeights[i] || ESTIMATED_PARAGRAPH_HEIGHT;
-      accumulatedHeight += height;
-      if (accumulatedHeight >= scrollTop - containerTop + viewportHeight * 2) {
-        endIndex = i + 1;
-        break;
-      }
-    }
-    
-    setVisibleRange({ start: startIndex, end: endIndex });
-  }, [processedContent, paragraphHeights]);
-
-  // Scroll listener
-  useEffect(() => {
-    handleScroll();
-    let ticking = false;
-    const onScroll = () => {
-      if (!ticking) {
-        requestAnimationFrame(() => {
-          handleScroll();
-          ticking = false;
-        });
-        ticking = true;
-      }
-    };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll, { passive: true });
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
-    };
-  }, [handleScroll]);
-
-  // Measure paragraph heights
-  useEffect(() => {
-    if (!processedContent || processedContent.length === 0) return;
-    
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          const index = parseInt(entry.target.getAttribute("data-index") || "0", 10);
-          if (entry.isIntersecting) {
-            setParagraphHeights((prev) => ({
-              ...prev,
-              [index]: entry.boundingClientRect.height,
-            }));
-          }
-        });
-      },
-      { rootMargin: "200px 0px", threshold: 0 }
-    );
-    
-    const paragraphs = containerRef.current?.querySelectorAll(".paragraph");
-    paragraphs?.forEach((p) => observer.observe(p));
-    return () => observer.disconnect();
-  }, [processedContent, visibleRange]);
-
-  // Render content
+  // Render content with pagination
   if (processedContent && processedContent.length > 0) {
     return (
-      <div className="reading-area" ref={containerRef}>
-        <div className="text-content" style={{ minHeight: totalHeight }}>
-          <div style={{ height: topSpacerHeight }} />
+      <div className="reading-area">
+        <div className="text-content">
           {visibleParagraphs.map(({ paragraph, pIndex }) => (
-            <div key={pIndex} data-index={pIndex} style={{ minHeight: paragraphHeights[pIndex] || ESTIMATED_PARAGRAPH_HEIGHT }}>
-              <Paragraph
-                paragraph={paragraph}
-                pIndex={pIndex}
-                onWordClick={onWordClick}
-                getWordAnnotation={getWordAnnotation}
-                isClickable={isClickable}
-              />
-            </div>
+            <Paragraph
+              key={pIndex}
+              paragraph={paragraph}
+              pIndex={pIndex}
+              onWordClick={onWordClick}
+              getWordAnnotation={getWordAnnotation}
+              isClickable={isClickable}
+            />
           ))}
+        </div>
+        
+        {/* Pagination Controls */}
+        <div className="pagination-controls">
+          <button 
+            className="pagination-btn" 
+            onClick={goToPrevPage}
+            disabled={currentPage <= 1}
+            title="上一页"
+          >
+            <ChevronLeft size={18} />
+            <span>上一页</span>
+          </button>
+          
+          <div className="pagination-info">
+            <span>第 {currentPage} / {actualTotalPages} 页</span>
+          </div>
+          
+          <button 
+            className="pagination-btn" 
+            onClick={goToNextPage}
+            disabled={currentPage >= actualTotalPages}
+            title="下一页"
+          >
+            <span>下一页</span>
+            <ChevronRight size={18} />
+          </button>
         </div>
         
         <style>{`
@@ -302,6 +254,47 @@ export function ReadingArea({
             font-weight: normal !important;
             margin-left: 1px;
             margin-right: 1px;
+          }
+          
+          .reading-area .pagination-controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 1.5rem;
+            padding: 1.5rem 0;
+            border-top: 1px solid #e5e5e5;
+            margin-top: 2rem;
+          }
+          
+          .reading-area .pagination-btn {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+            padding: 0.5rem 1rem;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            background: white;
+            color: #333;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+          }
+          
+          .reading-area .pagination-btn:hover:not(:disabled) {
+            background: #f5f5f5;
+            border-color: #ccc;
+          }
+          
+          .reading-area .pagination-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+          }
+          
+          .reading-area .pagination-info {
+            font-size: 14px;
+            color: #666;
+            min-width: 100px;
+            text-align: center;
           }
         `}</style>
       </div>

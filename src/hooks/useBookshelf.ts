@@ -21,6 +21,7 @@ export interface Book {
   lastReadAt: number;
   isSample: boolean;
   lastScrollPosition?: number;
+  lastReadPage?: number; // Track current page for progress calculation
   processedContent?: ProcessedContent;
 }
 
@@ -110,16 +111,29 @@ export function useBookshelf() {
   // Get current book
   const currentBook = books.find((b) => b.id === currentBookId) || null;
 
-  // Calculate reading progress
+  // Calculate reading progress based on page number
+  // Returns percentage (0-100), or -1 if unread
   const getProgress = useCallback((book: Book): number => {
-    if (!book.content) return 0;
-    const totalWords = book.content.split(/\s+/).filter(Boolean).length;
-    if (totalWords === 0) return 0;
-    const annotatedCount = Object.keys(book.annotations).reduce(
-      (sum, key) => sum + (book.annotations[key]?.count || 1),
-      0
-    );
-    return Math.min(Math.round((annotatedCount / totalWords) * 100), 100);
+    // If book has page-based progress info, use it
+    if (book.lastReadPage !== undefined && book.lastReadPage > 0) {
+      // Calculate total pages based on content (30 paragraphs per page)
+      const paragraphs = book.content.split(/\n\n+/).filter(p => p.trim().length > 0);
+      const totalPages = Math.max(1, Math.ceil(paragraphs.length / 30));
+      const progress = Math.min(Math.round((book.lastReadPage / totalPages) * 100), 100);
+      return progress;
+    }
+    // If no page info but has annotations, calculate based on annotated words
+    if (Object.keys(book.annotations).length > 0) {
+      const totalWords = book.content.split(/\s+/).filter(Boolean).length;
+      if (totalWords === 0) return 0;
+      const annotatedCount = Object.keys(book.annotations).reduce(
+        (sum, key) => sum + (book.annotations[key]?.count || 1),
+        0
+      );
+      return Math.min(Math.round((annotatedCount / totalWords) * 100), 100);
+    }
+    // Unread
+    return -1;
   }, []);
 
   // Format last read time
@@ -204,6 +218,17 @@ export function useBookshelf() {
     );
   }, []);
 
+  // Update book read page (for pagination progress tracking)
+  const updateReadPage = useCallback((id: string, page: number) => {
+    setBooks((prev) =>
+      prev.map((b) =>
+        b.id === id
+          ? { ...b, lastReadPage: page, lastReadAt: Date.now() }
+          : b
+      )
+    );
+  }, []);
+
   // Save processed content for faster loading
   const saveProcessedContent = useCallback((id: string, processedContent: ProcessedContent) => {
     // Only save processed content if it's not too large (to avoid quota issues)
@@ -261,6 +286,7 @@ export function useBookshelf() {
     updateBookAnnotations,
     updateBookContent,
     updateScrollPosition,
+    updateReadPage,
     saveProcessedContent,
     openBook,
     closeBook,

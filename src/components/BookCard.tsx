@@ -71,11 +71,21 @@ export function BookCard({
         </h3>
         <div className="book-meta">
           <div className="progress-bar">
-            <div className="progress-fill" style={{ width: `${progress}%` }} />
+            {progress >= 0 ? (
+              <div className="progress-fill" style={{ width: `${progress}%` }} />
+            ) : (
+              <div className="progress-fill unread" style={{ width: '2%' }} />
+            )}
           </div>
           <div className="progress-text">
-            <span className="progress-value">{progress}%</span>
-            <span className="progress-label">已标注</span>
+            {progress >= 0 ? (
+              <>
+                <span className="progress-value">{progress}%</span>
+                <span className="progress-label">已读</span>
+              </>
+            ) : (
+              <span className="progress-value unread-text">未读</span>
+            )}
           </div>
         </div>
         <div className="book-time">
