@@ -1,6 +1,36 @@
 // 常用英语词典 - 包含1000+常用词
 // 注意：同一单词有多个含义时，只保留最常用的一个
 export const englishDictionary: Record<string, { meaning: string; pos: string }> = {
+  // 功能词/介词 (原文件缺失的关键短词)
+  "to": { meaning: "到;向;对于", pos: "prep." },
+  "of": { meaning: "...的", pos: "prep." },
+  "at": { meaning: "在;向", pos: "prep." },
+  "by": { meaning: "通过;被;在...旁边", pos: "prep." },
+  "an": { meaning: "一个(元音开头的冠词)", pos: "art." },
+  // 动词 be/have/do 形式
+  "am": { meaning: "是(第一人称)", pos: "v." },
+  "is": { meaning: "是", pos: "v." },
+  "are": { meaning: "是", pos: "v." },
+  "was": { meaning: "是(过去式)", pos: "v." },
+  "were": { meaning: "是(过去式复数)", pos: "v." },
+  "been": { meaning: "曾经是", pos: "v." },
+  "being": { meaning: "正在是", pos: "v." },
+  "has": { meaning: "有(第三人称)", pos: "v." },
+  "having": { meaning: "正在有", pos: "v." },
+  "does": { meaning: "做(第三人称)", pos: "v." },
+  "doing": { meaning: "正在做", pos: "v." },
+  "done": { meaning: "已完成", pos: "v." },
+  // 助动词
+  "will": { meaning: "将要", pos: "aux.v." },
+  "would": { meaning: "将会;愿意", pos: "aux.v." },
+  "shall": { meaning: "将要;应该", pos: "aux.v." },
+  "should": { meaning: "应该", pos: "aux.v." },
+  "can": { meaning: "能;会", pos: "aux.v." },
+  "could": { meaning: "能够", pos: "aux.v." },
+  "may": { meaning: "可能;可以", pos: "aux.v." },
+  "might": { meaning: "可能", pos: "aux.v." },
+  "must": { meaning: "必须", pos: "aux.v." },
+  "ought": { meaning: "应该", pos: "aux.v." },
   // 动词 - A
   "be": { meaning: "是;存在", pos: "v." },
   "have": { meaning: "有", pos: "v." },
