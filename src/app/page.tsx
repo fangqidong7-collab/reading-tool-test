@@ -118,6 +118,7 @@ function processTextToSegments(text: string): ProcessedContent {
     const headingMatch = trimmed.match(/^\[H(\d)\]([\s\S]*?)\[\/H\d\]$/);
     
     if (headingMatch) {
+      console.log('processTextToSegments 识别到标题:', headingMatch[2]);
       const level = parseInt(headingMatch[1], 10);
       const headingText = headingMatch[2].trim();
       
@@ -141,7 +142,8 @@ function processTextToSegments(text: string): ProcessedContent {
         result.push({ segments, headingLevel: level });
       }
     } else {
-      // Regular paragraph
+      // Regular paragraph - 只打印前50个字符，避免刷屏
+      console.log('普通段落:', trimmed.substring(0, 50));
       const segments: ProcessedSegment[] = [];
       const regex = /([a-zA-Z]+|[^a-zA-Z\s]+|\s+)/g;
       let segMatch;
