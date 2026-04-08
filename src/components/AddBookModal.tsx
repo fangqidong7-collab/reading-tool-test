@@ -75,7 +75,7 @@ export function AddBookModal({ isOpen, onClose, onAdd }: AddBookModalProps) {
       setParsing(true);
 
       // Extract filename without extension as default title
-      const defaultTitle = file.name.replace(/\.[^/.]+$/, "");
+      const defaultTitle = file.name.replace(/\.(txt|epub|pdf)$/i, "").trim();
 
       const result = await parseFile(file, setProgress);
 

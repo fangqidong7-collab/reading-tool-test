@@ -16,102 +16,191 @@ const TOUCH_SWIPE_THRESHOLD = 50; // Minimum swipe distance in px
 // Ref type for exposing jumpToParagraph
 export interface ReadingAreaRef {
   jumpToParagraph: (paragraphIndex: number) => void;
+  jumpToSearchResult: (result: { paragraphIndex: number; charIndex: number }) => void;
 }
 
-// Memoized segment component
-const Segment = React.memo(({
-  segment,
-  pIndex,
-  sIndex,
-  getWordAnnotation,
-  isClickable,
-  onWordClick,
-}: {
-  segment: ProcessedContent[number][number];
-  pIndex: number;
-  sIndex: number;
-  getWordAnnotation: (word: string) => { root: string; meaning: string; pos: string; count: number } | null;
-  isClickable: (word: string) => boolean;
-  onWordClick: (word: string, event: React.MouseEvent) => void;
-}) => {
-  const key = `${pIndex}-${sIndex}`;
-  
-  if (segment.type === "space") {
-    return <span key={key} className="whitespace">{segment.text}</span>;
-  }
-  
-  if (segment.type === "punctuation") {
-    return <span key={key} className="punctuation">{segment.text}</span>;
-  }
-  
-  // Word segment
-  const word = segment.text;
-  const annotation = getWordAnnotation(word);
-  const isAnnotated = !!annotation;
-  
-  if (isAnnotated) {
-    return (
-      <span key={key} className="annotated">
-        {word}<span className="annotation">({annotation.meaning})</span>
-      </span>
-    );
-  }
-  
-  if (isClickable(word)) {
-    return (
-      <span key={key} className="word clickable" onClick={(e) => onWordClick(word, e)}>
-        {word}
-      </span>
-    );
-  }
-  
-  return <span key={key}>{word}</span>;
-});
+// Word info stored in data attributes for event delegation
+interface WordInfo {
+  word: string;
+  lemma: string;
+}
 
-Segment.displayName = "Segment";
+// Cached segment renderer - avoids recreating spans for already processed paragraphs
+const paragraphCache = new Map<number, React.ReactNode>();
 
-// Memoized paragraph component with paragraph index data attribute
+// Memoized paragraph component with event delegation
 const Paragraph = React.memo(({
   paragraph,
   pIndex,
   onWordClick,
-  getWordAnnotation,
-  isClickable,
+  searchHighlights,
+  currentHighlightIndex,
 }: {
   paragraph: ProcessedContent[number];
   pIndex: number;
-  onWordClick: (word: string, event: React.MouseEvent) => void;
-  getWordAnnotation: (word: string) => { root: string; meaning: string; pos: string; count: number } | null;
-  isClickable: (word: string) => boolean;
+  onWordClick: (word: string, lemma: string, event: React.MouseEvent) => void;
+  searchHighlights?: Array<{ charIndex: number; length: number }>;
+  currentHighlightIndex?: number;
 }) => {
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.classList.contains('word')) {
+      const word = target.dataset.word || '';
+      const lemma = target.dataset.lemma || '';
+      onWordClick(word, lemma, e);
+    }
+  }, [onWordClick]);
+
+  // Check if paragraph has search highlights
+  const hasSearchHighlights = searchHighlights && searchHighlights.length > 0;
+
   return (
     <p 
-      key={pIndex} 
       className="paragraph"
       data-paragraph-index={pIndex}
+      onClick={handleClick}
     >
-      {paragraph.map((segment, sIndex) => (
-        <Segment
-          key={`${pIndex}-${sIndex}`}
-          segment={segment}
-          pIndex={pIndex}
-          sIndex={sIndex}
-          getWordAnnotation={getWordAnnotation}
-          isClickable={isClickable}
-          onWordClick={onWordClick}
+      {hasSearchHighlights ? (
+        <HighlightedParagraph 
+          text={paragraph} 
+          highlights={searchHighlights} 
+          currentIndex={currentHighlightIndex}
         />
-      ))}
+      ) : (
+        paragraph.map((segment, sIndex) => {
+          const key = `${pIndex}-${sIndex}`;
+          if (segment.type === "space" || segment.type === "punctuation") {
+            return <span key={key}>{segment.text}</span>;
+          }
+          // Word segment
+          return (
+            <span 
+              key={key} 
+              className="word" 
+              data-word={segment.text}
+              data-lemma={segment.lemma}
+            >
+              {segment.text}
+            </span>
+          );
+        })
+      )}
     </p>
   );
 });
 
 Paragraph.displayName = "Paragraph";
 
+// Render paragraph text with search highlights
+function HighlightedParagraph({
+  text,
+  highlights,
+  currentIndex
+}: {
+  text: ProcessedContent[number];
+  highlights: Array<{ charIndex: number; length: number }>;
+  currentIndex?: number;
+}) {
+  // Build plain text from segments for position calculation
+  let plainText = '';
+  const segmentEnds: number[] = [];
+  text.forEach(segment => {
+    const start = plainText.length;
+    plainText += segment.text;
+    segmentEnds.push(plainText.length);
+  });
+
+  // Build highlighted segments
+  const elements: React.ReactNode[] = [];
+  let lastEnd = 0;
+  let currentHighlightIdx = 0;
+
+  // Sort highlights by charIndex
+  const sortedHighlights = [...highlights].sort((a, b) => a.charIndex - b.charIndex);
+
+  for (const highlight of sortedHighlights) {
+    // Find segments that fall within this highlight range
+    let segStart = 0;
+    for (let i = 0; i < segmentEnds.length; i++) {
+      const segEnd = segmentEnds[i];
+      if (segEnd > highlight.charIndex) {
+        segStart = i;
+        break;
+      }
+    }
+
+    let segEnd = segmentEnds.length;
+    for (let i = 0; i < segmentEnds.length; i++) {
+      if (segmentEnds[i] >= highlight.charIndex + highlight.length) {
+        segEnd = i + 1;
+        break;
+      }
+    }
+
+    // Add text before highlight
+    for (let i = lastEnd; i < segStart; i++) {
+      const segment = text[i];
+      if (segment.type === "space" || segment.type === "punctuation") {
+        elements.push(<span key={`p${i}`}>{segment.text}</span>);
+      } else {
+        elements.push(
+          <span key={`p${i}`} className="word" data-word={segment.text} data-lemma={segment.lemma}>
+            {segment.text}
+          </span>
+        );
+      }
+    }
+
+    // Add highlighted text
+    const isCurrentHighlight = currentHighlightIdx === currentIndex;
+    for (let i = segStart; i < segEnd; i++) {
+      const segment = text[i];
+      if (segment.type === "space" || segment.type === "punctuation") {
+        elements.push(
+          <span key={`h${currentHighlightIdx}-${i}`} className={isCurrentHighlight ? "search-highlight-current" : "search-highlight"}>
+            {segment.text}
+          </span>
+        );
+      } else {
+        elements.push(
+          <span 
+            key={`h${currentHighlightIdx}-${i}`} 
+            className={`word ${isCurrentHighlight ? "search-highlight-current" : "search-highlight"}`}
+            data-word={segment.text}
+            data-lemma={segment.lemma}
+          >
+            {segment.text}
+          </span>
+        );
+      }
+    }
+
+    lastEnd = segEnd;
+    currentHighlightIdx++;
+  }
+
+  // Add remaining text
+  for (let i = lastEnd; i < text.length; i++) {
+    const segment = text[i];
+    if (segment.type === "space" || segment.type === "punctuation") {
+      elements.push(<span key={`e${i}`}>{segment.text}</span>);
+    } else {
+      elements.push(
+        <span key={`e${i}`} className="word" data-word={segment.text} data-lemma={segment.lemma}>
+          {segment.text}
+        </span>
+      );
+    }
+  }
+
+  return <>{elements}</>;
+}
+
 interface ReadingAreaProps {
   text: string;
   processedContent?: ProcessedContent | null;
   annotations?: Record<string, { root: string; meaning: string; pos: string; count: number }>;
-  onWordClick: (word: string, event: React.MouseEvent) => void;
+  onWordClick: (word: string, lemma: string, event: React.MouseEvent) => void;
   getWordAnnotation: (word: string) => { root: string; meaning: string; pos: string; count: number } | null;
   isClickable: (word: string) => boolean;
   currentPage?: number;
@@ -129,6 +218,11 @@ interface ReadingAreaProps {
   isDarkMode?: boolean;
   // External control states (to avoid state reset issues)
   headerVisible?: boolean;
+  // Search props
+  searchQuery?: string;
+  searchResults?: Array<{ paragraphIndex: number; charIndex: number }>;
+  currentSearchIndex?: number;
+  onSearchResultClick?: (index: number) => void;
 }
 
 export const ReadingArea = forwardRef(function ReadingArea({
@@ -150,51 +244,29 @@ export const ReadingArea = forwardRef(function ReadingArea({
   highlightBgHover = "#FFE69C",
   isDarkMode = false,
   headerVisible = true,
+  searchQuery = "",
+  searchResults = [],
+  currentSearchIndex = 0,
+  onSearchResultClick,
 }: ReadingAreaProps, ref: React.Ref<ReadingAreaRef>) {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const paragraphHeightsRef = useRef<number[]>([]);
+  const paragraphOffsetsRef = useRef<number[]>([]);
+  
   const [currentPageState, setCurrentPageState] = useState(currentPage || 1);
   const [totalPagesState, setTotalPagesState] = useState(1);
   const [viewHeight, setViewHeight] = useState(600);
+  const [pageParagraphs, setPageParagraphs] = useState<Map<number, number[]>>(new Map());
   
   // Touch tracking refs
   const touchStartXRef = useRef<number>(0);
   const touchStartYRef = useRef<number>(0);
 
-  // Expose jumpToParagraph via ref
-  useImperativeHandle(ref, () => ({
-    jumpToParagraph: (paragraphIndex: number) => {
-      const paragraphElements = contentRef.current?.querySelectorAll('[data-paragraph-index]');
-      if (!paragraphElements || paragraphElements.length === 0) return;
-      
-      // Find the target paragraph element
-      const targetElement = Array.from(paragraphElements).find(
-        (el) => el.getAttribute('data-paragraph-index') === String(paragraphIndex)
-      );
-      
-      if (!targetElement) return;
-      
-      // Calculate the offset top of the paragraph
-      const offsetTop = targetElement.getBoundingClientRect().top + contentRef.current!.scrollTop;
-      const currentTranslateY = parseFloat(contentRef.current?.style.transform.replace('translateY(', '').replace('px)', '') || '0');
-      const newTranslateY = -offsetTop;
-      
-      // Update the transform
-      if (contentRef.current) {
-        contentRef.current.style.transform = `translateY(${newTranslateY}px)`;
-        
-        // Calculate new page based on the translateY value
-        const newPage = Math.floor(Math.abs(newTranslateY) / viewHeight) + 1;
-        setCurrentPageState(newPage);
-        
-        if (onPageChange) {
-          onPageChange(newPage);
-        }
-      }
-    },
-  }));
+  // Annotation lookup cache
+  const annotationCacheRef = useRef<Map<string, { root: string; meaning: string; pos: string; count: number } | null>>(new Map());
 
-  // Calculate available viewport height for content
+  // Calculate view height
   useEffect(() => {
     const calculateViewHeight = () => {
       const vh = window.innerHeight - HEADER_HEIGHT - PAGINATION_HEIGHT - (READING_PADDING_VERTICAL * 2);
@@ -206,27 +278,36 @@ export const ReadingArea = forwardRef(function ReadingArea({
     return () => window.removeEventListener('resize', calculateViewHeight);
   }, []);
 
-  // Calculate total pages based on content height
+  // Calculate paragraph heights and offsets
   useEffect(() => {
-    if (!contentRef.current) return;
+    if (!processedContent || processedContent.length === 0) return;
     
-    const calculatePages = () => {
-      const contentHeight = contentRef.current?.scrollHeight || 0;
-      const total = Math.ceil(contentHeight / viewHeight) || 1;
-      setTotalPagesState(total);
+    const measureParagraphs = () => {
+      if (!contentRef.current) return;
       
-      if (onTotalPagesChange) {
-        onTotalPagesChange(total);
-      }
+      const paragraphElements = contentRef.current.querySelectorAll('.paragraph');
+      const heights: number[] = [];
+      const offsets: number[] = [];
+      let currentOffset = 0;
+      
+      paragraphElements.forEach((el, index) => {
+        const height = el.getBoundingClientRect().height + PARAGRAPH_GAP;
+        heights[index] = height;
+        offsets[index] = currentOffset;
+        currentOffset += height;
+      });
+      
+      paragraphHeightsRef.current = heights;
+      paragraphOffsetsRef.current = offsets;
     };
     
-    // Small delay to ensure content is rendered
-    const timer = setTimeout(calculatePages, 100);
+    // Small delay to ensure DOM is ready
+    const timer = setTimeout(measureParagraphs, 50);
     
-    // Also recalculate on font/size changes
+    // Also measure on font/size changes
     const resizeObserver = new ResizeObserver(() => {
       clearTimeout(timer);
-      calculatePages();
+      measureParagraphs();
     });
     
     if (contentRef.current) {
@@ -237,21 +318,87 @@ export const ReadingArea = forwardRef(function ReadingArea({
       clearTimeout(timer);
       resizeObserver.disconnect();
     };
-  }, [processedContent, fontSize, lineHeight, viewHeight, onTotalPagesChange]);
+  }, [processedContent, fontSize, lineHeight]);
 
-  // Update state when props change (only for page changes, not for sidebar/header)
+  // Calculate pages based on paragraph heights
+  useEffect(() => {
+    if (!processedContent || processedContent.length === 0) return;
+    if (paragraphHeightsRef.current.length === 0) return;
+    
+    const calculatePages = () => {
+      const totalContentHeight = paragraphOffsetsRef.current[paragraphOffsetsRef.current.length - 1] + 
+        paragraphHeightsRef.current[paragraphHeightsRef.current.length - 1];
+      const total = Math.ceil(totalContentHeight / viewHeight) || 1;
+      
+      // Calculate which paragraphs belong to which page
+      const pages = new Map<number, number[]>();
+      for (let page = 1; page <= total; page++) {
+        const pageStart = (page - 1) * viewHeight;
+        const pageEnd = page * viewHeight;
+        const pageParagraphsList: number[] = [];
+        
+        paragraphOffsetsRef.current.forEach((offset, pIndex) => {
+          const height = paragraphHeightsRef.current[pIndex];
+          const paraEnd = offset + height;
+          // Check if paragraph overlaps with this page
+          if (paraEnd > pageStart && offset < pageEnd) {
+            pageParagraphsList.push(pIndex);
+          }
+        });
+        
+        pages.set(page, pageParagraphsList);
+      }
+      
+      setPageParagraphs(pages);
+      setTotalPagesState(total);
+      
+      if (onTotalPagesChange) {
+        onTotalPagesChange(total);
+      }
+    };
+    
+    calculatePages();
+  }, [processedContent, viewHeight, onTotalPagesChange]);
+
+  // Update state when props change
   useEffect(() => {
     if (currentPage && currentPage !== currentPageState) {
       setCurrentPageState(currentPage);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage]);
 
   // Clamp current page to valid range
   const safeCurrentPage = Math.min(Math.max(1, currentPageState), totalPagesState);
 
-  // Calculate transform offset for current page
-  const offset = (safeCurrentPage - 1) * viewHeight;
+  // Get visible paragraphs for current page
+  const visibleParagraphIndices = useMemo(() => {
+    return pageParagraphs.get(safeCurrentPage) || [];
+  }, [pageParagraphs, safeCurrentPage]);
+
+  // Get search highlights for visible paragraphs
+  const visibleSearchHighlights = useMemo(() => {
+    if (!searchQuery || searchResults.length === 0) return new Map<number, Array<{ charIndex: number; length: number }>>();
+    
+    const highlights = new Map<number, Array<{ charIndex: number; length: number }>>();
+    visibleParagraphIndices.forEach(pIndex => {
+      const paraHighlights = searchResults.filter(r => r.paragraphIndex === pIndex);
+      if (paraHighlights.length > 0) {
+        highlights.set(pIndex, paraHighlights.map(r => ({
+          charIndex: r.charIndex,
+          length: searchQuery.length
+        })));
+      }
+    });
+    return highlights;
+  }, [searchResults, searchQuery, visibleParagraphIndices]);
+
+  // Get current search index for visible paragraphs
+  const currentHighlightForVisible = useMemo(() => {
+    if (currentSearchIndex < 0 || currentSearchIndex >= searchResults.length) return -1;
+    const currentResult = searchResults[currentSearchIndex];
+    if (!currentResult) return -1;
+    return visibleParagraphIndices.indexOf(currentResult.paragraphIndex);
+  }, [searchResults, currentSearchIndex, visibleParagraphIndices]);
 
   // Handle page navigation
   const goToPrevPage = useCallback(() => {
@@ -274,28 +421,46 @@ export const ReadingArea = forwardRef(function ReadingArea({
     }
   }, [safeCurrentPage, totalPagesState, onPageChange]);
 
-  // Jump to a specific page based on paragraph index
-  const jumpToParagraph = useCallback((paragraphIndex: number) => {
-    if (!contentRef.current) return;
-    
-    const element = contentRef.current.querySelector(`[data-paragraph-index="${paragraphIndex}"]`);
-    if (element) {
-      const offsetTop = (element as HTMLElement).offsetTop;
-      const targetPage = Math.floor(offsetTop / viewHeight) + 1;
+  // Expose jumpToParagraph via ref
+  useImperativeHandle(ref, () => ({
+    jumpToParagraph: (paragraphIndex: number) => {
+      if (!processedContent || processedContent.length === 0) return;
+      
+      // Calculate target page based on paragraph offset
+      const offsets = paragraphOffsetsRef.current;
+      const heights = paragraphHeightsRef.current;
+      
+      if (offsets.length === 0 || heights.length === 0) return;
+      
+      const targetOffset = offsets[paragraphIndex] || 0;
+      const targetPage = Math.floor(targetOffset / viewHeight) + 1;
       const clampedPage = Math.min(Math.max(1, targetPage), totalPagesState);
+      
       setCurrentPageState(clampedPage);
       if (onPageChange) {
         onPageChange(clampedPage);
       }
-    }
-  }, [viewHeight, totalPagesState, onPageChange]);
-
-  // Expose jump function via ref callback
-  useEffect(() => {
-    if (containerRef.current) {
-      (containerRef.current as unknown as { jumpToParagraph: (index: number) => void }).jumpToParagraph = jumpToParagraph;
-    }
-  }, [jumpToParagraph]);
+    },
+    jumpToSearchResult: (result: { paragraphIndex: number; charIndex: number }) => {
+      // First jump to the page containing this result
+      const targetPage = Math.floor((paragraphOffsetsRef.current[result.paragraphIndex] || 0) / viewHeight) + 1;
+      const clampedPage = Math.min(Math.max(1, targetPage), totalPagesState);
+      
+      setCurrentPageState(clampedPage);
+      if (onPageChange) {
+        onPageChange(clampedPage);
+      }
+      
+      // After page changes, scroll to the result position
+      setTimeout(() => {
+        if (!contentRef.current) return;
+        const paraEl = contentRef.current.querySelector(`[data-paragraph-index="${result.paragraphIndex}"]`);
+        if (paraEl) {
+          paraEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
+    },
+  }));
 
   // Keyboard navigation
   useEffect(() => {
@@ -361,11 +526,15 @@ export const ReadingArea = forwardRef(function ReadingArea({
         // Right third - next page
         goToNextPage();
       }
-      // Middle third - could toggle header visibility (not implemented for now)
     }
   }, [goToNextPage, goToPrevPage]);
 
-  // Render content with CSS offset-based pagination
+  // Handle word click with event delegation
+  const handleParagraphClick = useCallback((word: string, lemma: string, event: React.MouseEvent) => {
+    onWordClick(word, lemma, event);
+  }, [onWordClick]);
+
+  // Render content with visible paragraphs only
   if (processedContent && processedContent.length > 0) {
     const containerHeight = headerVisible ? `calc(100vh - ${HEADER_HEIGHT}px - ${PAGINATION_HEIGHT}px)` : `calc(100vh - ${PAGINATION_HEIGHT}px)`;
     
@@ -379,21 +548,21 @@ export const ReadingArea = forwardRef(function ReadingArea({
           flexDirection: 'column',
         }}
       >
-        {/* Reading Content Area - CSS offset pagination */}
+        {/* Reading Content Area - visible paragraphs only */}
         <div 
           ref={containerRef}
           className="reading-area"
           style={{
             height: containerHeight,
             maxHeight: containerHeight,
-            overflow: 'hidden',
+            overflowY: 'auto',
             padding: `${READING_PADDING_VERTICAL}px ${READING_PADDING_HORIZONTAL}px`,
             boxSizing: 'border-box',
           }}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
-          {/* Scrolling content container with transform offset */}
+          {/* Content container */}
           <div 
             ref={contentRef}
             className="text-content"
@@ -403,20 +572,18 @@ export const ReadingArea = forwardRef(function ReadingArea({
               color: textColor,
               fontFamily: 'Georgia, "Times New Roman", serif',
               textAlign: 'justify',
-              transform: `translateY(-${offset}px)`,
-              willChange: 'transform',
-              // Allow natural height but we'll clip with the parent
               minHeight: `${viewHeight}px`,
             }}
           >
-            {processedContent.map((paragraph, pIndex) => (
+            {visibleParagraphIndices.map((pIndex) => (
               <Paragraph
                 key={pIndex}
-                paragraph={paragraph}
+                paragraph={processedContent[pIndex]}
                 pIndex={pIndex}
-                onWordClick={onWordClick}
-                getWordAnnotation={getWordAnnotation}
-                isClickable={isClickable}
+                onWordClick={handleParagraphClick}
+                searchHighlights={visibleSearchHighlights.get(pIndex)}
+                currentHighlightIndex={currentHighlightForVisible >= 0 && visibleSearchHighlights.get(pIndex) ? 
+                  searchResults.findIndex(r => r.paragraphIndex === pIndex) : undefined}
               />
             ))}
           </div>
@@ -466,6 +633,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
           .reading-area {
             box-sizing: border-box;
             position: relative;
+            scroll-behavior: smooth;
           }
 
           .text-content {
@@ -478,42 +646,26 @@ export const ReadingArea = forwardRef(function ReadingArea({
             margin-bottom: ${PARAGRAPH_GAP}px;
           }
 
-          .text-content :global(.whitespace) {
-            white-space: pre-wrap;
-          }
-
-          .text-content :global(.punctuation) {
-            opacity: 0.7;
-          }
-
-          .text-content :global(.word.clickable) {
+          .text-content :global(.word) {
             cursor: pointer;
             transition: color 0.15s;
           }
 
-          .text-content :global(.word.clickable:hover) {
+          .text-content :global(.word:hover) {
             color: #4A90D9;
           }
 
-          .text-content :global(.annotated) {
-            cursor: pointer;
-            background-color: ${highlightBg};
-            padding: 1px 0;
+          .text-content :global(.search-highlight) {
+            background-color: #FFEB3B;
+            padding: 1px 2px;
             border-radius: 2px;
-            transition: background-color 0.15s;
           }
 
-          .text-content :global(.annotated:hover) {
-            background-color: ${highlightBgHover};
-          }
-
-          .text-content :global(.annotation) {
-            color: ${annotationColor};
-            font-size: ${annotationFontSize}px;
-            font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
-            font-weight: normal;
-            margin-left: 1px;
-            margin-right: 1px;
+          .text-content :global(.search-highlight-current) {
+            background-color: #FF9800;
+            color: #fff;
+            padding: 1px 2px;
+            border-radius: 2px;
           }
 
           .pagination-bar {

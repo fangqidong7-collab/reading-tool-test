@@ -179,7 +179,7 @@ async function parseEpub(file: File, onProgress: ProgressCallback): Promise<{ ti
   // Load the zip
   const zip = await JSZip.loadAsync(arrayBuffer);
   
-  let title = file.name.replace(/\.[^/.]+$/, "");
+  let title = file.name.replace(/\.(txt|epub|pdf)$/i, "").trim();
   let content = "";
   const tableOfContents: TocEntry[] = [];
 
@@ -202,9 +202,9 @@ async function parseEpub(file: File, onProgress: ProgressCallback): Promise<{ ti
   const opfContent = await zip.file(rootFilePath)?.async("string");
   
   if (opfContent) {
-    // Extract title from metadata
+    // Extract title from metadata - only use if not empty
     const titleMatch = opfContent.match(/<dc:title[^>]*>([^<]+)<\/dc:title>/i);
-    if (titleMatch) {
+    if (titleMatch && titleMatch[1].trim()) {
       title = titleMatch[1].trim();
     }
 
@@ -437,12 +437,8 @@ async function parseTxt(file: File, onProgress: ProgressCallback): Promise<{ tit
   
   onProgress({ stage: "complete", percent: 100, message: "解析完成！" });
 
-  // Extract title from first line if it looks like a title
-  let title = file.name.replace(/\.[^/.]+$/, "");
-  const firstLine = content.split("\n")[0].trim();
-  if (firstLine && firstLine.length < 200 && !firstLine.match(/^[A-Z\s]+$/)) {
-    title = firstLine;
-  }
+  // Extract title - use filename (without extension) as default
+  const title = file.name.replace(/\.(txt|epub|pdf)$/i, "").trim();
 
   return { title, content: finalContent };
 }

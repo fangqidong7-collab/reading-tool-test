@@ -131,6 +131,14 @@ export default function Home() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPagesState, setTotalPagesState] = useState(1);
   
+  // Search state
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<Array<{ paragraphIndex: number; charIndex: number }>>([]);
+  const [currentSearchIndex, setCurrentSearchIndex] = useState(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
   // Ref to track if we're currently in a programmatic scroll
   const isProgrammaticScrollRef = useRef(false);
   
@@ -287,7 +295,7 @@ export default function Home() {
 
   // Handle word click
   const handleWordClick = useCallback(
-    async (word: string, event: React.MouseEvent) => {
+    async (word: string, lemma: string, event: React.MouseEvent) => {
       const cleanWord = word.toLowerCase().trim();
       if (!cleanWord) return;
 
@@ -375,6 +383,111 @@ export default function Home() {
   const clearAllAnnotations = useCallback(() => {
     setAnnotations({});
   }, []);
+
+  // Search functionality
+  const performSearch = useCallback((query: string, content: string) => {
+    if (!query.trim()) {
+      setSearchResults([]);
+      setCurrentSearchIndex(0);
+      return;
+    }
+
+    const results: Array<{ paragraphIndex: number; charIndex: number }> = [];
+    const paragraphs = content.split(/\n\n+/);
+    const lowerQuery = query.toLowerCase();
+
+    paragraphs.forEach((paragraph, pIndex) => {
+      const lowerPara = paragraph.toLowerCase();
+      let charIndex = 0;
+      while (true) {
+        const foundIndex = lowerPara.indexOf(lowerQuery, charIndex);
+        if (foundIndex === -1) break;
+        results.push({ paragraphIndex: pIndex, charIndex: foundIndex });
+        charIndex = foundIndex + 1;
+      }
+    });
+
+    setSearchResults(results);
+    setCurrentSearchIndex(0);
+
+    // Jump to first result if exists
+    if (results.length > 0 && readingAreaRef.current) {
+      readingAreaRef.current.jumpToSearchResult(results[0]);
+    }
+  }, []);
+
+  const handleSearchInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const query = e.target.value;
+    setSearchQuery(query);
+
+    // Debounce search
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    searchTimeoutRef.current = setTimeout(() => {
+      performSearch(query, text);
+    }, 300);
+  }, [text, performSearch]);
+
+  const goToNextSearchResult = useCallback(() => {
+    if (searchResults.length === 0) return;
+    const nextIndex = (currentSearchIndex + 1) % searchResults.length;
+    setCurrentSearchIndex(nextIndex);
+    readingAreaRef.current?.jumpToSearchResult(searchResults[nextIndex]);
+  }, [searchResults, currentSearchIndex]);
+
+  const goToPrevSearchResult = useCallback(() => {
+    if (searchResults.length === 0) return;
+    const prevIndex = currentSearchIndex === 0 ? searchResults.length - 1 : currentSearchIndex - 1;
+    setCurrentSearchIndex(prevIndex);
+    readingAreaRef.current?.jumpToSearchResult(searchResults[prevIndex]);
+  }, [searchResults, currentSearchIndex]);
+
+  const closeSearch = useCallback(() => {
+    setSearchOpen(false);
+    setSearchQuery("");
+    setSearchResults([]);
+    setCurrentSearchIndex(0);
+  }, []);
+
+  // Handle keyboard shortcuts for search
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+F or Cmd+F to open search
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault();
+        setSearchOpen(true);
+        setTimeout(() => searchInputRef.current?.focus(), 50);
+        return;
+      }
+
+      // ESC to close search
+      if (e.key === 'Escape' && searchOpen) {
+        e.preventDefault();
+        closeSearch();
+        return;
+      }
+
+      // Don't handle other shortcuts if search is not open or search input is not focused
+      if (!searchOpen || document.activeElement !== searchInputRef.current) {
+        return;
+      }
+
+      // Enter to go to next result
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          goToPrevSearchResult();
+        } else {
+          goToNextSearchResult();
+        }
+        return;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [searchOpen, closeSearch, goToNextSearchResult, goToPrevSearchResult]);
 
   // Close tooltip
   const closeTooltip = useCallback(() => {
@@ -736,6 +849,28 @@ export default function Home() {
             </svg>
           </button>
 
+          {/* Search Button */}
+          <button
+            className={`search-btn ${isDarkMode ? "dark" : ""}`}
+            onClick={() => {
+              setSearchOpen(!searchOpen);
+              if (!searchOpen) {
+                setTimeout(() => searchInputRef.current?.focus(), 50);
+              }
+            }}
+            title="搜索全文 (Ctrl+F)"
+            style={{ 
+              backgroundColor: searchOpen ? (isDarkMode ? "#3a3a4e" : "#e0e0e0") : "transparent",
+              borderColor: isDarkMode ? "#444" : "#ddd",
+              color: headerTextColor,
+            }}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+          </button>
+
           {/* Settings Button */}
           <button
             className="settings-btn"
@@ -811,6 +946,79 @@ export default function Home() {
         </div>
       </header>
 
+      {/* Search Bar */}
+      {searchOpen && (
+        <div 
+          className={`search-bar ${isDarkMode ? "dark" : ""}`}
+          style={{ 
+            backgroundColor: isDarkMode ? "#1e1e2e" : "#f8f9fa",
+            borderBottomColor: isDarkMode ? "#333" : "#e0e0e0",
+          }}
+        >
+          <div className="search-container">
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchQuery}
+              onChange={handleSearchInput}
+              placeholder="搜索全文..."
+              className={`search-input ${isDarkMode ? "dark" : ""}`}
+              style={{
+                backgroundColor: isDarkMode ? "#2a2a3e" : "#fff",
+                color: isDarkMode ? "#ccc" : "#333",
+                borderColor: isDarkMode ? "#444" : "#ddd",
+              }}
+            />
+            <div className="search-results-count" style={{ color: isDarkMode ? "#999" : "#666" }}>
+              {searchResults.length > 0 ? (
+                <>第 {currentSearchIndex + 1} / {searchResults.length} 个匹配</>
+              ) : (
+                searchQuery ? "无匹配" : ""
+              )}
+            </div>
+            <button
+              className={`search-nav-btn ${isDarkMode ? "dark" : ""}`}
+              onClick={goToPrevSearchResult}
+              disabled={searchResults.length === 0}
+              title="上一个 (Shift+Enter)"
+              style={{
+                color: headerTextColor,
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="18 15 12 9 6 15" />
+              </svg>
+            </button>
+            <button
+              className={`search-nav-btn ${isDarkMode ? "dark" : ""}`}
+              onClick={goToNextSearchResult}
+              disabled={searchResults.length === 0}
+              title="下一个 (Enter)"
+              style={{
+                color: headerTextColor,
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+            <button
+              className={`search-close-btn ${isDarkMode ? "dark" : ""}`}
+              onClick={closeSearch}
+              title="关闭 (ESC)"
+              style={{
+                color: headerTextColor,
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Main Content */}
       <main className="main-content" style={{ backgroundColor }}>
         <div ref={containerRef} className="reading-container">
@@ -834,6 +1042,9 @@ export default function Home() {
             highlightBg={highlightBg}
             highlightBgHover={highlightBgHover}
             isDarkMode={isDarkMode}
+            searchQuery={searchQuery}
+            searchResults={searchResults}
+            currentSearchIndex={currentSearchIndex}
           />
         </div>
 
@@ -932,6 +1143,94 @@ export default function Home() {
           align-items: center;
           gap: 12px;
           flex-shrink: 0;
+        }
+
+        .search-btn {
+          padding: 8px 12px;
+          border: 1px solid;
+          border-radius: 6px;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .search-btn:hover {
+          filter: brightness(0.95);
+        }
+
+        .search-bar {
+          border-bottom: 1px solid;
+          padding: 12px 20px;
+          animation: slideDown 0.2s ease;
+        }
+
+        .search-container {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          max-width: 600px;
+          margin: 0 auto;
+        }
+
+        .search-input {
+          flex: 1;
+          padding: 8px 12px;
+          border: 1px solid;
+          border-radius: 6px;
+          font-size: 14px;
+          outline: none;
+        }
+
+        .search-input:focus {
+          border-color: #4a90d9;
+        }
+
+        .search-results-count {
+          font-size: 14px;
+          white-space: nowrap;
+          min-width: 100px;
+          text-align: center;
+        }
+
+        .search-nav-btn {
+          padding: 6px 10px;
+          border: 1px solid;
+          border-radius: 6px;
+          background: transparent;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .search-nav-btn:hover:not(:disabled) {
+          filter: brightness(0.9);
+        }
+
+        .search-nav-btn:disabled {
+          opacity: 0.4;
+          cursor: not-allowed;
+        }
+
+        .search-close-btn {
+          padding: 6px 10px;
+          border: none;
+          border-radius: 6px;
+          background: transparent;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .search-close-btn:hover {
+          filter: brightness(0.9);
+        }
+
+        @keyframes slideDown {
+          from {
+            opacity: 0;
+            transform: translateY(-10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
         }
 
         .settings-btn {
