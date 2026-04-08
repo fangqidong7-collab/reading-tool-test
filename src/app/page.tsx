@@ -8,7 +8,7 @@ import { VocabularySidebar } from "@/components/VocabularySidebar";
 import { useBookshelf, ProcessedContent, ProcessedSegment } from "@/hooks/useBookshelf";
 import { lemmatize, getWordMeaning, findWordFamily } from "@/lib/dictionary";
 import { translateWord } from "@/lib/translate";
-import { loadExternalDictionary, type DictLoadStatus } from "@/lib/dictLoader";
+import { loadExternalDictionary, lookupExternalDict, type DictLoadStatus } from "@/lib/dictLoader";
 
 // Process text into structured segments with lemmas
 function processTextToSegments(text: string): ProcessedContent {
@@ -208,13 +208,29 @@ export default function Home() {
       setLoading(true);
 
       try {
-        const entry = getWordMeaning(root);
-        let meaning = entry?.meaning || "";
-        let pos = entry?.pos || "";
+        let meaning = "";
+        let pos = "";
 
+        // 1. 先查内置词典
+        const entry = getWordMeaning(root);
+        if (entry?.meaning) {
+          meaning = entry.meaning;
+          pos = entry.pos;
+        }
+
+        // 2. 查外部词典（带智能后缀去除）
+        if (!meaning) {
+          const extMeaning = lookupExternalDict(cleanWord);
+          if (extMeaning) {
+            meaning = extMeaning;
+            pos = "";
+          }
+        }
+
+        // 3. 最后才调用AI翻译
         if (!meaning) {
           meaning = await translateWord(root);
-          pos = "v.";
+          pos = "";
         }
 
         const family = findWordFamily(root, text);

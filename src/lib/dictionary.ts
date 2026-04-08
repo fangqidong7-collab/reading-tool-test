@@ -1912,11 +1912,10 @@ export function lemmatize(word: string): string {
 }
 
 /**
- * 获取单词的中文释义
+ * 获取单词的中文释义 - 使用智能后缀去除
  */
 export function getWordMeaning(word: string): { meaning: string; pos: string } | null {
-  const lowerWord = word.toLowerCase();
-  return englishDictionary[lowerWord] || null;
+  return smartLookup(word);
 }
 
 /**
@@ -1939,4 +1938,157 @@ export function findWordFamily(root: string, text: string): string[] {
   }
   
   return Array.from(family);
+}
+
+/**
+ * 智能去后缀 - 尝试多种可能的还原形式
+ */
+function getStemVariants(word: string): string[] {
+	const variants: string[] = [];
+	const lower = word.toLowerCase();
+	
+	// 双写辅音字母列表（常见需要双写的辅音结尾）
+	const doubleConsonants = ['b', 'd', 'g', 'm', 'n', 'p', 'r', 's', 't'];
+	
+	// 以e结尾的动词（去e加ing/ed）
+	const vowelEnding = /[aeiou]$/;
+	
+	// 以辅音+y结尾（去y加ied）
+	const consonantYEnding = /[bcdfghjklmnpqrstvwxyz]y$/i;
+	
+	// 去-ed时尝试的各种形式
+	if (lower.endsWith('ed')) {
+		const base = lower.slice(0, -2);
+		variants.push(base);
+		variants.push(base + 'e');
+		variants.push(lower.slice(0, -1));
+		if (base.length >= 2) {
+			const lastTwo = base.slice(-2);
+			if (lastTwo[0] === lastTwo[1] && doubleConsonants.includes(lastTwo[0])) {
+				variants.push(base.slice(0, -1));
+			}
+		}
+		if (consonantYEnding.test(base)) {
+			variants.push(base.slice(0, -1) + 'ied');
+		}
+	}
+	
+	// 去-ing时尝试的各种形式
+	if (lower.endsWith('ing')) {
+		const base = lower.slice(0, -3);
+		variants.push(base);
+		if (vowelEnding.test(base.slice(-2, -1))) {
+			variants.push(base + 'e');
+		}
+		if (base.length >= 2) {
+			const lastTwo = base.slice(-2);
+			if (lastTwo[0] === lastTwo[1] && doubleConsonants.includes(lastTwo[0])) {
+				variants.push(base.slice(0, -1));
+			}
+		}
+	}
+	
+	// 去-s时尝试的各种形式
+	if (lower.endsWith('s') && lower.length > 2) {
+		const base = lower.slice(0, -1);
+		if (lower.endsWith('es')) {
+			const baseEs = lower.slice(0, -2);
+			variants.push(baseEs);
+			if (/[shxz]/.test(baseEs.slice(-1)) || baseEs.endsWith('ch') || baseEs.endsWith('o')) {
+				variants.push(baseEs);
+			}
+			if (consonantYEnding.test(baseEs)) {
+				variants.push(baseEs.slice(0, -1) + 'ied');
+			}
+		}
+		variants.push(base);
+		if (consonantYEnding.test(base)) {
+			variants.push(base.slice(0, -1) + 'ies');
+		}
+	}
+	
+	// 去-er时尝试的各种形式
+	if (lower.endsWith('er')) {
+		const base = lower.slice(0, -2);
+		variants.push(base);
+		variants.push(base + 'e');
+		if (base.length >= 2) {
+			const lastTwo = base.slice(-2);
+			if (lastTwo[0] === lastTwo[1] && doubleConsonants.includes(lastTwo[0])) {
+				variants.push(base.slice(0, -1));
+			}
+		}
+	}
+	
+	// 去-est时尝试的各种形式
+	if (lower.endsWith('est')) {
+		const base = lower.slice(0, -3);
+		variants.push(base);
+		variants.push(base + 'e');
+		if (base.length >= 2) {
+			const lastTwo = base.slice(-2);
+			if (lastTwo[0] === lastTwo[1] && doubleConsonants.includes(lastTwo[0])) {
+				variants.push(base.slice(0, -1));
+			}
+		}
+	}
+	
+	// 去-ly时尝试的各种形式
+	if (lower.endsWith('ly')) {
+		const base = lower.slice(0, -2);
+		variants.push(base);
+		variants.push(base + 'le');
+		variants.push(base + 'y');
+		if (lower.endsWith('ally')) {
+			variants.push(lower.slice(0, -4));
+		}
+	}
+	
+	// 去后缀后再去后缀
+	if (variants.length > 0) {
+		const uniqueVariants = [...new Set(variants)];
+		for (const v of uniqueVariants) {
+			if (v !== lower && v.length > 2) {
+				const recursive = getStemVariants(v);
+				for (const r of recursive) {
+					if (!variants.includes(r)) {
+						variants.push(r);
+					}
+				}
+			}
+		}
+	}
+	
+	const unique = [...new Set(variants)];
+	return unique.filter(v => v.length >= 2 && v !== lower);
+}
+
+/**
+ * 智能词典查找 - 支持后缀智能去除
+ */
+export function smartLookup(word: string): { meaning: string; pos: string } | null {
+	const lower = word.toLowerCase();
+	
+	// 1. 先查原始单词
+	if (englishDictionary[lower]) {
+		return englishDictionary[lower];
+	}
+	
+	// 2. 获取所有可能的词根变体
+	const variants = getStemVariants(lower);
+	
+	// 3. 按优先级尝试每个变体
+	for (const variant of variants) {
+		if (englishDictionary[variant]) {
+			return englishDictionary[variant];
+		}
+	}
+	
+	// 4. 最后尝试lemmatize结果
+	const lemma = lemmatize(lower);
+	if (lemma !== lower && englishDictionary[lemma]) {
+		return englishDictionary[lemma];
+	}
+	
+	return null;
 }

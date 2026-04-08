@@ -2,10 +2,16 @@
 
 export interface DictEntry {
   meaning: string;
-  pos: string;
+  pos?: string; // Optional since new dict.json uses simple string format
 }
 
 export interface DictData {
+  // New format: simple key-value
+  [word: string]: string;
+}
+
+// Legacy format support
+export interface LegacyDictData {
   version: string;
   description: string;
   entries: Record<string, DictEntry>;
@@ -14,7 +20,7 @@ export interface DictData {
 export type DictLoadStatus = 'idle' | 'loading' | 'loaded' | 'failed';
 
 // Global state for external dictionary
-let externalDict: Record<string, DictEntry> = {};
+let externalDict: Record<string, string> = {};
 let loadStatus: DictLoadStatus = 'idle';
 let loadError: string | null = null;
 
@@ -50,7 +56,20 @@ export async function loadExternalDictionary(): Promise<DictLoadStatus> {
     }
 
     const data: DictData = await response.json();
-    externalDict = data.entries || {};
+    
+    // Handle new simple format (word -> meaning string)
+    // or legacy format (entries: { word -> { meaning, pos } })
+    if ('entries' in data && data.entries) {
+      // Legacy format
+      const entries = data.entries;
+      externalDict = {};
+      for (const [word, entry] of Object.entries(entries)) {
+        externalDict[word] = typeof entry === 'string' ? entry : (entry as DictEntry).meaning;
+      }
+    } else {
+      // New simple format
+      externalDict = data as unknown as Record<string, string>;
+    }
     
     // Save to cache
     saveToCache(externalDict);
@@ -80,19 +99,157 @@ export function getDictLoadError(): string | null {
 }
 
 /**
- * Look up a word in the external dictionary
+ * 智能去后缀 - 尝试多种可能的还原形式（外部词典用）
  */
-export function lookupExternalDict(word: string): DictEntry | null {
-  const lowerWord = word.toLowerCase().trim();
-  return externalDict[lowerWord] || null;
+function getStemVariantsExternal(word: string): string[] {
+	const variants: string[] = [];
+	const lower = word.toLowerCase();
+	
+	const doubleConsonants = ['b', 'd', 'g', 'm', 'n', 'p', 'r', 's', 't'];
+	const vowelEnding = /[aeiou]$/;
+	const consonantYEnding = /[bcdfghjklmnpqrstvwxyz]y$/i;
+	
+	// 去-ed时
+	if (lower.endsWith('ed')) {
+		const base = lower.slice(0, -2);
+		variants.push(base);
+		variants.push(base + 'e');
+		variants.push(lower.slice(0, -1));
+		if (base.length >= 2) {
+			const lastTwo = base.slice(-2);
+			if (lastTwo[0] === lastTwo[1] && doubleConsonants.includes(lastTwo[0])) {
+				variants.push(base.slice(0, -1));
+			}
+		}
+		if (consonantYEnding.test(base)) {
+			variants.push(base.slice(0, -1) + 'ied');
+		}
+	}
+	
+	// 去-ing时
+	if (lower.endsWith('ing')) {
+		const base = lower.slice(0, -3);
+		variants.push(base);
+		if (vowelEnding.test(base.slice(-2, -1))) {
+			variants.push(base + 'e');
+		}
+		if (base.length >= 2) {
+			const lastTwo = base.slice(-2);
+			if (lastTwo[0] === lastTwo[1] && doubleConsonants.includes(lastTwo[0])) {
+				variants.push(base.slice(0, -1));
+			}
+		}
+	}
+	
+	// 去-s时
+	if (lower.endsWith('s') && lower.length > 2) {
+		const base = lower.slice(0, -1);
+		if (lower.endsWith('es')) {
+			const baseEs = lower.slice(0, -2);
+			variants.push(baseEs);
+			if (/[shxz]/.test(baseEs.slice(-1)) || baseEs.endsWith('ch') || baseEs.endsWith('o')) {
+				variants.push(baseEs);
+			}
+			if (consonantYEnding.test(baseEs)) {
+				variants.push(baseEs.slice(0, -1) + 'ied');
+			}
+		}
+		variants.push(base);
+		if (consonantYEnding.test(base)) {
+			variants.push(base.slice(0, -1) + 'ies');
+		}
+	}
+	
+	// 去-er时
+	if (lower.endsWith('er')) {
+		const base = lower.slice(0, -2);
+		variants.push(base);
+		variants.push(base + 'e');
+		if (base.length >= 2) {
+			const lastTwo = base.slice(-2);
+			if (lastTwo[0] === lastTwo[1] && doubleConsonants.includes(lastTwo[0])) {
+				variants.push(base.slice(0, -1));
+			}
+		}
+	}
+	
+	// 去-est时
+	if (lower.endsWith('est')) {
+		const base = lower.slice(0, -3);
+		variants.push(base);
+		variants.push(base + 'e');
+		if (base.length >= 2) {
+			const lastTwo = base.slice(-2);
+			if (lastTwo[0] === lastTwo[1] && doubleConsonants.includes(lastTwo[0])) {
+				variants.push(base.slice(0, -1));
+			}
+		}
+	}
+	
+	// 去-ly时
+	if (lower.endsWith('ly')) {
+		const base = lower.slice(0, -2);
+		variants.push(base);
+		variants.push(base + 'le');
+		variants.push(base + 'y');
+		if (lower.endsWith('ally')) {
+			variants.push(lower.slice(0, -4));
+		}
+	}
+	
+	// 递归尝试更短的词根
+	if (variants.length > 0) {
+		const uniqueVariants = [...new Set(variants)];
+		for (const v of uniqueVariants) {
+			if (v !== lower && v.length > 2) {
+				const recursive = getStemVariantsExternal(v);
+				for (const r of recursive) {
+					if (!variants.includes(r)) {
+						variants.push(r);
+					}
+				}
+			}
+		}
+	}
+	
+	const unique = [...new Set(variants)];
+	return unique.filter(v => v.length >= 2 && v !== lower);
 }
 
 /**
- * Check if external dictionary has a word
+ * 智能词典查找 - 支持后缀智能去除
+ */
+export function smartLookupExternal(word: string): string | null {
+	const lower = word.toLowerCase().trim();
+	
+	// 1. 先查原始单词
+	if (externalDict[lower]) {
+		return externalDict[lower];
+	}
+	
+	// 2. 获取所有可能的词根变体并尝试
+	const variants = getStemVariantsExternal(lower);
+	for (const variant of variants) {
+		if (externalDict[variant]) {
+			return externalDict[variant];
+		}
+	}
+	
+	return null;
+}
+
+/**
+ * Look up a word in the external dictionary
+ */
+export function lookupExternalDict(word: string): string | null {
+	return smartLookupExternal(word);
+}
+
+/**
+ * Check if external dictionary has a word (with smart suffix stripping)
  */
 export function hasInExternalDict(word: string): boolean {
-  const lowerWord = word.toLowerCase().trim();
-  return lowerWord in externalDict;
+	return smartLookupExternal(word) !== null;
 }
 
 /**
@@ -112,7 +269,7 @@ export function resetDictState(): void {
 }
 
 // Cache management functions
-function loadFromCache(): Record<string, DictEntry> | null {
+function loadFromCache(): Record<string, string> | null {
   if (typeof window === 'undefined') return null;
   
   try {
@@ -134,7 +291,7 @@ function loadFromCache(): Record<string, DictEntry> | null {
   }
 }
 
-function saveToCache(dict: Record<string, DictEntry>): void {
+function saveToCache(dict: Record<string, string>): void {
   if (typeof window === 'undefined') return;
   
   try {
