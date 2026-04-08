@@ -8,14 +8,16 @@ import { ProcessedContent } from "@/hooks/useBookshelf";
 const HEADER_HEIGHT = 56; // Fixed header height in px
 const MOBILE_HEADER_HEIGHT = 48; // Mobile header height in px
 const PAGINATION_HEIGHT = 56; // Fixed pagination bar height in px
-const MOBILE_PAGINATION_HEIGHT = 0; // Mobile has no pagination bar (uses indicator)
-const READING_PADDING_VERTICAL = 40; // Vertical padding in px
-const MOBILE_READING_PADDING_VERTICAL = 16; // Mobile vertical padding
+const MOBILE_PAGINATION_BAR_HEIGHT = 48; // Mobile fixed bottom bar height
 const READING_PADDING_HORIZONTAL = 32; // Horizontal padding in px
+const READING_PADDING_VERTICAL = 40; // Vertical padding in px
 const MOBILE_READING_PADDING_HORIZONTAL = 12; // Mobile horizontal padding
 const PARAGRAPH_GAP = 16; // Gap between paragraphs in px
 const MOBILE_BREAKPOINT = 768; // Mobile breakpoint in px
 const TOUCH_SWIPE_THRESHOLD = 50; // Minimum swipe distance in px
+// Safe area bottom padding for iOS devices
+const SAFE_AREA_BOTTOM = 34; // Default safe area, will be overridden by env() in CSS
+const SAFE_AREA_TOP = 0; //刘海屏安全区
 
 // Ref type for exposing jumpToParagraph
 export interface ReadingAreaRef {
@@ -205,20 +207,72 @@ export const ReadingArea = forwardRef(function ReadingArea({
   // Detect mobile
   const isMobile = typeof window !== 'undefined' && window.innerWidth <= MOBILE_BREAKPOINT;
   const currentHeaderHeight = isMobile ? MOBILE_HEADER_HEIGHT : HEADER_HEIGHT;
-  const currentPaginationHeight = isMobile ? MOBILE_PAGINATION_HEIGHT : PAGINATION_HEIGHT;
-
-  // Calculate line-aligned page height
+  
+  // Mobile: fixed bottom bar, PC: normal pagination bar
+  const bottomBarHeight = isMobile ? MOBILE_PAGINATION_BAR_HEIGHT : PAGINATION_HEIGHT;
+  
+  // Calculate line-height in pixels
   const lineHeightPx = fontSize * lineHeight;
-  // Page bar height (mobile: fixed bar at bottom, PC: normal bar)
-  const pageBarHeight = isMobile ? 40 : PAGINATION_HEIGHT;
-  const rawViewHeight = window.innerHeight - currentHeaderHeight - pageBarHeight;
-  const pageHeight = Math.floor(rawViewHeight / lineHeightPx) * lineHeightPx;
-  const viewHeight = Math.max(200, pageHeight);
 
-  // Calculate view height (recalculated on resize)
+  // =========================================================================
+  // 核心修复：统一的可视区域高度计算
+  // =========================================================================
+  // 规则：
+  // 1. 扣除 header 高度
+  // 2. 扣除底部翻页栏高度  
+  // 3. 扣除 iOS safe area (通过 JS 动态获取)
+  // 4. 向下取整到 line-height 的整数倍（确保显示完整行）
+  // =========================================================================
+  
+  // 获取实际的 safe area bottom（iOS 设备需要）
+  const [safeAreaBottom, setSafeAreaBottom] = useState(0);
+  
   useEffect(() => {
-    // viewHeight is now calculated from pageHeight which is already line-aligned
-  }, [fontSize, lineHeight]);
+    if (!isMobile) {
+      setSafeAreaBottom(0);
+      return;
+    }
+    
+    // 方法1: 尝试从 CSS 变量获取
+    const getSafeAreaFromCSS = () => {
+      // 获取 body 的 computed style
+      const bodyStyle = window.getComputedStyle(document.body);
+      // 检查 padding-bottom 或 margin-bottom
+      const paddingBottom = parseInt(bodyStyle.paddingBottom) || 0;
+      const marginBottom = parseInt(bodyStyle.marginBottom) || 0;
+      return Math.max(paddingBottom, marginBottom);
+    };
+    
+    // 方法2: 检查 env() 变量（通过检查根元素）
+    const getSafeAreaFromEnv = () => {
+      // 通过创建一个隐藏元素来检测 env() 的值
+      const testEl = document.createElement('div');
+      testEl.style.height = 'env(safe-area-inset-bottom, 0px)';
+      testEl.style.position = 'absolute';
+      testEl.style.visibility = 'hidden';
+      document.body.appendChild(testEl);
+      const height = testEl.offsetHeight;
+      document.body.removeChild(testEl);
+      return height;
+    };
+    
+    // 使用默认值 iOS 通常是 34px
+    const detectedSafeArea = getSafeAreaFromCSS() || getSafeAreaFromEnv();
+    setSafeAreaBottom(detectedSafeArea > 0 ? detectedSafeArea : SAFE_AREA_BOTTOM);
+  }, [isMobile]);
+
+  // 计算每一页的实际可视高度（向下取整到 line-height）
+  const getPageHeight = useCallback(() => {
+    if (typeof window === 'undefined') return 500;
+    // 可视高度 = 屏幕高度 - header - 底部翻页栏 - safe area
+    const availableHeight = window.innerHeight - currentHeaderHeight - bottomBarHeight - safeAreaBottom;
+    // 向下取整到 line-height 的整数倍，确保不出现半行
+    const pageHeight = Math.floor(availableHeight / lineHeightPx) * lineHeightPx;
+    return Math.max(lineHeightPx * 3, pageHeight); // 最少显示3行
+  }, [currentHeaderHeight, bottomBarHeight, safeAreaBottom, lineHeightPx]);
+
+  // 计算用于分页的容器高度
+  const pageHeight = getPageHeight();
 
   // Calculate total pages based on content height
   useEffect(() => {
@@ -226,12 +280,9 @@ export const ReadingArea = forwardRef(function ReadingArea({
     
     const calculatePages = () => {
       const contentHeight = contentRef.current?.scrollHeight || 0;
-      // Use pageHeight (line-aligned) for pagination
-      const pageBarH = isMobile ? 40 : PAGINATION_HEIGHT;
-      const pageHeight = Math.floor(
-        (window.innerHeight - currentHeaderHeight - pageBarH) / lineHeightPx
-      ) * lineHeightPx;
-      const total = Math.ceil(contentHeight / pageHeight) || 1;
+      // 总页数 = ceil(内容高度 / 每页高度)
+      const currentPageHeight = getPageHeight();
+      const total = Math.ceil(contentHeight / currentPageHeight) || 1;
       setTotalPagesState(total);
       
       if (onTotalPagesChange) {
@@ -239,10 +290,9 @@ export const ReadingArea = forwardRef(function ReadingArea({
       }
     };
     
-    // Small delay to ensure content is rendered
-    const timer = setTimeout(calculatePages, 100);
+    // 延迟计算，确保内容已渲染
+    const timer = setTimeout(calculatePages, 150);
     
-    // Also recalculate on font/size changes
     const resizeObserver = new ResizeObserver(() => {
       clearTimeout(timer);
       calculatePages();
@@ -256,7 +306,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
       clearTimeout(timer);
       resizeObserver.disconnect();
     };
-  }, [processedContent, fontSize, lineHeight, lineHeightPx, onTotalPagesChange, currentHeaderHeight, currentPaginationHeight]);
+  }, [processedContent, fontSize, lineHeight, getPageHeight, onTotalPagesChange, currentHeaderHeight, bottomBarHeight]);
 
   // Update state when props change
   useEffect(() => {
@@ -268,17 +318,10 @@ export const ReadingArea = forwardRef(function ReadingArea({
   // Clamp current page to valid range
   const safeCurrentPage = Math.min(Math.max(1, currentPageState), totalPagesState);
 
-  // Calculate line-aligned page height for offset calculation
-  const getPageHeight = () => {
-    const pageBarH = isMobile ? 40 : PAGINATION_HEIGHT;
-    return Math.floor(
-      (window.innerHeight - currentHeaderHeight - pageBarH) / lineHeightPx
-    ) * lineHeightPx;
-  };
-
-  // Calculate transform offset for current page (aligned to line height)
-  // For page 1, offset = 0, so text starts at the top of padding area
-  // For subsequent pages, offset = (page - 1) * pageHeight
+  // 计算当前页的偏移量（向上滚动的内容高度）
+  // 第1页: offset = 0
+  // 第2页: offset = pageHeight
+  // 第3页: offset = 2 * pageHeight
   const currentPageHeight = getPageHeight();
   const offset = (safeCurrentPage - 1) * currentPageHeight;
 
@@ -404,13 +447,17 @@ export const ReadingArea = forwardRef(function ReadingArea({
   // Render content with all paragraphs
   if (processedContent && processedContent.length > 0) {
     const currentHorizPadding = isMobile ? MOBILE_READING_PADDING_HORIZONTAL : READING_PADDING_HORIZONTAL;
-    // Page indicator height (mobile uses fixed bar at bottom)
-    const PAGE_BAR_HEIGHT = isMobile ? 40 : PAGINATION_HEIGHT;
     
-    // Calculate reading area height: screen minus header minus page bar
-    const readingAreaHeight = headerVisible 
-      ? `calc(100vh - ${currentHeaderHeight}px - ${PAGE_BAR_HEIGHT}px)`
-      : `calc(100vh - ${PAGE_BAR_HEIGHT}px)`;
+    // 计算阅读区域的精确高度（用于渲染）
+    // 这个高度必须与分页计算中的 pageHeight 一致
+    const getReadingAreaHeight = () => {
+      if (typeof window === 'undefined') return 'calc(100vh - 100px)';
+      const availableHeight = window.innerHeight - currentHeaderHeight - bottomBarHeight - safeAreaBottom;
+      const lineH = fontSize * lineHeight;
+      const lineAlignedHeight = Math.floor(availableHeight / lineH) * lineH;
+      const finalHeight = Math.max(lineH * 3, lineAlignedHeight);
+      return `${finalHeight}px`;
+    };
     
     return (
       <div 
@@ -422,12 +469,12 @@ export const ReadingArea = forwardRef(function ReadingArea({
           position: 'relative',
         }}
       >
-        {/* Reading Content Area - fills space between header and page bar */}
+        {/* 阅读内容区域 - 精确高度 = 屏幕 - header - 底部翻页栏 - safe area */}
         <div 
           ref={containerRef}
           className="reading-area"
           style={{
-            height: readingAreaHeight,
+            height: getReadingAreaHeight(),
             overflow: 'hidden',
             paddingLeft: `${currentHorizPadding}px`,
             paddingRight: `${currentHorizPadding}px`,
@@ -437,7 +484,13 @@ export const ReadingArea = forwardRef(function ReadingArea({
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
-          {/* Content container - position relative, no absolute */}
+          {/* 
+            文本内容容器：
+            1. position: relative（禁止 absolute）
+            2. 不设置 padding-top/padding-bottom（避免内容区域变小）
+            3. 使用 margin-top 来实现分页滚动
+            4. 内容高度等于所有段落的总高度
+          */}
           <div 
             ref={contentRef}
             className="text-content"
@@ -449,13 +502,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
               textAlign: 'justify',
               marginTop: `-${offset}px`,
               willChange: 'margin-top',
-              minHeight: `calc(100% - 40px)`,
-              height: '100%',
-              paddingTop: '20px',
-              paddingBottom: '60px',
-              boxSizing: 'border-box',
-              display: 'block',
-              flexShrink: 0,
+              position: 'relative',
             }}
           >
             {processedContent.map((paragraph, pIndex) => (
@@ -471,11 +518,11 @@ export const ReadingArea = forwardRef(function ReadingArea({
           </div>
         </div>
 
-        {/* Page indicator bar - PC: shown normally, Mobile: fixed at bottom */}
+        {/* 底部翻页栏 - 移动端固定在底部 */}
         <div
           className={`page-indicator-bar ${isDarkMode ? 'dark' : ''} ${isMobile ? 'mobile-fixed' : ''}`}
           style={{
-            height: `${PAGE_BAR_HEIGHT}px`,
+            height: `${bottomBarHeight}px`,
             backgroundColor,
             borderTopColor: isDarkMode ? "#333" : "#e0e0e0",
           }}
@@ -611,13 +658,22 @@ export const ReadingArea = forwardRef(function ReadingArea({
             color: #999;
           }
 
+          /* Mobile styles - 处理 safe area */
           @media (max-width: 768px) {
             .reading-wrapper {
               height: 100vh !important;
+              height: 100dvh !important; /* 动态视口高度，处理地址栏 */
             }
 
             .reading-area {
-              padding: 0 12px !important;
+              padding-left: 12px !important;
+              padding-right: 12px !important;
+            }
+
+            /* iOS safe area - 确保底部翻页栏不被手势区域遮挡 */
+            .page-indicator-bar.mobile-fixed {
+              bottom: env(safe-area-inset-bottom, 0px);
+              padding-bottom: env(safe-area-inset-bottom, 0px);
             }
           }
 
