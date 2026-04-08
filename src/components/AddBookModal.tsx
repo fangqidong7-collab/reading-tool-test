@@ -24,6 +24,7 @@ export function AddBookModal({ isOpen, onClose, onAdd }: AddBookModalProps) {
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const titleInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen && textareaRef.current && !parsing) {
@@ -71,14 +72,27 @@ export function AddBookModal({ isOpen, onClose, onAdd }: AddBookModalProps) {
       setError(null);
       setParsing(true);
 
+      // Extract filename without extension as default title
+      const defaultTitle = file.name.replace(/\.[^/.]+$/, "");
+
       const result = await parseFile(file, setProgress);
 
       setParsing(false);
 
       if (result.success) {
-        setTitle(result.title);
+        // Use parsed title if available, otherwise use filename
+        const finalTitle = result.title || defaultTitle;
+        setTitle(finalTitle);
         setContent(result.content);
         setMode("paste"); // Switch to paste mode to show preview
+        
+        // Move cursor to end of title input
+        setTimeout(() => {
+          if (titleInputRef.current) {
+            titleInputRef.current.focus();
+            titleInputRef.current.setSelectionRange(finalTitle.length, finalTitle.length);
+          }
+        }, 50);
       } else {
         setError(result.error || "解析失败");
         setFileName("");
@@ -173,11 +187,12 @@ export function AddBookModal({ isOpen, onClose, onAdd }: AddBookModalProps) {
               <div className="form-group">
                 <label htmlFor="book-title">书名</label>
                 <input
+                  ref={titleInputRef}
                   id="book-title"
                   type="text"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder="输入书名（可选）"
+                  placeholder="输入书名（可选，将使用文件名）"
                   className="form-input"
                   disabled={parsing}
                 />
@@ -235,11 +250,11 @@ export function AddBookModal({ isOpen, onClose, onAdd }: AddBookModalProps) {
                 </div>
               ) : (
                 <div className="form-group">
-                  <p className="input-hint">支持 TXT、EPUB、PDF 格式</p>
+                  <p className="input-hint">支持 TXT、EPUB 格式</p>
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept=".txt,.epub,.pdf"
+                    accept=".txt,.epub"
                     onChange={handleFileChange}
                     className="file-input"
                     id="file-upload"

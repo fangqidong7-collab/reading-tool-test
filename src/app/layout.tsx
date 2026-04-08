@@ -17,8 +17,6 @@ export default function RootLayout({
       <head>
         {/* JSZip for EPUB parsing */}
         <Script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" strategy="lazyOnload" />
-        {/* PDF.js for PDF parsing */}
-        <Script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.js" strategy="lazyOnload" />
       </head>
       <body>{children}</body>
     </html>

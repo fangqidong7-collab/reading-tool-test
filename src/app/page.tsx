@@ -62,8 +62,10 @@ export default function Home() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const scrollPositionSavedRef = useRef(false);
-
+  
+  // Ref to track if we're currently in a programmatic scroll
+  const isProgrammaticScrollRef = useRef(false);
+  
   // Store current book data in refs to avoid dependency issues
   const currentBookIdRef = useRef<string | null>(null);
   const currentBookContentRef = useRef<string>("");
@@ -95,11 +97,15 @@ export default function Home() {
         saveProcessedContent(currentBook.id, processed);
       }
       // Restore scroll position after a delay to allow content to render
-      scrollPositionSavedRef.current = false;
+      isProgrammaticScrollRef.current = true;
       setTimeout(() => {
         if (currentBook.lastScrollPosition && currentBook.lastScrollPosition > 0) {
           window.scrollTo({ top: currentBook.lastScrollPosition, behavior: "auto" });
         }
+        // Reset the flag after scroll completes
+        setTimeout(() => {
+          isProgrammaticScrollRef.current = false;
+        }, 100);
       }, 300);
     } else {
       currentBookIdRef.current = null;
@@ -117,17 +123,20 @@ export default function Home() {
     }
   }, [annotations, updateBookAnnotations]);
 
-  // Handle scroll - save position with debounce
+  // Handle scroll - save position with debounce, only for user scrolls
   useEffect(() => {
     if (!currentBook) return;
 
     const handleScroll = () => {
+      // Skip if this is a programmatic scroll
+      if (isProgrammaticScrollRef.current) return;
+      
       if (scrollTimeoutRef.current) {
         clearTimeout(scrollTimeoutRef.current);
       }
       scrollTimeoutRef.current = setTimeout(() => {
         const bookId = currentBookIdRef.current;
-        if (bookId && !scrollPositionSavedRef.current) {
+        if (bookId) {
           updateScrollPosition(bookId, window.scrollY);
         }
       }, 500);
@@ -231,10 +240,14 @@ export default function Home() {
       `[data-root="${root}"]`
     );
     if (elements && elements.length > 0) {
+      isProgrammaticScrollRef.current = true;
       (elements[0] as HTMLElement).scrollIntoView({
         behavior: "smooth",
         block: "center",
       });
+      setTimeout(() => {
+        isProgrammaticScrollRef.current = false;
+      }, 500);
     }
   }, []);
 
@@ -259,7 +272,7 @@ export default function Home() {
     if (bookId) {
       updateScrollPosition(bookId, window.scrollY);
     }
-    scrollPositionSavedRef.current = true;
+    isProgrammaticScrollRef.current = true;
     closeBook();
     setText("");
     setAnnotations({});

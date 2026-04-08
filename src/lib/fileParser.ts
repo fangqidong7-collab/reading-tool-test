@@ -17,11 +17,74 @@ export interface ParseResult {
 // File size limit (5MB)
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
-// Minimum word count for PDF to be considered valid
-const MIN_PDF_WORDS = 50;
-
 // Update progress callback type
 type ProgressCallback = (progress: ParseProgress) => void;
+
+// Helper function to decode HTML entities
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'");
+}
+
+// Helper function to clean text
+function cleanText(text: string): string {
+  return text
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Helper function to extract text from HTML, preserving paragraph structure
+function extractParagraphsFromHtml(html: string): { paragraphs: string[]; headings: string[] } {
+  const paragraphs: string[] = [];
+  const headings: string[] = [];
+  
+  // Remove script and style tags first
+  let cleanHtml = html
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "");
+  
+  // Extract headings first (h1-h6)
+  const headingRegex = /<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/gi;
+  let headingMatch;
+  while ((headingMatch = headingRegex.exec(cleanHtml)) !== null) {
+    const headingText = cleanText(decodeHtmlEntities(headingMatch[2]));
+    if (headingText.length > 0) {
+      headings.push(headingText);
+    }
+  }
+  
+  // Replace block-level elements with double newlines
+  // Order matters: replace <br> first, then block elements
+  cleanHtml = cleanHtml.replace(/<br\s*\/?>/gi, "\n\n");
+  cleanHtml = cleanHtml.replace(/<\/p>/gi, "\n\n");
+  cleanHtml = cleanHtml.replace(/<\/div>/gi, "\n\n");
+  cleanHtml = cleanHtml.replace(/<\/h[1-6]>/gi, "\n\n");
+  
+  // Remove all remaining HTML tags
+  cleanHtml = cleanHtml.replace(/<[^>]+>/g, " ");
+  
+  // Decode HTML entities
+  cleanHtml = decodeHtmlEntities(cleanHtml);
+  
+  // Split by newlines and clean up
+  const lines = cleanHtml.split(/\n+/);
+  
+  for (const line of lines) {
+    const cleaned = cleanText(line);
+    // Only add non-empty paragraphs with meaningful content (at least 10 characters)
+    if (cleaned.length >= 10) {
+      paragraphs.push(cleaned);
+    }
+  }
+  
+  return { paragraphs, headings };
+}
 
 // Parse EPUB file
 async function parseEpub(file: File, onProgress: ProgressCallback): Promise<{ title: string; content: string }> {
@@ -90,6 +153,7 @@ async function parseEpub(file: File, onProgress: ProgressCallback): Promise<{ ti
 
     // Extract text from each spine item in order
     const chapterContents: string[] = [];
+    const allHeadings: string[] = [];
     
     for (let i = 0; i < spineIds.length; i++) {
       const id = spineIds[i];
@@ -100,29 +164,21 @@ async function parseEpub(file: File, onProgress: ProgressCallback): Promise<{ ti
       const chapterHtml = await zip.file(chapterPath)?.async("string");
       
       if (chapterHtml) {
-        // Extract title from chapter
-        const h1Match = chapterHtml.match(/<h1[^>]*>([^<]+)<\/h1>/i);
-        const h2Match = chapterHtml.match(/<h2[^>]*>([^<]+)<\/h2>/i);
-        const chapterTitle = h1Match?.[1] || h2Match?.[1];
+        // Extract paragraphs and headings from chapter
+        const { paragraphs, headings } = extractParagraphsFromHtml(chapterHtml);
         
-        // Strip HTML tags but keep structure
-        const text = chapterHtml
-          .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
-          .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-          .replace(/<[^>]+>/g, " ")
-          .replace(/&nbsp;/g, " ")
-          .replace(/&amp;/g, "&")
-          .replace(/&lt;/g, "<")
-          .replace(/&gt;/g, ">")
-          .replace(/&quot;/g, '"')
-          .replace(/\s+/g, " ")
-          .trim();
-
-        if (text.length > 50) {
-          if (chapterTitle) {
-            chapterContents.push(`\n\n=== ${chapterTitle.trim()} ===\n\n`);
-          }
-          chapterContents.push(text);
+        // Add headings to chapter headings list
+        allHeadings.push(...headings);
+        
+        // Add chapter heading if found in chapter
+        const chapterHeading = headings[0];
+        if (chapterHeading && paragraphs.length > 0) {
+          chapterContents.push(`\n\n--- ${chapterHeading} ---\n\n`);
+        }
+        
+        // Add paragraphs
+        if (paragraphs.length > 0) {
+          chapterContents.push(paragraphs.join("\n\n"));
         }
       }
       
@@ -131,27 +187,25 @@ async function parseEpub(file: File, onProgress: ProgressCallback): Promise<{ ti
       onProgress({ stage: "parsing", percent: progress, message: "正在解析文本..." });
     }
 
-    content = chapterContents.join("\n");
+    // Join all content with clear separation
+    content = chapterContents.filter(c => c.trim().length > 0).join("\n\n");
   } else {
     // Fallback: try to extract all text files
     const textFiles = Object.keys(zip.files).filter((name) => 
       name.endsWith(".xhtml") || name.endsWith(".html") || name.endsWith(".htm")
     );
     
+    const allParagraphs: string[] = [];
+    
     for (const filePath of textFiles) {
       const html = await zip.file(filePath)?.async("string");
       if (html) {
-        const text = html
-          .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
-          .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-          .replace(/<[^>]+>/g, " ")
-          .replace(/\s+/g, " ")
-          .trim();
-        if (text.length > 50) {
-          content += text + "\n\n";
-        }
+        const { paragraphs } = extractParagraphsFromHtml(html);
+        allParagraphs.push(...paragraphs);
       }
     }
+    
+    content = allParagraphs.join("\n\n");
   }
 
   if (!content.trim()) {
@@ -162,78 +216,6 @@ async function parseEpub(file: File, onProgress: ProgressCallback): Promise<{ ti
   onProgress({ stage: "complete", percent: 100, message: "解析完成！" });
 
   return { title, content };
-}
-
-// Parse PDF file
-async function parsePdf(file: File, onProgress: ProgressCallback): Promise<{ title: string; content: string }> {
-  onProgress({ stage: "reading", percent: 10, message: "正在读取文件..." });
-  
-  // PDF.js type definition
-  interface PDFJSLib {
-    getDocument: (options: { data: ArrayBuffer }) => {
-      promise: Promise<{
-        numPages: number;
-        getPage: (num: number) => Promise<{
-          getTextContent: () => Promise<{ items: Array<{ str: string }> }>
-        }>
-      }>
-    };
-    GlobalWorkerOptions: {
-      workerSrc: string;
-    };
-  }
-  
-  const pdfjsLib = (window as unknown as { pdfjsLib: PDFJSLib }).pdfjsLib;
-  if (!pdfjsLib) {
-    throw new Error("PDF.js library not loaded");
-  }
-
-  // Set worker source
-  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.js";
-
-  onProgress({ stage: "reading", percent: 20, message: "正在读取文件..." });
-  const arrayBuffer = await file.arrayBuffer();
-
-  onProgress({ stage: "parsing", percent: 30, message: "正在解析文本..." });
-  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-  
-  const numPages = pdf.numPages;
-  const pageContents: string[] = [];
-  let fullText = "";
-
-  for (let i = 1; i <= numPages; i++) {
-    const page = await pdf.getPage(i);
-    const textContent = await page.getTextContent();
-    const pageText = textContent.items.map((item) => item.str).join(" ");
-    pageContents.push(pageText);
-    
-    // Update progress
-    const progress = 30 + Math.round((i / numPages) * 40);
-    onProgress({ stage: "parsing", percent: progress, message: "正在解析文本..." });
-  }
-
-  fullText = pageContents.join("\n\n");
-  
-  // Count words
-  const wordCount = fullText.split(/\s+/).filter((w) => w.length > 0).length;
-  
-  if (wordCount < MIN_PDF_WORDS) {
-    throw new Error("SCAN_PDF");
-  }
-
-  onProgress({ stage: "analyzing", percent: 90, message: "正在分析词汇..." });
-  onProgress({ stage: "complete", percent: 100, message: "解析完成！" });
-
-  // Try to extract title from first page or use filename
-  let title = file.name.replace(/\.[^/.]+$/, "");
-  if (pageContents[0]) {
-    const firstLine = pageContents[0].split("\n")[0].trim();
-    if (firstLine.length > 0 && firstLine.length < 100) {
-      title = firstLine;
-    }
-  }
-
-  return { title, content: fullText };
 }
 
 // Parse TXT file
@@ -303,9 +285,6 @@ export async function parseFile(
       case "epub":
         result = await parseEpub(file, onProgress);
         break;
-      case "pdf":
-        result = await parsePdf(file, onProgress);
-        break;
       case "txt":
       default:
         result = await parseTxt(file, onProgress);
@@ -323,16 +302,6 @@ export async function parseFile(
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "未知错误";
     
-    if (errorMessage === "SCAN_PDF") {
-      onProgress({ stage: "error", percent: 0, message: "扫描版PDF" });
-      return {
-        title: "",
-        content: "",
-        success: false,
-        error: "该PDF似乎是扫描版，暂不支持扫描版PDF，请上传文字版PDF或转换为TXT格式后上传",
-      };
-    }
-
     if (errorMessage === "无法从EPUB文件中提取文本内容") {
       onProgress({ stage: "error", percent: 0, message: "解析失败" });
       return {

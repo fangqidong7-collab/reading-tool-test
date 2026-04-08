@@ -93,7 +93,11 @@ export function useBookshelf() {
     const timeoutId = setTimeout(() => {
       try {
         // Create a copy without processedContent to save storage space
-        const booksToSave = books.map(({ processedContent, ...rest }) => rest);
+        const booksToSave = books.map((book) => {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { processedContent: _pc, ...rest } = book;
+          return rest;
+        });
         localStorage.setItem(STORAGE_KEY, JSON.stringify(booksToSave));
       } catch (error) {
         console.warn("Failed to save books to localStorage:", error);
