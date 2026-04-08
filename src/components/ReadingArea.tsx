@@ -36,6 +36,7 @@ interface ParagraphProps {
   isCurrentSearchResult?: boolean;
   highlightBg?: string;
   isDarkMode?: boolean;
+  lineHeight?: number;
 }
 
 const Paragraph = React.memo(({
@@ -48,6 +49,7 @@ const Paragraph = React.memo(({
   isCurrentSearchResult = false,
   highlightBg = "#FFEB3B",
   isDarkMode = false,
+  lineHeight = 1.6,
 }: ParagraphProps) => {
   const handleClick = useCallback((e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
@@ -74,8 +76,10 @@ const Paragraph = React.memo(({
           fontSize: '1.6em',
           fontWeight: 'bold',
           textAlign: 'center',
-          marginTop: '40px',
-          marginBottom: '20px',
+          marginTop: 0,
+          marginBottom: 0,
+          paddingTop: `${lineHeight * 2}em`,
+          paddingBottom: `${lineHeight}em`,
           color: baseColor,
         };
       case 2:
@@ -83,24 +87,30 @@ const Paragraph = React.memo(({
           fontSize: '1.4em',
           fontWeight: 'bold',
           textAlign: 'center',
-          marginTop: '30px',
-          marginBottom: '16px',
+          marginTop: 0,
+          marginBottom: 0,
+          paddingTop: `${lineHeight * 1.5}em`,
+          paddingBottom: `${lineHeight}em`,
           color: baseColor,
         };
       case 3:
         return {
           fontSize: '1.2em',
           fontWeight: 'bold',
-          marginTop: '24px',
-          marginBottom: '12px',
+          marginTop: 0,
+          marginBottom: 0,
+          paddingTop: `${lineHeight}em`,
+          paddingBottom: `${lineHeight * 0.5}em`,
           color: baseColor,
         };
       default: // h4-h6
         return {
           fontSize: '1.1em',
           fontWeight: 'bold',
-          marginTop: '20px',
-          marginBottom: '10px',
+          marginTop: 0,
+          marginBottom: 0,
+          paddingTop: `${lineHeight * 0.5}em`,
+          paddingBottom: `${lineHeight * 0.5}em`,
           color: baseColor,
         };
     }
@@ -112,7 +122,13 @@ const Paragraph = React.memo(({
       data-paragraph-index={pIndex}
       data-heading-level={isHeading ? headingLevel : undefined}
       onClick={handleClick}
-      style={isCurrentSearchResult ? { backgroundColor: highlightBg } : (isHeading ? getHeadingStyles() : undefined)}
+      style={{
+        marginTop: 0,
+        marginBottom: 0,
+        paddingBottom: `${lineHeight}em`,
+        ...(isCurrentSearchResult ? { backgroundColor: highlightBg } : {}),
+        ...(isHeading ? getHeadingStyles() : {}),
+      }}
     >
       {paragraph.segments.map((segment, sIndex) => {
         const key = `${pIndex}-${sIndex}`;
@@ -166,6 +182,7 @@ function paragraphPropsAreEqual(
     isCurrentSearchResult?: boolean;
     highlightBg?: string;
     isDarkMode?: boolean;
+    lineHeight?: number;
   },
   next: {
     paragraph: ProcessedContent[number];
@@ -177,6 +194,7 @@ function paragraphPropsAreEqual(
     isCurrentSearchResult?: boolean;
     highlightBg?: string;
     isDarkMode?: boolean;
+    lineHeight?: number;
   }
 ) {
   if (prev.pIndex !== next.pIndex) return false;
@@ -186,6 +204,7 @@ function paragraphPropsAreEqual(
   if (prev.isCurrentSearchResult !== next.isCurrentSearchResult) return false;
   if (prev.highlightBg !== next.highlightBg) return false;
   if (prev.isDarkMode !== next.isDarkMode) return false;
+  if (prev.lineHeight !== next.lineHeight) return false;
   
   const prevKeys = prev.annotations ? Object.keys(prev.annotations) : [];
   const nextKeys = next.annotations ? Object.keys(next.annotations) : [];
@@ -304,19 +323,23 @@ export const ReadingArea = forwardRef(function ReadingArea({
       console.log('翻页调试 - 容器高度:', container.clientHeight, '行高px:', fontSize * lineHeight, '每页行数:', Math.floor(container.clientHeight / (fontSize * lineHeight)), '对齐后每页高度:', pageH, '总页数:', total);
       
       // 检查 reader-content 的实际渲染尺寸
-      const contentStyle = window.getComputedStyle(contentRef.current);
-      console.log('content实际样式 - paddingTop:', contentStyle.paddingTop, 'paddingBottom:', contentStyle.paddingBottom, 'marginTop:', contentStyle.marginTop, 'marginBottom:', contentStyle.marginBottom);
+      if (contentRef.current) {
+        const contentStyle = window.getComputedStyle(contentRef.current);
+        console.log('content实际样式 - paddingTop:', contentStyle.paddingTop, 'paddingBottom:', contentStyle.paddingBottom, 'marginTop:', contentStyle.marginTop, 'marginBottom:', contentStyle.marginBottom);
 
-      // 检查第一个段落的位置
-      const firstP = contentRef.current.querySelector('.paragraph');
-      if (firstP) {
-        const firstPStyle = window.getComputedStyle(firstP);
-        console.log('第一个段落 - offsetTop:', (firstP as HTMLElement).offsetTop, 'marginTop:', firstPStyle.marginTop, 'marginBottom:', firstPStyle.marginBottom, 'lineHeight:', firstPStyle.lineHeight, 'fontSize:', firstPStyle.fontSize);
+        // 检查第一个段落的位置
+        const firstP = contentRef.current.querySelector('.paragraph');
+        if (firstP) {
+          const firstPStyle = window.getComputedStyle(firstP);
+          console.log('第一个段落 - offsetTop:', (firstP as HTMLElement).offsetTop, 'marginTop:', firstPStyle.marginTop, 'marginBottom:', firstPStyle.marginBottom, 'lineHeight:', firstPStyle.lineHeight, 'fontSize:', firstPStyle.fontSize);
+        }
       }
 
       // 检查 reading-container 的实际样式
-      const containerStyle = window.getComputedStyle(containerRef.current);
-      console.log('容器实际样式 - paddingTop:', containerStyle.paddingTop, 'paddingBottom:', containerStyle.paddingBottom, 'height:', containerStyle.height, 'clientHeight:', containerRef.current.clientHeight);
+      if (containerRef.current) {
+        const containerStyle = window.getComputedStyle(containerRef.current);
+        console.log('容器实际样式 - paddingTop:', containerStyle.paddingTop, 'paddingBottom:', containerStyle.paddingBottom, 'height:', containerStyle.height, 'clientHeight:', containerRef.current.clientHeight);
+      }
       
       setTotalPagesState(total);
       if (onTotalPagesChange) {
@@ -507,6 +530,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
                 isCurrentSearchResult={searchResults.length > 0 && searchResults[currentSearchIndex]?.paragraphIndex === pIndex}
                 highlightBg={highlightBg}
                 isDarkMode={isDarkMode}
+                lineHeight={lineHeight}
               />
             ))}
           </div>
@@ -577,7 +601,8 @@ export const ReadingArea = forwardRef(function ReadingArea({
           }
 
           .reader-content :global(.paragraph) {
-            margin-bottom: ${PARAGRAPH_GAP}px;
+            margin-bottom: 0px !important;
+            margin-top: 0px !important;
           }
 
           .reader-content :global(.word) {
