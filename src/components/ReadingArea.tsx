@@ -208,9 +208,9 @@ export const ReadingArea = forwardRef(function ReadingArea({
   const currentPaginationHeight = isMobile ? MOBILE_PAGINATION_HEIGHT : PAGINATION_HEIGHT;
   const currentVerticalPadding = isMobile ? MOBILE_READING_PADDING_VERTICAL : READING_PADDING_VERTICAL;
 
-  // Calculate line-aligned page height
+  // Calculate line-aligned page height (no vertical padding in reading-area)
   const lineHeightPx = fontSize * lineHeight;
-  const rawViewHeight = window.innerHeight - currentHeaderHeight - currentPaginationHeight - (currentVerticalPadding * 2);
+  const rawViewHeight = window.innerHeight - currentHeaderHeight - currentPaginationHeight;
   const pageHeight = Math.floor(rawViewHeight / lineHeightPx) * lineHeightPx;
   const viewHeight = Math.max(300, pageHeight);
 
@@ -225,9 +225,9 @@ export const ReadingArea = forwardRef(function ReadingArea({
     
     const calculatePages = () => {
       const contentHeight = contentRef.current?.scrollHeight || 0;
-      // Use pageHeight (line-aligned) for pagination
+      // Use pageHeight (line-aligned) for pagination - no vertical padding
       const pageHeight = Math.floor(
-        (window.innerHeight - currentHeaderHeight - currentPaginationHeight - (currentVerticalPadding * 2)) / lineHeightPx
+        (window.innerHeight - currentHeaderHeight - currentPaginationHeight) / lineHeightPx
       ) * lineHeightPx;
       const total = Math.ceil(contentHeight / pageHeight) || 1;
       setTotalPagesState(total);
@@ -254,7 +254,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
       clearTimeout(timer);
       resizeObserver.disconnect();
     };
-  }, [processedContent, fontSize, lineHeight, lineHeightPx, onTotalPagesChange, currentHeaderHeight, currentPaginationHeight, currentVerticalPadding]);
+  }, [processedContent, fontSize, lineHeight, lineHeightPx, onTotalPagesChange, currentHeaderHeight, currentPaginationHeight]);
 
   // Update state when props change
   useEffect(() => {
@@ -267,13 +267,16 @@ export const ReadingArea = forwardRef(function ReadingArea({
   const safeCurrentPage = Math.min(Math.max(1, currentPageState), totalPagesState);
 
   // Calculate line-aligned page height for offset calculation
+  // No vertical padding since text-content now starts at top
   const getPageHeight = () => {
     return Math.floor(
-      (window.innerHeight - currentHeaderHeight - currentPaginationHeight - (currentVerticalPadding * 2)) / lineHeightPx
+      (window.innerHeight - currentHeaderHeight - currentPaginationHeight) / lineHeightPx
     ) * lineHeightPx;
   };
 
   // Calculate transform offset for current page (aligned to line height)
+  // For page 1, offset = 0, so text starts at the top of padding area
+  // For subsequent pages, offset = (page - 1) * pageHeight
   const currentPageHeight = getPageHeight();
   const offset = (safeCurrentPage - 1) * currentPageHeight;
 
@@ -399,10 +402,11 @@ export const ReadingArea = forwardRef(function ReadingArea({
   // Render content with all paragraphs
   if (processedContent && processedContent.length > 0) {
     // Use dynamic viewport height for better mobile support (handles address bar)
+    // No vertical padding in reading-area since text-content starts from top
     const currentHorizPadding = isMobile ? MOBILE_READING_PADDING_HORIZONTAL : READING_PADDING_HORIZONTAL;
     const containerHeight = headerVisible 
-      ? `calc(100dvh - ${currentHeaderHeight}px - ${currentPaginationHeight}px - ${currentVerticalPadding * 2}px)` 
-      : `calc(100dvh - ${currentPaginationHeight}px - ${currentVerticalPadding * 2}px)`;
+      ? `calc(100dvh - ${currentHeaderHeight}px - ${currentPaginationHeight}px)` 
+      : `calc(100dvh - ${currentPaginationHeight}px)`;
     
     return (
       <div 
@@ -416,7 +420,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
           overflow: 'hidden',
         }}
       >
-        {/* Reading Content Area - CSS transform pagination */}
+        {/* Reading Content Area - margin-based pagination */}
         <div 
           ref={containerRef}
           className="reading-area"
@@ -424,14 +428,15 @@ export const ReadingArea = forwardRef(function ReadingArea({
             height: containerHeight,
             maxHeight: containerHeight,
             overflow: 'hidden',
-            padding: `${currentVerticalPadding}px ${currentHorizPadding}px`,
+            paddingLeft: `${currentHorizPadding}px`,
+            paddingRight: `${currentHorizPadding}px`,
             boxSizing: 'border-box',
             flex: 1,
           }}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
-          {/* Scrolling content container with transform offset */}
+          {/* Scrolling content container with margin offset for pagination */}
           <div 
             ref={contentRef}
             className="text-content"
@@ -441,8 +446,8 @@ export const ReadingArea = forwardRef(function ReadingArea({
               color: textColor,
               fontFamily: 'Georgia, "Times New Roman", serif',
               textAlign: 'justify',
-              transform: `translateY(-${offset}px)`,
-              willChange: 'transform',
+              marginTop: `-${offset}px`,
+              willChange: 'margin-top',
               minHeight: `${viewHeight}px`,
             }}
           >
@@ -611,7 +616,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
             }
 
             .reading-area {
-              padding: 16px 12px !important;
+              padding: 0 12px !important;
             }
 
             .text-content {
@@ -623,7 +628,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
           /* Mobile Page Indicator - Only show on mobile */
           .mobile-page-indicator {
             display: none;
-            position: fixed;
+            position: absolute;
             bottom: 16px;
             right: 16px;
             font-size: 12px;
@@ -647,6 +652,8 @@ export const ReadingArea = forwardRef(function ReadingArea({
 
             .mobile-page-indicator {
               display: block;
+              position: fixed;
+              bottom: calc(16px + env(safe-area-inset-bottom, 0px));
             }
           }
 
