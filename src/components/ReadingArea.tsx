@@ -16,6 +16,12 @@ const MOBILE_READING_PADDING_HORIZONTAL = 12; // Mobile horizontal padding
 const PARAGRAPH_GAP = 16; // Gap between paragraphs in px
 const MOBILE_BREAKPOINT = 768; // Mobile breakpoint in px
 const TOUCH_SWIPE_THRESHOLD = 50; // Minimum swipe distance in px
+// Mobile page indicator constants
+const MOBILE_PAGE_INDICATOR_HEIGHT = 40; // 页码指示器高度约40px
+const MOBILE_PAGE_INDICATOR_BOTTOM = 16; // 页码指示器距底部距离
+const MOBILE_SAFE_GAP = 10; // 安全间距
+const MOBILE_TOP_GAP = 5; // 顶部间距（工作栏下方）
+const MOBILE_BOTTOM_PADDING = 20; // 阅读区域底部padding，给页码留安全冗余
 
 // Ref type for exposing jumpToParagraph
 export interface ReadingAreaRef {
@@ -206,13 +212,20 @@ export const ReadingArea = forwardRef(function ReadingArea({
   const isMobile = typeof window !== 'undefined' && window.innerWidth <= MOBILE_BREAKPOINT;
   const currentHeaderHeight = isMobile ? MOBILE_HEADER_HEIGHT : HEADER_HEIGHT;
   const currentPaginationHeight = isMobile ? MOBILE_PAGINATION_HEIGHT : PAGINATION_HEIGHT;
-  const currentVerticalPadding = isMobile ? MOBILE_READING_PADDING_VERTICAL : READING_PADDING_VERTICAL;
 
-  // Calculate line-aligned page height (no vertical padding in reading-area)
+  // 【修正一】计算移动端底部需要预留的空间：页码高度 + bottom间距 + 安全间距
+  const mobileBottomReserved = isMobile 
+    ? MOBILE_PAGE_INDICATOR_HEIGHT + MOBILE_PAGE_INDICATOR_BOTTOM + MOBILE_SAFE_GAP
+    : 0;
+
+  // 【修正一】计算阅读区域可用高度（已对齐行高）
+  // 公式：100dvh - 顶栏 - 顶部间距 - 底部预留空间
+  const availableHeight = window.innerHeight - currentHeaderHeight - MOBILE_TOP_GAP - mobileBottomReserved;
+
+  // 【修正二】严格对齐行高：Math.floor向下取整，确保每页第一行、最后一行完整
   const lineHeightPx = fontSize * lineHeight;
-  const rawViewHeight = window.innerHeight - currentHeaderHeight - currentPaginationHeight;
-  const pageHeight = Math.floor(rawViewHeight / lineHeightPx) * lineHeightPx;
-  const viewHeight = Math.max(300, pageHeight);
+  const pageHeight = Math.floor(availableHeight / lineHeightPx) * lineHeightPx;
+  const viewHeight = Math.max(lineHeightPx, pageHeight); // 至少显示一行
 
   // Calculate view height (recalculated on resize)
   useEffect(() => {
@@ -225,11 +238,14 @@ export const ReadingArea = forwardRef(function ReadingArea({
     
     const calculatePages = () => {
       const contentHeight = contentRef.current?.scrollHeight || 0;
-      // Use pageHeight (line-aligned) for pagination - no vertical padding
-      const pageHeight = Math.floor(
-        (window.innerHeight - currentHeaderHeight - currentPaginationHeight) / lineHeightPx
-      ) * lineHeightPx;
-      const total = Math.ceil(contentHeight / pageHeight) || 1;
+      // 【修正一】使用正确的可用高度计算（已对齐行高）
+      const calcBottomReserved = isMobile 
+        ? MOBILE_PAGE_INDICATOR_HEIGHT + MOBILE_PAGE_INDICATOR_BOTTOM + MOBILE_SAFE_GAP
+        : 0;
+      const calcAvailableHeight = window.innerHeight - currentHeaderHeight - MOBILE_TOP_GAP - calcBottomReserved;
+      // 【修正二】严格按行高整数倍计算
+      const calcPageHeight = Math.floor(calcAvailableHeight / lineHeightPx) * lineHeightPx;
+      const total = Math.ceil(contentHeight / calcPageHeight) || 1;
       setTotalPagesState(total);
       
       if (onTotalPagesChange) {
@@ -266,19 +282,9 @@ export const ReadingArea = forwardRef(function ReadingArea({
   // Clamp current page to valid range
   const safeCurrentPage = Math.min(Math.max(1, currentPageState), totalPagesState);
 
-  // Calculate line-aligned page height for offset calculation
-  // No vertical padding since text-content now starts at top
-  const getPageHeight = () => {
-    return Math.floor(
-      (window.innerHeight - currentHeaderHeight - currentPaginationHeight) / lineHeightPx
-    ) * lineHeightPx;
-  };
-
-  // Calculate transform offset for current page (aligned to line height)
-  // For page 1, offset = 0, so text starts at the top of padding area
-  // For subsequent pages, offset = (page - 1) * pageHeight
-  const currentPageHeight = getPageHeight();
-  const offset = (safeCurrentPage - 1) * currentPageHeight;
+  // 【修正二】分页偏移量：严格按行高整数倍计算
+  // 首页 marginTop=0，后续页按行高整数倍偏移
+  const offset = (safeCurrentPage - 1) * pageHeight;
 
   // Handle page navigation
   const goToPrevPage = useCallback(() => {
@@ -308,7 +314,6 @@ export const ReadingArea = forwardRef(function ReadingArea({
     const element = contentRef.current.querySelector(`[data-paragraph-index="${paragraphIndex}"]`);
     if (element) {
       const offsetTop = (element as HTMLElement).offsetTop;
-      const pageHeight = getPageHeight();
       const targetPage = Math.floor(offsetTop / pageHeight) + 1;
       const clampedPage = Math.min(Math.max(1, targetPage), totalPagesState);
       setCurrentPageState(clampedPage);
@@ -316,7 +321,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
         onPageChange(clampedPage);
       }
     }
-  }, [lineHeightPx, totalPagesState, onPageChange]);
+  }, [pageHeight, totalPagesState, onPageChange]);
 
   // Expose jumpToParagraph via ref
   useImperativeHandle(ref, () => ({
@@ -401,14 +406,16 @@ export const ReadingArea = forwardRef(function ReadingArea({
 
   // Render content with all paragraphs
   if (processedContent && processedContent.length > 0) {
-    // Use dynamic viewport height for better mobile support (handles address bar)
-    // Mobile: reading area is between header (top + 5px) and page indicator (bottom + 5px)
+    // 【修正一】重新计算阅读区域高度，完全避开页码指示器
     const currentHorizPadding = isMobile ? MOBILE_READING_PADDING_HORIZONTAL : READING_PADDING_HORIZONTAL;
-    const mobileTopMargin = 5; // 5px gap below header
-    const mobileBottomMargin = 5; // 5px gap above page indicator
+    // 底部预留空间 = 页码高度(40) + bottom间距(16) + 安全间距(10) = 66px
+    const mobileBottomReserved = isMobile 
+      ? MOBILE_PAGE_INDICATOR_HEIGHT + MOBILE_PAGE_INDICATOR_BOTTOM + MOBILE_SAFE_GAP 
+      : 0;
+    // 阅读区域高度 = 100dvh - 顶栏 - 顶部间距(5px) - 底部预留
     const containerHeight = headerVisible 
-      ? `calc(100dvh - ${currentHeaderHeight}px - ${mobileTopMargin}px - ${mobileBottomMargin}px)` 
-      : `calc(100dvh - ${mobileBottomMargin}px)`;
+      ? `calc(100dvh - ${currentHeaderHeight}px - ${MOBILE_TOP_GAP}px - ${mobileBottomReserved}px)` 
+      : `calc(100dvh - ${mobileBottomReserved}px)`;
     
     return (
       <div 
@@ -422,25 +429,25 @@ export const ReadingArea = forwardRef(function ReadingArea({
           overflow: 'hidden',
         }}
       >
-        {/* Reading Content Area - full height between header and page indicator */}
+        {/* 【修正一】Reading Content Area - 避开页码指示器 */}
         <div 
           ref={containerRef}
           className="reading-area"
           style={{
             height: containerHeight,
             maxHeight: containerHeight,
-            overflow: 'hidden',
+            overflow: 'hidden !important',
             paddingLeft: `${currentHorizPadding}px`,
             paddingRight: `${currentHorizPadding}px`,
-            paddingTop: `${mobileTopMargin}px`,
-            paddingBottom: `${mobileBottomMargin}px`,
+            paddingTop: `${MOBILE_TOP_GAP}px`,
+            paddingBottom: isMobile ? `${MOBILE_BOTTOM_PADDING}px` : '0px', // 移动端底部20px，给页码留安全冗余
             boxSizing: 'border-box',
             flex: 1,
           }}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
-          {/* Scrolling content container with margin offset for pagination */}
+          {/* 【修正二】text-content - marginTop翻页，第一行/最后一行完整 */}
           <div 
             ref={contentRef}
             className="text-content"
@@ -450,7 +457,9 @@ export const ReadingArea = forwardRef(function ReadingArea({
               color: textColor,
               fontFamily: 'Georgia, "Times New Roman", serif',
               textAlign: 'justify',
-              marginTop: `-${offset}px`,
+              // 【修正二】首末页兜底校验：
+              // 首页 marginTop=0，最后一页内容不足时自动顶部对齐
+              marginTop: safeCurrentPage === 1 ? '0px' : `-${offset}px`,
               willChange: 'margin-top',
               minHeight: `${viewHeight}px`,
             }}
@@ -621,7 +630,8 @@ export const ReadingArea = forwardRef(function ReadingArea({
             }
 
             .reading-area {
-              padding: 0 12px !important;
+              /* padding 由内联样式控制，保持一致 */
+              overflow: hidden !important;
             }
           }
 
