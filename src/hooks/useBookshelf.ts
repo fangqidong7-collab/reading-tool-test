@@ -24,7 +24,7 @@ export interface TocEntry {
 export interface BookmarkEntry {
   id: string;
   page: number;
-  note?: string;
+  previewText: string;
   createdAt: number;
 }
 
@@ -135,14 +135,17 @@ export function useBookshelf() {
   const getProgress = useCallback((book: Book): number => {
     // If book has page-based progress info, use it
     if (book.lastReadPage !== undefined && book.lastReadPage > 0) {
-      // Calculate total pages based on content (30 paragraphs per page)
-      const paragraphs = book.content.split(/\n\n+/).filter(p => p.trim().length > 0);
-      const totalPages = Math.max(1, Math.ceil(paragraphs.length / 30));
-      const progress = Math.min(Math.round((book.lastReadPage / totalPages) * 100), 100);
-      return progress;
+      // Use stored progress if available, otherwise calculate from page
+      if (book.annotations && Object.keys(book.annotations).length > 0) {
+        // This is a simplified calculation - we'll update it when totalPages is tracked
+        const paragraphs = book.content.split(/\n\n+/).filter(p => p.trim().length > 0);
+        const totalPages = Math.max(1, Math.ceil(paragraphs.length / 30));
+        const progress = Math.min(Math.round((book.lastReadPage / totalPages) * 100), 100);
+        return progress;
+      }
     }
     // If no page info but has annotations, calculate based on annotated words
-    if (Object.keys(book.annotations).length > 0) {
+    if (book.annotations && Object.keys(book.annotations).length > 0) {
       const totalWords = book.content.split(/\s+/).filter(Boolean).length;
       if (totalWords === 0) return 0;
       const annotatedCount = Object.keys(book.annotations).reduce(
@@ -251,7 +254,7 @@ export function useBookshelf() {
   }, []);
 
   // Add a bookmark
-  const addBookmark = useCallback((id: string, page: number, note?: string) => {
+  const addBookmark = useCallback((id: string, page: number, previewText: string) => {
     setBooks((prev) =>
       prev.map((b) => {
         if (b.id !== id) return b;
@@ -263,7 +266,7 @@ export function useBookshelf() {
         const newBookmark: BookmarkEntry = {
           id: `bm-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
           page,
-          note: note || "",
+          previewText: previewText.substring(0, 50),
           createdAt: Date.now(),
         };
         return { ...b, bookmarks: [...bookmarks, newBookmark] };

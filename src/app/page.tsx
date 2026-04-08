@@ -308,7 +308,7 @@ export default function Home() {
   // Toggle bookmark for current page
   const toggleCurrentBookmark = useCallback(() => {
     const bookId = currentBookIdRef.current;
-    if (!bookId || !currentBook) return;
+    if (!bookId || !currentBook || !processedContent) return;
     
     const bookmarks = currentBook.bookmarks || [];
     const hasBookmark = bookmarks.some((bm) => bm.page === currentPage);
@@ -319,9 +319,15 @@ export default function Home() {
         removeBookmark(bookId, bookmark.id);
       }
     } else {
-      addBookmark(bookId, currentPage);
+      // Get preview text from current page (paragraph)
+      const pageIndex = currentPage - 1;
+      const paragraphs = processedContent;
+      const previewText = paragraphs[pageIndex]
+        ? paragraphs[pageIndex].map(s => s.text).join('').substring(0, 50)
+        : '';
+      addBookmark(bookId, currentPage, previewText);
     }
-  }, [currentBook, currentPage, addBookmark, removeBookmark]);
+  }, [currentBook, currentPage, processedContent, addBookmark, removeBookmark]);
 
   // Save annotations when they change
   useEffect(() => {

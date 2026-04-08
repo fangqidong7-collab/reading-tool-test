@@ -26,19 +26,27 @@ export interface ReadingAreaRef {
 // Memoized paragraph component
 type Annotations = Record<string, { root: string; meaning: string; pos: string; count: number }>;
 
+interface ParagraphProps {
+  paragraph: ProcessedContent[number];
+  pIndex: number;
+  onWordClick: (word: string, lemma: string, event: React.MouseEvent) => void;
+  annotations?: Annotations;
+  annotationColor?: string;
+  searchQuery?: string;
+  isCurrentSearchResult?: boolean;
+  highlightBg?: string;
+}
+
 const Paragraph = React.memo(({
   paragraph,
   pIndex,
   onWordClick,
   annotations,
   annotationColor = "#E74C3C",
-}: {
-  paragraph: ProcessedContent[number];
-  pIndex: number;
-  onWordClick: (word: string, lemma: string, event: React.MouseEvent) => void;
-  annotations?: Annotations;
-  annotationColor?: string;
-}) => {
+  searchQuery = "",
+  isCurrentSearchResult = false,
+  highlightBg = "#FFEB3B",
+}: ParagraphProps) => {
   const handleClick = useCallback((e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
     if (target.classList.contains('word')) {
@@ -48,11 +56,15 @@ const Paragraph = React.memo(({
     }
   }, [onWordClick]);
 
+  // Build text content for search matching
+  const fullText = paragraph.map(s => s.text).join('');
+
   return (
     <p 
-      className="paragraph"
+      className={`paragraph ${isCurrentSearchResult ? 'search-highlight' : ''}`}
       data-paragraph-index={pIndex}
       onClick={handleClick}
+      style={isCurrentSearchResult ? { backgroundColor: highlightBg } : undefined}
     >
       {paragraph.map((segment, sIndex) => {
         const key = `${pIndex}-${sIndex}`;
@@ -102,6 +114,9 @@ function paragraphPropsAreEqual(
     onWordClick: (word: string, lemma: string, event: React.MouseEvent) => void;
     annotations?: Annotations;
     annotationColor?: string;
+    searchQuery?: string;
+    isCurrentSearchResult?: boolean;
+    highlightBg?: string;
   },
   next: {
     paragraph: ProcessedContent[number];
@@ -109,11 +124,17 @@ function paragraphPropsAreEqual(
     onWordClick: (word: string, lemma: string, event: React.MouseEvent) => void;
     annotations?: Annotations;
     annotationColor?: string;
+    searchQuery?: string;
+    isCurrentSearchResult?: boolean;
+    highlightBg?: string;
   }
 ) {
   if (prev.pIndex !== next.pIndex) return false;
   if (prev.onWordClick !== next.onWordClick) return false;
   if (prev.annotationColor !== next.annotationColor) return false;
+  if (prev.searchQuery !== next.searchQuery) return false;
+  if (prev.isCurrentSearchResult !== next.isCurrentSearchResult) return false;
+  if (prev.highlightBg !== next.highlightBg) return false;
   
   const prevKeys = prev.annotations ? Object.keys(prev.annotations) : [];
   const nextKeys = next.annotations ? Object.keys(next.annotations) : [];
@@ -171,8 +192,13 @@ export const ReadingArea = forwardRef(function ReadingArea({
   textColor = "#333333",
   backgroundColor = "#FFF8F0",
   annotationColor = "#E74C3C",
+  highlightBg = "#FFEB3B",
+  highlightBgHover = "#FFD700",
   isDarkMode = false,
   headerVisible = true,
+  searchQuery = "",
+  searchResults = [],
+  currentSearchIndex = 0,
 }: ReadingAreaProps, ref: React.Ref<ReadingAreaRef>) {
   const containerRef = useRef<HTMLDivElement>(null);
   
@@ -392,6 +418,9 @@ export const ReadingArea = forwardRef(function ReadingArea({
                 onWordClick={onWordClick}
                 annotations={annotations}
                 annotationColor={annotationColor}
+                searchQuery={searchQuery}
+                isCurrentSearchResult={searchResults.length > 0 && searchResults[currentSearchIndex]?.paragraphIndex === pIndex}
+                highlightBg={highlightBg}
               />
             ))}
           </div>
@@ -420,6 +449,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
 
               <div className={`pagination-info ${isDarkMode ? 'dark' : ''}`}>
                 <span>第 {safeCurrentPage} / {totalPagesState} 页</span>
+                <span className="pagination-percentage">({Math.round((safeCurrentPage / totalPagesState) * 100)}%)</span>
               </div>
 
               <button
@@ -438,7 +468,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
         {/* 移动端页码指示器 */}
         {isMobile && (
           <div className={`mobile-page-indicator ${isDarkMode ? 'dark' : ''}`}>
-            {safeCurrentPage}/{totalPagesState}
+            {safeCurrentPage}/{totalPagesState} ({Math.round((safeCurrentPage / totalPagesState) * 100)}%)
           </div>
         )}
 
@@ -540,12 +570,24 @@ export const ReadingArea = forwardRef(function ReadingArea({
           .pagination-info {
             font-size: 14px;
             color: #666;
-            min-width: 100px;
+            min-width: 120px;
             text-align: center;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
           }
 
           .pagination-info.dark {
             color: #999;
+          }
+
+          .pagination-percentage {
+            font-size: 12px;
+            color: #888;
+          }
+
+          .pagination-info.dark .pagination-percentage {
+            color: #777;
           }
 
           .mobile-page-indicator {
