@@ -269,54 +269,45 @@ export const ReadingArea = forwardRef(function ReadingArea({
     ? window.innerHeight - currentHeaderHeight - MOBILE_TOP_GAP - MOBILE_BOTTOM_SAFE_ZONE
     : window.innerHeight - currentHeaderHeight - currentPaginationHeight;
 
-  // 获取每页宽度（等于容器宽度）
-  const getPageWidth = useCallback(() => {
+  const getPageContentHeight = useCallback(() => {
     if (!containerRef.current) return 0;
-    return containerRef.current.clientWidth;
-  }, []);
+    return containerRef.current.clientHeight;
+  }, [containerHeight]);
 
-  // 使用 CSS multi-column 计算总页数
+  // 使用 transform 方式翻页，计算总页数
   useEffect(() => {
-    if (!contentRef.current || !containerRef.current) return;
-    
-    // 等待浏览器完成 column 排版
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        const contentEl = contentRef.current;
-        if (!contentEl) return;
-        const pageW = containerRef.current.clientWidth;
-        if (pageW === 0) return;
-        const total = Math.max(1, Math.round(contentEl.scrollWidth / pageW));
-        console.log('Column分页调试 - scrollWidth:', contentEl.scrollWidth, 'pageWidth:', pageW, 'totalPages:', total);
-        setTotalPagesState(total);
-        if (onTotalPagesChange) {
-          onTotalPagesChange(total);
-        }
-        if (currentPageState > total) {
-          setCurrentPageState(total);
-        }
-      });
-    });
-  }, [processedContent, containerHeight, fontSize, lineHeight, currentPageState, onTotalPagesChange]);
-
-  // 窗口 resize 时重新计算
-  useEffect(() => {
-    const handleResize = () => {
-      // 延迟重算，等待布局稳定
-      setTimeout(() => {
-        if (!contentRef.current || !containerRef.current) return;
-        const pageW = containerRef.current.clientWidth;
-        if (pageW === 0) return;
-        const total = Math.max(1, Math.round(contentRef.current.scrollWidth / pageW));
-        setTotalPagesState(total);
-        if (currentPageState > total) setCurrentPageState(total);
-        // 重新对齐当前页
-        contentRef.current.scrollLeft = (Math.min(currentPageState, total) - 1) * pageW;
-      }, 200);
+    const calculatePages = () => {
+      const contentEl = contentRef.current;
+      const container = containerRef.current;
+      if (!contentEl || !container) return;
+      
+      const totalContentHeight = contentEl.scrollHeight;
+      const pageH = getPageContentHeight();
+      if (pageH <= 0) return;
+      
+      const total = Math.max(1, Math.ceil(totalContentHeight / pageH));
+      
+      setTotalPagesState(total);
+      if (onTotalPagesChange) {
+        onTotalPagesChange(total);
+      }
     };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [currentPageState]);
+    
+    const timer = setTimeout(calculatePages, 200);
+    
+    const resizeObserver = new ResizeObserver(() => {
+      calculatePages();
+    });
+    
+    if (contentRef.current) {
+      resizeObserver.observe(contentRef.current);
+    }
+    
+    return () => {
+      clearTimeout(timer);
+      resizeObserver.disconnect();
+    };
+  }, [processedContent, fontSize, lineHeight, onTotalPagesChange, containerHeight, getPageContentHeight]);
 
   // 更新状态当 props 变化时
   useEffect(() => {
@@ -327,15 +318,12 @@ export const ReadingArea = forwardRef(function ReadingArea({
 
   const safeCurrentPage = Math.min(Math.max(1, currentPageState), totalPagesState);
 
-  // 翻到指定页 - 使用 scrollLeft 水平滚动
+  // 翻到指定页 - 使用 transform 方式，不再操作 scrollTop
   const goToPage = useCallback((page: number) => {
-    const safePage = Math.max(1, Math.min(page, totalPagesState));
-    if (!contentRef.current) return;
-    const pageW = contentRef.current.parentElement?.clientWidth || contentRef.current.clientWidth;
-    contentRef.current.scrollLeft = (safePage - 1) * pageW;
-    setCurrentPageState(safePage);
+    const clamped = Math.max(1, Math.min(page, totalPagesState));
+    setCurrentPageState(clamped);
     if (onPageChange) {
-      onPageChange(safePage);
+      onPageChange(clamped);
     }
   }, [totalPagesState, onPageChange]);
 
@@ -353,18 +341,21 @@ export const ReadingArea = forwardRef(function ReadingArea({
     }
   }, [safeCurrentPage, totalPagesState, goToPage]);
 
-  // 跳转到段落（目录跳转）- 基于列边界计算
+  // 跳转到段落（目录跳转）
   const jumpToParagraph = useCallback((paragraphIndex: number) => {
-    if (!contentRef.current || !containerRef.current) return;
-    const paragraphEls = contentRef.current.querySelectorAll('.paragraph');
-    if (paragraphIndex >= 0 && paragraphIndex < paragraphEls.length) {
-      const targetEl = paragraphEls[paragraphIndex] as HTMLElement;
-      const pageW = containerRef.current.clientWidth;
-      if (pageW === 0) return;
-      const targetPage = Math.floor(targetEl.offsetLeft / pageW) + 1;
-      goToPage(targetPage);
+    const contentEl = contentRef.current;
+    if (!contentEl) return;
+    
+    const element = contentEl.querySelector(`[data-paragraph-index="${paragraphIndex}"]`);
+    if (element) {
+      const elementTop = (element as HTMLElement).offsetTop;
+      const pageH = getPageContentHeight();
+      if (pageH <= 0) return;
+      const targetPage = Math.max(1, Math.floor(elementTop / pageH) + 1);
+      const clamped = Math.min(targetPage, totalPagesState);
+      goToPage(clamped);
     }
-  }, [goToPage]);
+  }, [totalPagesState, goToPage, getPageContentHeight]);
 
   // 暴露方法给父组件
   useImperativeHandle(ref, () => ({
@@ -448,7 +439,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
           overflow: "hidden",
         }}
       >
-        {/* 阅读容器 - 使用 CSS multi-column 水平分页 */}
+        {/* 阅读容器 - 使用 transform 方式翻页 */}
         <div 
           ref={containerRef}
           className="reading-container"
@@ -462,20 +453,28 @@ export const ReadingArea = forwardRef(function ReadingArea({
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
+          {/* 顶部遮罩 - 盖住翻页后可能露出的上一页半行文字 */}
+          <div style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: "40px",
+            background: `linear-gradient(to bottom, ${backgroundColor} 0%, ${backgroundColor} 50%, transparent 100%)`,
+            zIndex: 10,
+            pointerEvents: "none",
+          }} />
+
+          {/* 内容区域 */}
           <div 
             ref={contentRef}
             className="reader-content"
             style={{
-              columnWidth: "100%",
-              columnGap: "0px",
-              columnFill: "auto",
-              height: "100%",
-              overflow: "hidden",
+              transform: `translateY(-${(safeCurrentPage - 1) * getPageContentHeight()}px)`,
               paddingLeft: `${currentHorizPadding}px`,
               paddingRight: `${currentHorizPadding}px`,
-              paddingTop: "20px",
-              paddingBottom: "20px",
-              boxSizing: "border-box",
+              paddingTop: "0px",
+              paddingBottom: "0px",
             }}
           >
             {processedContent.map((paragraph, pIndex) => (
@@ -493,6 +492,18 @@ export const ReadingArea = forwardRef(function ReadingArea({
               />
             ))}
           </div>
+
+          {/* 底部遮罩 - 盖住页面底部可能露出的下一页半行文字 */}
+          <div style={{
+            position: "absolute",
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: "40px",
+            background: `linear-gradient(to top, ${backgroundColor} 0%, ${backgroundColor} 50%, transparent 100%)`,
+            zIndex: 10,
+            pointerEvents: "none",
+          }} />
         </div>
 
         {/* PC 端分页栏 */}
@@ -556,17 +567,12 @@ export const ReadingArea = forwardRef(function ReadingArea({
             color: ${textColor};
             font-family: Georgia, "Times New Roman", serif;
             text-align: justify;
+            will-change: transform;
           }
 
           .reader-content :global(.paragraph) {
             margin-bottom: 16px;
             margin-top: 0px;
-            break-inside: avoid;
-            break-inside: avoid-column;
-          }
-
-          .reader-content :global(.heading-paragraph) {
-            break-after: avoid;
           }
 
           .reader-content :global(.word) {
