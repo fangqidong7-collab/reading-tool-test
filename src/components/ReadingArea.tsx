@@ -402,11 +402,13 @@ export const ReadingArea = forwardRef(function ReadingArea({
   // Render content with all paragraphs
   if (processedContent && processedContent.length > 0) {
     // Use dynamic viewport height for better mobile support (handles address bar)
-    // No vertical padding in reading-area since text-content starts from top
+    // Mobile: reading area is between header (top + 5px) and page indicator (bottom + 5px)
     const currentHorizPadding = isMobile ? MOBILE_READING_PADDING_HORIZONTAL : READING_PADDING_HORIZONTAL;
+    const mobileTopMargin = 5; // 5px gap below header
+    const mobileBottomMargin = 5; // 5px gap above page indicator
     const containerHeight = headerVisible 
-      ? `calc(100dvh - ${currentHeaderHeight}px - ${currentPaginationHeight}px)` 
-      : `calc(100dvh - ${currentPaginationHeight}px)`;
+      ? `calc(100dvh - ${currentHeaderHeight}px - ${mobileTopMargin}px - ${mobileBottomMargin}px)` 
+      : `calc(100dvh - ${mobileBottomMargin}px)`;
     
     return (
       <div 
@@ -420,7 +422,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
           overflow: 'hidden',
         }}
       >
-        {/* Reading Content Area - margin-based pagination */}
+        {/* Reading Content Area - full height between header and page indicator */}
         <div 
           ref={containerRef}
           className="reading-area"
@@ -430,7 +432,8 @@ export const ReadingArea = forwardRef(function ReadingArea({
             overflow: 'hidden',
             paddingLeft: `${currentHorizPadding}px`,
             paddingRight: `${currentHorizPadding}px`,
-            paddingBottom: isMobile ? '60px' : '0px', // Space for mobile page indicator
+            paddingTop: `${mobileTopMargin}px`,
+            paddingBottom: `${mobileBottomMargin}px`,
             boxSizing: 'border-box',
             flex: 1,
           }}
@@ -501,7 +504,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
           </div>
         </div>
 
-        {/* Mobile Page Indicator - Inside reading-area, absolute positioned */}
+        {/* Mobile Page Indicator - Fixed at viewport bottom, next to N button */}
         <div className={`mobile-page-indicator ${isDarkMode ? 'dark' : ''}`}>
           {safeCurrentPage}/{totalPagesState}
         </div>
@@ -509,6 +512,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
         <style jsx>{`
           .reading-wrapper {
             min-height: 100vh;
+            position: relative;
           }
 
           .reading-area {
@@ -621,10 +625,10 @@ export const ReadingArea = forwardRef(function ReadingArea({
             }
           }
 
-          /* Mobile Page Indicator - Only show on mobile */
+          /* Mobile Page Indicator - Fixed at viewport bottom */
           .mobile-page-indicator {
             display: none;
-            position: absolute;
+            position: fixed;
             bottom: 16px;
             right: 16px;
             font-size: 12px;
@@ -632,7 +636,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
             background: rgba(255, 255, 255, 0.9);
             border-radius: 12px;
             padding: 6px 12px;
-            z-index: 50;
+            z-index: 100;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
           }
 
@@ -648,9 +652,6 @@ export const ReadingArea = forwardRef(function ReadingArea({
 
             .mobile-page-indicator {
               display: block;
-              position: absolute;
-              bottom: 16px;
-              right: 16px;
             }
 
             .text-content {
