@@ -193,6 +193,7 @@ function extractParagraphsFromHtml(html: string): { paragraphs: string[]; headin
 
 // Parse EPUB file
 async function parseEpub(file: File, onProgress: ProgressCallback): Promise<{ title: string; content: string; tableOfContents: TocEntry[] }> {
+  console.log('开始解析EPUB:', file.name);
   onProgress({ stage: "reading", percent: 10, message: "正在读取文件..." });
   
   // @ts-expect-error - JSZip loaded via CDN
@@ -498,9 +499,12 @@ export async function parseFile(
         result = await parseEpub(file, onProgress);
         break;
       case "txt":
-      default:
         const txtResult = await parseTxt(file, onProgress);
         result = { ...txtResult, tableOfContents: [] };
+        break;
+      default:
+        const defaultResult = await parseTxt(file, onProgress);
+        result = { ...defaultResult, tableOfContents: [] };
         break;
     }
 
@@ -514,6 +518,7 @@ export async function parseFile(
       success: true,
     };
   } catch (error) {
+    console.error('EPUB解析错误:', error);
     const errorMessage = error instanceof Error ? error.message : "未知错误";
     
     if (errorMessage === "无法从EPUB文件中提取文本内容") {
