@@ -40,7 +40,6 @@ function parseTextToSegments(text: string): Array<{
 
 export function ReadingArea({
   text,
-  annotations,
   onWordClick,
   getWordAnnotation,
   isClickable,
