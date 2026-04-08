@@ -7,6 +7,7 @@ import { WordTooltip } from "@/components/WordTooltip";
 import { VocabularySidebar } from "@/components/VocabularySidebar";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { CloudSyncModal } from "@/components/CloudSyncModal";
+import JSLibLoader from "@/components/JSLibLoader";
 import { useBookshelf, ProcessedContent, ProcessedSegment } from "@/hooks/useBookshelf";
 import { useReadingSettings } from "@/hooks/useReadingSettings";
 import { lemmatize, getWordMeaning, findWordFamily } from "@/lib/dictionary";
@@ -638,6 +639,9 @@ export default function Home() {
     setCurrentPage(1);
     setSettingsPanelOpen(false);
   }, [closeBook]);
+
+  // Load JSZip library for EPUB parsing
+  <JSLibLoader />
 
   // Show loading while initializing
   if (!isLoaded || !settingsLoaded) {
