@@ -14,13 +14,7 @@ export async function POST(request: NextRequest) {
     const response = await llmClient.invoke([
       {
         role: 'user',
-        content: `翻译英文单词 "${word}" 为中文。请严格遵循以下格式要求：
-1. 只返回翻译结果，不要任何解释
-2. 只给出最常用的1-2个词义，用分号分隔
-3. 格式：中文释义（词性）
-4. 示例格式："快乐（adj.）；幸福（n.）"
-5. 如果只有一个含义就不需要分号："跑（v.）"
-请直接给出翻译：`,
+        content: `请翻译以下英文单词为中文，只需给出翻译结果，格式为"中文释义 (词性)"，如果有多含义请用分号分隔：${word}`,
       },
     ], {
       model: 'doubao-seed-1-6-lite-251015',

@@ -11,13 +11,14 @@ const ESTIMATED_PARAGRAPH_HEIGHT = 100; // Estimated height for each paragraph
 const Paragraph = memo(({
   paragraph,
   pIndex,
+  hasAnnotations,
   onWordClick,
   getWordAnnotation,
   isClickable,
 }: {
   paragraph: ProcessedContent[number];
   pIndex: number;
-  hasAnnotations?: boolean;
+  hasAnnotations: boolean;
   onWordClick: (word: string, event: React.MouseEvent) => void;
   getWordAnnotation: (word: string) => { root: string; meaning: string; pos: string; count: number } | null;
   isClickable: (word: string) => boolean;
@@ -29,7 +30,7 @@ const Paragraph = memo(({
   };
 
   return (
-    <p key={pIndex} className="paragraph">
+    <p key={pIndex} className={`paragraph ${hasAnnotations ? "has-annotations" : ""}`}>
       {paragraph.map((segment, sIndex) => {
         const key = `${pIndex}-${sIndex}`;
         
@@ -55,7 +56,6 @@ const Paragraph = memo(({
         const annotation = getWordAnnotation(word);
         const isAnnotated = !!annotation;
         
-        // 新格式：英文(中文)，中文在括号内显示
         return (
           <span
             key={key}
@@ -65,10 +65,12 @@ const Paragraph = memo(({
             data-root={root}
             onClick={(e) => handleClick(word, e)}
           >
-            <span className="word-text">{word}</span>
             {isAnnotated && (
-              <span className="word-annotation">({annotation.meaning})</span>
+              <ruby className="word-ruby">
+                <rt className="word-rt">{annotation.meaning}</rt>
+              </ruby>
             )}
+            <span className="word-text">{word}</span>
           </span>
         );
       })}
@@ -97,6 +99,22 @@ export function ReadingArea({
   const containerRef = useRef<HTMLDivElement>(null);
   const [visibleRange, setVisibleRange] = useState({ start: 0, end: 20 });
   const [paragraphHeights, setParagraphHeights] = useState<Record<number, number>>({});
+  
+  // Memoize which paragraphs have annotations
+  const paragraphsWithAnnotations = useMemo(() => {
+    if (!processedContent) return new Set<number>();
+    
+    const hasAnnotations = new Set<number>();
+    processedContent.forEach((paragraph, pIndex) => {
+      const hasAnnotation = paragraph.some(
+        (segment) => segment.type === "word" && getWordAnnotation(segment.text)
+      );
+      if (hasAnnotation) {
+        hasAnnotations.add(pIndex);
+      }
+    });
+    return hasAnnotations;
+  }, [processedContent, getWordAnnotation]);
 
   // Calculate which paragraphs should be rendered
   const visibleParagraphs = useMemo(() => {
@@ -235,11 +253,13 @@ export function ReadingArea({
           
           {/* Render visible paragraphs */}
           {visibleParagraphs.map(({ paragraph, pIndex }) => {
+            const hasAnnotations = paragraphsWithAnnotations.has(pIndex);
             return (
               <div key={pIndex} data-index={pIndex} style={{ minHeight: paragraphHeights[pIndex] || ESTIMATED_PARAGRAPH_HEIGHT }}>
                 <Paragraph
                   paragraph={paragraph}
                   pIndex={pIndex}
+                  hasAnnotations={hasAnnotations}
                   onWordClick={onWordClick}
                   getWordAnnotation={getWordAnnotation}
                   isClickable={isClickable}
@@ -261,11 +281,16 @@ export function ReadingArea({
             font-size: 18px;
             color: #333;
             text-align: justify;
-            line-height: 1.8;
           }
           
           .paragraph {
             margin-bottom: 20px;
+            line-height: 1.8;
+          }
+          
+          .paragraph.has-annotations {
+            line-height: 2.8;
+            margin-bottom: 24px;
           }
           
           .whitespace {
@@ -277,33 +302,54 @@ export function ReadingArea({
           }
           
           .word {
+            position: relative;
             display: inline;
             cursor: default;
           }
           
           .word.clickable {
             cursor: pointer;
+            transition: background-color 0.15s ease;
+            border-radius: 2px;
+            padding: 1px 0;
           }
           
           .word.clickable:hover {
-            color: #4A90D9;
+            background-color: rgba(74, 144, 217, 0.15);
           }
           
           .word.annotated {
-            color: inherit;
+            background-color: #fff3cd;
+            padding: 1px 2px;
+            border-radius: 2px;
+          }
+          
+          .word.annotated:hover {
+            background-color: #ffe69c;
+          }
+          
+          .word-ruby {
+            display: ruby;
+            ruby-position: over;
+            position: relative;
+          }
+          
+          .word-rt {
+            display: block;
+            font-size: 0.5em;
+            color: #e74c3c;
+            font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+            line-height: 1.2;
+            text-align: center;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 2px 6px;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+            margin-bottom: 2px;
           }
           
           .word-text {
-            display: inline;
-          }
-          
-          .word-annotation {
-            display: inline;
-            font-size: 70%;
-            color: #E74C3C;
-            font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
-            font-weight: normal;
-            margin-left: 0;
+            display: inline-block;
           }
         `}</style>
       </div>
