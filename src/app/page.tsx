@@ -6,6 +6,7 @@ import { ReadingArea, type ReadingAreaRef } from "@/components/ReadingArea";
 import { WordTooltip } from "@/components/WordTooltip";
 import { VocabularySidebar } from "@/components/VocabularySidebar";
 import { SettingsPanel } from "@/components/SettingsPanel";
+import { CloudSyncModal } from "@/components/CloudSyncModal";
 import { useBookshelf, ProcessedContent, ProcessedSegment } from "@/hooks/useBookshelf";
 import { useReadingSettings } from "@/hooks/useReadingSettings";
 import { lemmatize, getWordMeaning, findWordFamily } from "@/lib/dictionary";
@@ -155,6 +156,9 @@ export default function Home() {
   
   // Mobile more menu state
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+
+  // Cloud sync modal state
+  const [cloudSyncOpen, setCloudSyncOpen] = useState(false);
 
   // Load external dictionary on mount (force reload to get latest dict.json)
   useEffect(() => {
@@ -586,6 +590,11 @@ export default function Home() {
           onAddBook={addBook}
           onDeleteBook={deleteBook}
           onOpenBook={openBook}
+          onCloudSyncClick={() => setCloudSyncOpen(true)}
+        />
+        <CloudSyncModal
+          open={cloudSyncOpen}
+          onOpenChange={setCloudSyncOpen}
         />
         <style jsx>{`
           .bookshelf-page {

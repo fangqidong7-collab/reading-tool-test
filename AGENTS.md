@@ -76,4 +76,34 @@
 - 模板默认预装核心组件库 `shadcn/ui`，位于`src/components/ui/`目录下
 - Next.js 项目**必须默认**采用 shadcn/ui 组件、风格和规范，**除非用户指定用其他的组件和规范。**
 
+## 云同步功能
+
+### 功能概述
+- 使用同步码方案实现跨设备数据同步，无需注册登录
+- 数据包括：书架、书籍内容、标注、书签、阅读进度
+- 同步码格式：8位大写字母+数字（如 A3K9M2X7）
+
+### 数据库表结构
+```sql
+CREATE TABLE sync_data (
+  sync_code TEXT PRIMARY KEY,
+  data TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+);
+CREATE INDEX sync_data_sync_code_idx ON sync_data(sync_code);
+```
+
+### API 接口
+- `POST /api/sync` - 上传数据，生成同步码
+- `GET /api/sync?code=XXX` - 通过同步码下载数据
+
+### 同步组件
+- 位置：`src/components/CloudSyncModal.tsx`
+- 入口：书架页面右上角的"云同步"按钮
+
+### 数据限制
+- 单条数据上限：10MB
+- 超过限制提示用户"数据过大，请删除部分书籍后重试"
+
 
