@@ -11,7 +11,7 @@ import { useBookshelf, ProcessedContent, ProcessedSegment } from "@/hooks/useBoo
 import { useReadingSettings } from "@/hooks/useReadingSettings";
 import { lemmatize, getWordMeaning, findWordFamily } from "@/lib/dictionary";
 import { translateWord } from "@/lib/translate";
-import { forceReloadDictionary, lookupExternalDict, getDictLoadStatus, getExternalDictSize, type DictLoadStatus } from "@/lib/dictLoader";
+import { forceReloadDictionary, lookupExternalDict, type DictLoadStatus } from "@/lib/dictLoader";
 
 /**
  * Clean translation text - remove parts of speech and extra info
@@ -218,26 +218,6 @@ export default function Home() {
 
   // Cloud sync modal state
   const [cloudSyncOpen, setCloudSyncOpen] = useState(false);
-
-  // Diagnostic state for debugging dictionary issues
-  const [showDictDebug, setShowDictDebug] = useState(false);
-  const [dictDebugInfo, setDictDebugInfo] = useState<{status: string; size: number; testWords: Record<string, string | null>}>({status: 'unknown', size: 0, testWords: {}});
-
-  const runDictDebug = useCallback(() => {
-    const status = getDictLoadStatus();
-    const size = getExternalDictSize();
-    const testWords = {
-      after: lookupExternalDict('after'),
-      something: lookupExternalDict('something'),
-      craft: lookupExternalDict('craft'),
-    };
-    setDictDebugInfo({ status, size, testWords });
-    setShowDictDebug(true);
-    console.log('=== 词典诊断信息 ===');
-    console.log('加载状态:', status);
-    console.log('词条数量:', size);
-    console.log('测试词条:', testWords);
-  }, []);
 
   // Load external dictionary on mount (force reload to get latest dict.json)
   useEffect(() => {
@@ -975,22 +955,6 @@ export default function Home() {
             <span style={{ fontSize: "14px", fontWeight: "bold" }}>Aa</span>
           </button>
 
-          {/* Dict Debug Button */}
-          <button
-            className="dict-debug-btn"
-            onClick={runDictDebug}
-            title="词典诊断"
-            style={{ 
-              backgroundColor: "transparent",
-              borderColor: isDarkMode ? "#444" : "#ddd",
-              color: headerTextColor,
-              fontSize: "12px",
-              padding: "4px 8px",
-            }}
-          >
-            Debug
-          </button>
-
           {/* Bookmark Button - Hidden on mobile */}
           <button
             className={`bookmark-btn nav-btn-bookmark ${isDarkMode ? 'dark' : ''}`}
@@ -1044,69 +1008,6 @@ export default function Home() {
             </div>
           )}
 
-          {/* Dictionary Debug Modal */}
-          {showDictDebug && (
-            <div style={{
-              position: 'fixed',
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
-              backgroundColor: isDarkMode ? '#2a2a3e' : '#fff',
-              padding: '20px',
-              borderRadius: '8px',
-              boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
-              zIndex: 1000,
-              maxWidth: '90%',
-              width: '400px',
-            }}>
-              <h3 style={{ marginTop: 0, color: isDarkMode ? '#fff' : '#333' }}>词典诊断</h3>
-              <div style={{ color: isDarkMode ? '#ccc' : '#666', marginBottom: '10px' }}>
-                <div>加载状态: <strong>{dictDebugInfo.status}</strong></div>
-                <div>词条数量: <strong>{dictDebugInfo.size}</strong></div>
-              </div>
-              <div style={{ color: isDarkMode ? '#ccc' : '#666', marginBottom: '15px' }}>
-                <div>测试 "after": <strong style={{ color: dictDebugInfo.testWords.after ? '#4CAF50' : '#F44336' }}>
-                  {dictDebugInfo.testWords.after || '未找到'}
-                </strong></div>
-                <div>测试 "something": <strong style={{ color: dictDebugInfo.testWords.something ? '#4CAF50' : '#F44336' }}>
-                  {dictDebugInfo.testWords.something || '未找到'}
-                </strong></div>
-                <div>测试 "craft": <strong style={{ color: dictDebugInfo.testWords.craft ? '#4CAF50' : '#F44336' }}>
-                  {dictDebugInfo.testWords.craft || '未找到'}
-                </strong></div>
-              </div>
-              <button
-                onClick={() => {
-                  setShowDictDebug(false);
-                  forceReloadDictionary().then(() => runDictDebug());
-                }}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#4a90d9',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  marginRight: '10px',
-                }}
-              >
-                重新加载词典
-              </button>
-              <button
-                onClick={() => setShowDictDebug(false)}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: isDarkMode ? '#444' : '#e0e0e0',
-                  color: isDarkMode ? '#fff' : '#333',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                }}
-              >
-                关闭
-              </button>
-            </div>
-          )}
           <div className="header-stats" style={{ color: isDarkMode ? "#999" : "#666" }}>
             <span className="stat">
               词汇: <strong style={{ color: isDarkMode ? "#6ba3e0" : "#4a90d9" }}>
