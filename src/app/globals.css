@@ -690,3 +690,16 @@ rt {
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
+
+/* Modal close button disabled state */
+.modal-close:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Form input disabled state */
+.form-input:disabled,
+.form-textarea:disabled {
+  background: #f5f5f5;
+  cursor: not-allowed;
+}

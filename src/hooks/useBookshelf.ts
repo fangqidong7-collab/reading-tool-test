@@ -86,12 +86,15 @@ export function useBookshelf() {
 
   // Save books to localStorage
   // Only save when books change, debounced to avoid excessive writes
+  // Note: processedContent is not saved to localStorage due to size constraints
   useEffect(() => {
     if (!isLoaded || typeof window === "undefined") return;
     
     const timeoutId = setTimeout(() => {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(books));
+        // Create a copy without processedContent to save storage space
+        const booksToSave = books.map(({ processedContent, ...rest }) => rest);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(booksToSave));
       } catch (error) {
         console.warn("Failed to save books to localStorage:", error);
       }
