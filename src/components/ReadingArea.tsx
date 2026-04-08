@@ -206,23 +206,83 @@ export const ReadingArea = forwardRef(function ReadingArea({
 
   // Detect mobile
   const isMobile = typeof window !== 'undefined' && window.innerWidth <= MOBILE_BREAKPOINT;
+  const currentHeaderHeight = isMobile ? MOBILE_HEADER_HEIGHT : HEADER_HEIGHT;
+  
+  // Mobile: fixed bottom bar, PC: normal pagination bar
+  const bottomBarHeight = isMobile ? MOBILE_PAGINATION_BAR_HEIGHT : PAGINATION_HEIGHT;
+  
+  // Calculate line-height in pixels
+  const lineHeightPx = fontSize * lineHeight;
+
+  // =========================================================================
+  // 核心修复：统一的可视区域高度计算
+  // =========================================================================
+  // 规则：
+  // 1. 扣除 header 高度
+  // 2. 扣除底部翻页栏高度  
+  // 3. 扣除 iOS safe area (通过 JS 动态获取)
+  // 4. 向下取整到 line-height 的整数倍（确保显示完整行）
+  // =========================================================================
+  
+  // 获取实际的 safe area bottom（iOS 设备需要）
+  const [safeAreaBottom, setSafeAreaBottom] = useState(0);
+  
+  useEffect(() => {
+    if (!isMobile) {
+      setSafeAreaBottom(0);
+      return;
+    }
+    
+    // 方法1: 尝试从 CSS 变量获取
+    const getSafeAreaFromCSS = () => {
+      // 获取 body 的 computed style
+      const bodyStyle = window.getComputedStyle(document.body);
+      // 检查 padding-bottom 或 margin-bottom
+      const paddingBottom = parseInt(bodyStyle.paddingBottom) || 0;
+      const marginBottom = parseInt(bodyStyle.marginBottom) || 0;
+      return Math.max(paddingBottom, marginBottom);
+    };
+    
+    // 方法2: 检查 env() 变量（通过检查根元素）
+    const getSafeAreaFromEnv = () => {
+      // 通过创建一个隐藏元素来检测 env() 的值
+      const testEl = document.createElement('div');
+      testEl.style.height = 'env(safe-area-inset-bottom, 0px)';
+      testEl.style.position = 'absolute';
+      testEl.style.visibility = 'hidden';
+      document.body.appendChild(testEl);
+      const height = testEl.offsetHeight;
+      document.body.removeChild(testEl);
+      return height;
+    };
+    
+    // 使用默认值 iOS 通常是 34px
+    const detectedSafeArea = getSafeAreaFromCSS() || getSafeAreaFromEnv();
+    setSafeAreaBottom(detectedSafeArea > 0 ? detectedSafeArea : SAFE_AREA_BOTTOM);
+  }, [isMobile]);
+
+  // 计算每一页的实际可视高度（向下取整到 line-height）
+  const getPageHeight = useCallback(() => {
+    if (typeof window === 'undefined') return 500;
+    // 可视高度 = 屏幕高度 - header - 底部翻页栏 - safe area
+    const availableHeight = window.innerHeight - currentHeaderHeight - bottomBarHeight - safeAreaBottom;
+    // 向下取整到 line-height 的整数倍，确保不出现半行
+    const pageHeight = Math.floor(availableHeight / lineHeightPx) * lineHeightPx;
+    return Math.max(lineHeightPx * 3, pageHeight); // 最少显示3行
+  }, [currentHeaderHeight, bottomBarHeight, safeAreaBottom, lineHeightPx]);
+
+  // 计算用于分页的容器高度
+  const pageHeight = getPageHeight();
 
   // Calculate total pages based on content height
   useEffect(() => {
     if (!contentRef.current) return;
     
     const calculatePages = () => {
-      // 获取正文内容区的高度（用于分页）
-      const contentArea = document.querySelector('.reading-content-area') as HTMLElement;
-      if (!contentArea) return;
-      
       const contentHeight = contentRef.current?.scrollHeight || 0;
-      const viewHeight = contentArea.clientHeight - 100; // 减去上下 padding
-      const lineH = fontSize * lineHeight;
-      // 每页显示的行数，向下取整
-      const linesPerPage = Math.floor(viewHeight / lineH);
-      const pageHeight = linesPerPage * lineH;
-      const total = Math.ceil(contentHeight / pageHeight) || 1;
+      // 总页数 = ceil(内容高度 / 每页高度)
+      const currentPageHeight = getPageHeight();
+      const total = Math.ceil(contentHeight / currentPageHeight) || 1;
       setTotalPagesState(total);
       
       if (onTotalPagesChange) {
@@ -246,7 +306,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
       clearTimeout(timer);
       resizeObserver.disconnect();
     };
-  }, [processedContent, fontSize, lineHeight, onTotalPagesChange]);
+  }, [processedContent, fontSize, lineHeight, getPageHeight, onTotalPagesChange, currentHeaderHeight, bottomBarHeight]);
 
   // Update state when props change
   useEffect(() => {
@@ -258,6 +318,13 @@ export const ReadingArea = forwardRef(function ReadingArea({
   // Clamp current page to valid range
   const safeCurrentPage = Math.min(Math.max(1, currentPageState), totalPagesState);
 
+  // 计算当前页的偏移量（向上滚动的内容高度）
+  // 第1页: offset = 0
+  // 第2页: offset = pageHeight
+  // 第3页: offset = 2 * pageHeight
+  const currentPageHeight = getPageHeight();
+  const offset = (safeCurrentPage - 1) * currentPageHeight;
+
   // Handle page navigation
   const goToPrevPage = useCallback(() => {
     if (safeCurrentPage > 1) {
@@ -266,8 +333,6 @@ export const ReadingArea = forwardRef(function ReadingArea({
       if (onPageChange) {
         onPageChange(newPage);
       }
-      // 滚动到对应位置
-      scrollToPage(newPage);
     }
   }, [safeCurrentPage, onPageChange]);
 
@@ -278,27 +343,8 @@ export const ReadingArea = forwardRef(function ReadingArea({
       if (onPageChange) {
         onPageChange(newPage);
       }
-      // 滚动到对应位置
-      scrollToPage(newPage);
     }
   }, [safeCurrentPage, totalPagesState, onPageChange]);
-
-  // 滚动到指定页
-  const scrollToPage = (pageNum: number) => {
-    const contentArea = document.querySelector('.reading-content-area') as HTMLElement;
-    if (!contentArea) return;
-    
-    const lineH = fontSize * lineHeight;
-    const viewHeight = contentArea.clientHeight - 100;
-    const linesPerPage = Math.floor(viewHeight / lineH);
-    const pageHeight = linesPerPage * lineH;
-    const scrollTop = (pageNum - 1) * pageHeight;
-    
-    contentArea.scrollTo({
-      top: scrollTop,
-      behavior: 'smooth'
-    });
-  };
 
   // Jump to specific page based on paragraph index
   const jumpToParagraph = useCallback((paragraphIndex: number) => {
@@ -306,23 +352,16 @@ export const ReadingArea = forwardRef(function ReadingArea({
     
     const element = contentRef.current.querySelector(`[data-paragraph-index="${paragraphIndex}"]`);
     if (element) {
-      const contentArea = document.querySelector('.reading-content-area') as HTMLElement;
-      if (!contentArea) return;
-      
       const offsetTop = (element as HTMLElement).offsetTop;
-      const lineH = fontSize * lineHeight;
-      const viewHeight = contentArea.clientHeight - 100;
-      const linesPerPage = Math.floor(viewHeight / lineH);
-      const pageHeight = linesPerPage * lineH;
+      const pageHeight = getPageHeight();
       const targetPage = Math.floor(offsetTop / pageHeight) + 1;
       const clampedPage = Math.min(Math.max(1, targetPage), totalPagesState);
       setCurrentPageState(clampedPage);
       if (onPageChange) {
         onPageChange(clampedPage);
       }
-      scrollToPage(clampedPage);
     }
-  }, [fontSize, lineHeight, totalPagesState, onPageChange]);
+  }, [lineHeightPx, totalPagesState, onPageChange]);
 
   // Expose jumpToParagraph via ref
   useImperativeHandle(ref, () => ({
@@ -408,9 +447,17 @@ export const ReadingArea = forwardRef(function ReadingArea({
   // Render content with all paragraphs
   if (processedContent && processedContent.length > 0) {
     const currentHorizPadding = isMobile ? MOBILE_READING_PADDING_HORIZONTAL : READING_PADDING_HORIZONTAL;
-    const TOP_PADDING = 20; // 顶部安全间距
-    const BOTTOM_PADDING = 80; // 底部安全间距，给页码栏留空间
-    const PAGE_BAR_HEIGHT = 60; // 底部页码栏高度
+    
+    // 计算阅读区域的精确高度（用于渲染）
+    // 这个高度必须与分页计算中的 pageHeight 一致
+    const getReadingAreaHeight = () => {
+      if (typeof window === 'undefined') return 'calc(100vh - 100px)';
+      const availableHeight = window.innerHeight - currentHeaderHeight - bottomBarHeight - safeAreaBottom;
+      const lineH = fontSize * lineHeight;
+      const lineAlignedHeight = Math.floor(availableHeight / lineH) * lineH;
+      const finalHeight = Math.max(lineH * 3, lineAlignedHeight);
+      return `${finalHeight}px`;
+    };
     
     return (
       <div 
@@ -419,29 +466,31 @@ export const ReadingArea = forwardRef(function ReadingArea({
           backgroundColor,
           height: '100vh',
           overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
+          position: 'relative',
         }}
       >
-        {/* 中间正文区 - flex:1 自动填充空间，内容在此滚动 */}
+        {/* 阅读内容区域 - 精确高度 = 屏幕 - header - 底部翻页栏 - safe area */}
         <div 
           ref={containerRef}
-          className="reading-content-area"
+          className="reading-area"
           style={{
-            flex: 1,
-            overflowY: 'auto',
-            overflowX: 'hidden',
+            height: getReadingAreaHeight(),
+            overflow: 'hidden',
             paddingLeft: `${currentHorizPadding}px`,
             paddingRight: `${currentHorizPadding}px`,
-            paddingTop: `${TOP_PADDING}px`,
-            paddingBottom: `${BOTTOM_PADDING}px`,
             boxSizing: 'border-box',
-            WebkitOverflowScrolling: 'touch',
+            position: 'relative',
           }}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
-          {/* 文本内容 - 高度等于所有段落总高度 */}
+          {/* 
+            文本内容容器：
+            1. position: relative（禁止 absolute）
+            2. 不设置 padding-top/padding-bottom（避免内容区域变小）
+            3. 使用 margin-top 来实现分页滚动
+            4. 内容高度等于所有段落的总高度
+          */}
           <div 
             ref={contentRef}
             className="text-content"
@@ -451,8 +500,9 @@ export const ReadingArea = forwardRef(function ReadingArea({
               color: textColor,
               fontFamily: 'Georgia, "Times New Roman", serif',
               textAlign: 'justify',
-              maxWidth: '800px',
-              margin: '0 auto',
+              marginTop: `-${offset}px`,
+              willChange: 'margin-top',
+              position: 'relative',
             }}
           >
             {processedContent.map((paragraph, pIndex) => (
@@ -468,34 +518,24 @@ export const ReadingArea = forwardRef(function ReadingArea({
           </div>
         </div>
 
-        {/* 底部页码栏 - position:fixed 永远固定在屏幕最底部 */}
+        {/* 底部翻页栏 - 移动端固定在底部 */}
         <div
-          className={`page-bar ${isDarkMode ? 'dark' : ''}`}
+          className={`page-indicator-bar ${isDarkMode ? 'dark' : ''} ${isMobile ? 'mobile-fixed' : ''}`}
           style={{
-            position: 'fixed',
-            bottom: 0,
-            left: 0,
-            right: 0,
-            height: `${PAGE_BAR_HEIGHT}px`,
+            height: `${bottomBarHeight}px`,
             backgroundColor,
-            borderTop: '1px solid',
             borderTopColor: isDarkMode ? "#333" : "#e0e0e0",
-            zIndex: 9999,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            paddingBottom: 'env(safe-area-inset-bottom, 0px)',
           }}
         >
-          <div className="page-bar-controls">
+          <div className="page-indicator-controls">
             <button
               className={`page-btn ${isDarkMode ? 'dark' : ''}`}
               onClick={goToPrevPage}
               disabled={safeCurrentPage <= 1}
             >
-              <ChevronLeft size={22} />
+              <ChevronLeft size={20} />
             </button>
-            <div className={`page-num ${isDarkMode ? 'dark' : ''}`}>
+            <div className={`page-info ${isDarkMode ? 'dark' : ''}`}>
               {safeCurrentPage} / {totalPagesState}
             </div>
             <button
@@ -503,19 +543,27 @@ export const ReadingArea = forwardRef(function ReadingArea({
               onClick={goToNextPage}
               disabled={safeCurrentPage >= totalPagesState}
             >
-              <ChevronRight size={22} />
+              <ChevronRight size={20} />
             </button>
           </div>
         </div>
 
         <style jsx>{`
           .reading-wrapper {
-            margin: 0 !important;
-            padding: 0 !important;
+            height: 100vh;
+            position: relative;
+            overflow: hidden;
           }
 
-          .reading-content-area {
-            -webkit-overflow-scrolling: touch;
+          .reading-area {
+            box-sizing: border-box;
+            position: relative;
+          }
+
+          .text-content {
+            box-sizing: border-box;
+            max-width: 800px;
+            margin: 0 auto;
           }
 
           .text-content :global(.paragraph) {
@@ -544,24 +592,38 @@ export const ReadingArea = forwardRef(function ReadingArea({
             border-radius: 2px;
           }
 
-          /* 底部页码栏 */
-          .page-bar-controls {
+          /* Page indicator bar - fixed at bottom */
+          .page-indicator-bar {
+            border-top: 1px solid;
+            flex-shrink: 0;
+            position: relative;
+          }
+
+          .page-indicator-bar.mobile-fixed {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+          }
+
+          .page-indicator-controls {
             display: flex;
-            align-items: center;
             justify-content: center;
-            gap: 3rem;
+            align-items: center;
             height: 100%;
+            gap: 2rem;
           }
 
           .page-btn {
             display: flex;
             align-items: center;
             justify-content: center;
-            width: 44px;
-            height: 44px;
+            width: 40px;
+            height: 40px;
             border: none;
             border-radius: 50%;
-            background: rgba(200, 200, 200, 0.4);
+            background: rgba(200, 200, 200, 0.3);
             color: #333;
             cursor: pointer;
             transition: all 0.2s ease;
@@ -573,11 +635,11 @@ export const ReadingArea = forwardRef(function ReadingArea({
           }
 
           .page-btn:hover:not(:disabled) {
-            background: rgba(200, 200, 200, 0.6);
+            background: rgba(200, 200, 200, 0.5);
           }
 
           .page-btn.dark:hover:not(:disabled) {
-            background: rgba(100, 100, 100, 0.6);
+            background: rgba(100, 100, 100, 0.5);
           }
 
           .page-btn:disabled {
@@ -585,15 +647,40 @@ export const ReadingArea = forwardRef(function ReadingArea({
             cursor: not-allowed;
           }
 
-          .page-num {
-            font-size: 15px;
+          .page-info {
+            font-size: 14px;
             color: #666;
             min-width: 80px;
             text-align: center;
           }
 
-          .page-num.dark {
+          .page-info.dark {
             color: #999;
+          }
+
+          /* Mobile styles - 处理 safe area */
+          @media (max-width: 768px) {
+            .reading-wrapper {
+              height: 100vh !important;
+              height: 100dvh !important; /* 动态视口高度，处理地址栏 */
+            }
+
+            .reading-area {
+              padding-left: 12px !important;
+              padding-right: 12px !important;
+            }
+
+            /* iOS safe area - 确保底部翻页栏不被手势区域遮挡 */
+            .page-indicator-bar.mobile-fixed {
+              bottom: env(safe-area-inset-bottom, 0px);
+              padding-bottom: env(safe-area-inset-bottom, 0px);
+            }
+          }
+
+          @media (min-width: 769px) {
+            .page-indicator-bar.mobile-fixed {
+              position: relative;
+            }
           }
         `}</style>
       </div>
