@@ -430,6 +430,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
             overflow: 'hidden',
             paddingLeft: `${currentHorizPadding}px`,
             paddingRight: `${currentHorizPadding}px`,
+            paddingBottom: isMobile ? '60px' : '0px', // Space for mobile page indicator
             boxSizing: 'border-box',
             flex: 1,
           }}
@@ -500,7 +501,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
           </div>
         </div>
 
-        {/* Mobile Page Indicator - Fixed at bottom right */}
+        {/* Mobile Page Indicator - Inside reading-area, absolute positioned */}
         <div className={`mobile-page-indicator ${isDarkMode ? 'dark' : ''}`}>
           {safeCurrentPage}/{totalPagesState}
         </div>
@@ -618,11 +619,6 @@ export const ReadingArea = forwardRef(function ReadingArea({
             .reading-area {
               padding: 0 12px !important;
             }
-
-            .text-content {
-              max-width: 100% !important;
-              padding-bottom: 60px !important; /* Space for mobile page indicator */
-            }
           }
 
           /* Mobile Page Indicator - Only show on mobile */
@@ -652,8 +648,13 @@ export const ReadingArea = forwardRef(function ReadingArea({
 
             .mobile-page-indicator {
               display: block;
-              position: fixed;
-              bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+              position: absolute;
+              bottom: 16px;
+              right: 16px;
+            }
+
+            .text-content {
+              padding-bottom: 60px !important; /* Space for page indicator */
             }
           }
 
