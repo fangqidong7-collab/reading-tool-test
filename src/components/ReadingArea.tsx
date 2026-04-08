@@ -17,8 +17,8 @@ const PARAGRAPH_GAP = 16; // Gap between paragraphs in px
 const MOBILE_BREAKPOINT = 768; // Mobile breakpoint in px
 const TOUCH_SWIPE_THRESHOLD = 50; // Minimum swipe distance in px
 // Mobile page indicator constants
-const MOBILE_TOP_GAP = 5; // 顶部间距（工作栏下方）
-const MOBILE_BOTTOM_SAFE_ZONE = 60; // 底部页码安全区（阅读区域底部抬高，完全避开页码指示器）
+const MOBILE_TOP_GAP = 5; // 顶部间距
+const MOBILE_BOTTOM_SAFE_ZONE = 60; // 底部页码安全区
 
 // Ref type for exposing jumpToParagraph
 export interface ReadingAreaRef {
@@ -208,16 +208,16 @@ export const ReadingArea = forwardRef(function ReadingArea({
   const currentHeaderHeight = isMobile ? MOBILE_HEADER_HEIGHT : HEADER_HEIGHT;
   const currentPaginationHeight = isMobile ? MOBILE_PAGINATION_HEIGHT : PAGINATION_HEIGHT;
 
-  // 【修正一】计算移动端阅读区域可用高度
-  // 公式：100dvh - 顶栏(48px) - 顶部间距(5px) - 底部安全区(60px)
+  // 【修正】计算移动端阅读区域可用高度
+  // 公式：100% - 顶栏(48px) - 顶部间距(5px) - 底部安全区(60px)
   const availableHeight = isMobile
     ? window.innerHeight - currentHeaderHeight - MOBILE_TOP_GAP - MOBILE_BOTTOM_SAFE_ZONE
     : window.innerHeight - currentHeaderHeight - currentPaginationHeight;
 
-  // 【修正二】严格对齐行高：Math.floor向下取整，确保每页第一行、最后一行完整
+  // 每页高度 = Math.floor(阅读区域可用高度 / 行高) * 行高，保证无半截字
   const lineHeightPx = fontSize * lineHeight;
   const pageHeight = Math.floor(availableHeight / lineHeightPx) * lineHeightPx;
-  const viewHeight = Math.max(lineHeightPx, pageHeight); // 至少显示一行
+  const viewHeight = Math.max(lineHeightPx, pageHeight);
 
   // Calculate view height (recalculated on resize)
   useEffect(() => {
@@ -230,11 +230,10 @@ export const ReadingArea = forwardRef(function ReadingArea({
     
     const calculatePages = () => {
       const contentHeight = contentRef.current?.scrollHeight || 0;
-      // 【修正一】使用正确的可用高度计算
+      // 每页高度 = Math.floor(阅读区域可用高度 / 行高) * 行高
       const calcAvailableHeight = isMobile
         ? window.innerHeight - currentHeaderHeight - MOBILE_TOP_GAP - MOBILE_BOTTOM_SAFE_ZONE
         : window.innerHeight - currentHeaderHeight - currentPaginationHeight;
-      // 【修正二】严格按行高整数倍计算
       const calcPageHeight = Math.floor(calcAvailableHeight / lineHeightPx) * lineHeightPx;
       const total = Math.ceil(contentHeight / calcPageHeight) || 1;
       setTotalPagesState(total);
@@ -397,44 +396,42 @@ export const ReadingArea = forwardRef(function ReadingArea({
 
   // Render content with all paragraphs
   if (processedContent && processedContent.length > 0) {
-    // 【修正一】重新计算阅读区域高度，完全避开页码指示器
-    // 公式：100dvh - 顶栏(48px) - 顶部间距(5px) - 底部安全区(60px)
+    // 阅读区域高度：calc(100% - 48px - 5px - 60px)
     const currentHorizPadding = isMobile ? MOBILE_READING_PADDING_HORIZONTAL : READING_PADDING_HORIZONTAL;
     const containerHeight = headerVisible 
-      ? `calc(100dvh - ${currentHeaderHeight}px - ${MOBILE_TOP_GAP}px - ${MOBILE_BOTTOM_SAFE_ZONE}px)` 
-      : `calc(100dvh - ${MOBILE_BOTTOM_SAFE_ZONE}px)`;
+      ? `calc(100% - ${currentHeaderHeight}px - ${MOBILE_TOP_GAP}px - ${MOBILE_BOTTOM_SAFE_ZONE}px)` 
+      : `calc(100% - ${MOBILE_BOTTOM_SAFE_ZONE}px)`;
     
     return (
       <div 
         className="reading-wrapper" 
         style={{ 
           backgroundColor,
-          minHeight: '100dvh',
-          height: '100dvh',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
         }}
       >
-        {/* 【修正一】Reading Content Area - 避开页码指示器 */}
+        {/* 阅读区域 - 高度锁定，overflow: hidden */}
         <div 
           ref={containerRef}
           className="reading-area"
           style={{
             height: containerHeight,
             maxHeight: containerHeight,
-            overflow: 'hidden !important',
+            overflow: "hidden",
             paddingLeft: `${currentHorizPadding}px`,
             paddingRight: `${currentHorizPadding}px`,
             paddingTop: `${MOBILE_TOP_GAP}px`,
-            paddingBottom: '0px',
-            boxSizing: 'border-box',
+            paddingBottom: "20px",
+            boxSizing: "border-box",
             flex: 1,
           }}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
-          {/* 【修正二】text-content - marginTop翻页，第一行/最后一行完整 */}
+          {/* text-content - marginTop翻页 */}
           <div 
             ref={contentRef}
             className="text-content"
@@ -442,12 +439,10 @@ export const ReadingArea = forwardRef(function ReadingArea({
               fontSize: `${fontSize}px`,
               lineHeight: lineHeight,
               color: textColor,
-              fontFamily: 'Georgia, "Times New Roman", serif',
-              textAlign: 'justify',
-              // 【修正二】首末页兜底校验：
-              // 首页 marginTop=0，最后一页内容不足时自动顶部对齐
-              marginTop: safeCurrentPage === 1 ? '0px' : `-${offset}px`,
-              willChange: 'margin-top',
+              fontFamily: "Georgia, \"Times New Roman\", serif",
+              textAlign: "justify",
+              marginTop: safeCurrentPage === 1 ? "0px" : `-${offset}px`,
+              willChange: "margin-top",
               minHeight: `${viewHeight}px`,
             }}
           >
