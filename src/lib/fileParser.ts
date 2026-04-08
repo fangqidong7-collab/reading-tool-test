@@ -290,6 +290,33 @@ async function parseEpub(file: File, onProgress: ProgressCallback): Promise<{ ti
       const chapterPath = opfPrefix + href;
       const chapterHtml = await zip.file(chapterPath)?.async("string");
       
+      // DEBUG: 查看前5个章节的原始HTML内容
+      if (i >= 0 && i <= 4 && chapterHtml) {
+        console.log('===== 第' + (i+1) + '个章节文件 =====');
+        console.log('文件路径:', chapterPath);
+        console.log('HTML长度:', chapterHtml.length);
+        
+        // 在HTML中搜索所有标签名，看有哪些标签类型
+        const tagNames = new Set();
+        const tagRegex = /<([a-zA-Z][a-zA-Z0-9]*)\b/g;
+        let tagMatch;
+        while ((tagMatch = tagRegex.exec(chapterHtml)) !== null) {
+          tagNames.add(tagMatch[1].toLowerCase());
+        }
+        console.log('包含的HTML标签类型:', Array.from(tagNames).join(', '));
+        
+        // 搜索是否包含 chapter 文字
+        const chapterIdx = chapterHtml.toLowerCase().indexOf('chapter');
+        if (chapterIdx >= 0) {
+          // 打印 chapter 出现位置前后 200 个字符
+          const start = Math.max(0, chapterIdx - 100);
+          const end = Math.min(chapterHtml.length, chapterIdx + 100);
+          console.log('找到chapter文字，上下文:', chapterHtml.substring(start, end));
+        } else {
+          console.log('该章节不包含chapter文字');
+        }
+      }
+      
       if (chapterHtml) {
         // DEBUG: 只在前两个章节打印详细日志
         const debugChapter = i < 2;
