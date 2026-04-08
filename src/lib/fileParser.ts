@@ -86,7 +86,6 @@ function extractContentBlocksFromHtml(html: string): ContentBlock[] {
       if (tagName.startsWith('h')) {
         // This is a heading
         const level = parseInt(tagName[1], 10);
-        console.log('HTML中提取到标题标签:', tagName, '内容:', text);
         blocks.push({ type: 'heading', level, text });
       } else {
         // This is a paragraph - only add if meaningful content (at least 10 chars)
@@ -280,7 +279,6 @@ async function parseEpub(file: File, onProgress: ProgressCallback): Promise<{ ti
             // Add heading with special prefix for rendering (allowing clicks on words)
             // Format: [H2]Chapter 1[/H2] - level is 2 for typical chapter headings
             const level = block.level || 2;
-            console.log('发现标题:', block.text, '级别:', level);
             chapterContents.push(`[H${level}]${block.text}[/H${level}]`);
             allHeadings.push(block.text);
             currentParagraphIndex++;

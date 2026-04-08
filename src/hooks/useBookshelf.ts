@@ -2,6 +2,12 @@
 
 import { useState, useCallback, useEffect } from "react";
 
+// Cache version for processedContent storage format
+const PROCESSED_CONTENT_CACHE_VERSION = 2;
+
+// Chunk size for storing large processedContent (1000 paragraphs per chunk)
+const PROCESSED_CONTENT_CHUNK_SIZE = 1000;
+
 // Processed content segment type
 export interface ProcessedSegment {
   text: string;
@@ -291,14 +297,33 @@ export function useBookshelf() {
     );
   }, []);
 
-  // Save processed content for faster loading
+  // Save processed content for faster loading (using chunked storage)
   const saveProcessedContent = useCallback((id: string, processedContent: ProcessedContent) => {
-    // Only save processed content if it's not too large (to avoid quota issues)
-    const contentSize = JSON.stringify(processedContent).length;
-    if (contentSize > 2 * 1024 * 1024) { // 2MB limit
-      console.warn("Processed content too large, skipping save");
-      return;
+    if (!processedContent || processedContent.length === 0) return;
+    
+    // Use chunked storage for large content
+    const totalChunks = Math.ceil(processedContent.length / PROCESSED_CONTENT_CHUNK_SIZE);
+    
+    // Clear old cached data first (single chunk if exists)
+    const oldSingleChunk = localStorage.getItem(`book_${id}_processedContent`);
+    if (oldSingleChunk) {
+      localStorage.removeItem(`book_${id}_processedContent`);
     }
+    
+    // Save new chunked data
+    for (let i = 0; i < totalChunks; i++) {
+      const chunk = processedContent.slice(i * PROCESSED_CONTENT_CHUNK_SIZE, (i + 1) * PROCESSED_CONTENT_CHUNK_SIZE);
+      localStorage.setItem(
+        `book_${id}_content_chunk_${i}`,
+        JSON.stringify(chunk)
+      );
+    }
+    
+    // Store metadata (version and chunk count)
+    localStorage.setItem(`book_${id}_cache_version`, String(PROCESSED_CONTENT_CACHE_VERSION));
+    localStorage.setItem(`book_${id}_content_chunks`, String(totalChunks));
+    
+    // Also update the in-memory state for immediate access
     setBooks((prev) =>
       prev.map((b) =>
         b.id === id

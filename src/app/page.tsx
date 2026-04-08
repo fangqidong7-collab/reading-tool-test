@@ -118,7 +118,6 @@ function processTextToSegments(text: string): ProcessedContent {
     const headingMatch = trimmed.match(/^\[H(\d)\]([\s\S]*?)\[\/H\d\]$/);
     
     if (headingMatch) {
-      console.log('processTextToSegments 识别到标题:', headingMatch[2]);
       const level = parseInt(headingMatch[1], 10);
       const headingText = headingMatch[2].trim();
       
@@ -142,8 +141,7 @@ function processTextToSegments(text: string): ProcessedContent {
         result.push({ segments, headingLevel: level });
       }
     } else {
-      // Regular paragraph - 只打印前50个字符，避免刷屏
-      console.log('普通段落:', trimmed.substring(0, 50));
+      // Regular paragraph
       const segments: ProcessedSegment[] = [];
       const regex = /([a-zA-Z]+|[^a-zA-Z\s]+|\s+)/g;
       let segMatch;
@@ -296,9 +294,34 @@ export default function Home() {
         setAnnotations(currentBook.annotations);
       }
       
-      // Process content
+      // Process content - try to load from localStorage first
       let processed = currentBook.processedContent;
       if (!processed) {
+        // Try to load from localStorage chunked storage
+        const bookId = currentBook.id;
+        const cachedVersion = parseInt(localStorage.getItem(`book_${bookId}_cache_version`) || '0', 10);
+        const currentVersion = 2; // Must match PROCESSED_CONTENT_CACHE_VERSION in useBookshelf
+        
+        if (cachedVersion >= currentVersion) {
+          const totalChunks = parseInt(localStorage.getItem(`book_${bookId}_content_chunks`) || '0', 10);
+          if (totalChunks > 0) {
+            let loadedContent: ProcessedContent = [];
+            for (let i = 0; i < totalChunks; i++) {
+              const chunkStr = localStorage.getItem(`book_${bookId}_content_chunk_${i}`);
+              if (chunkStr) {
+                const chunk = JSON.parse(chunkStr);
+                loadedContent = loadedContent.concat(chunk);
+              }
+            }
+            if (loadedContent.length > 0) {
+              processed = loadedContent;
+            }
+          }
+        }
+      }
+      
+      if (!processed) {
+        // Re-process from raw content
         processed = processTextToSegments(currentBook.content);
         setProcessedContent(processed);
         saveProcessedContent(currentBook.id, processed);
