@@ -8,7 +8,7 @@ import { VocabularySidebar } from "@/components/VocabularySidebar";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { CloudSyncModal } from "@/components/CloudSyncModal";
 import JSLibLoader from "@/components/JSLibLoader";
-import { useBookshelf, ProcessedContent, ProcessedSegment } from "@/hooks/useBookshelf";
+import { useBookshelf, ProcessedContent, ProcessedSegment, ProcessedParagraph } from "@/hooks/useBookshelf";
 import { useReadingSettings } from "@/hooks/useReadingSettings";
 import { lemmatize, getWordMeaning, findWordFamily } from "@/lib/dictionary";
 import { translateWord } from "@/lib/translate";
@@ -104,26 +104,77 @@ function shortenTranslation(text: string): string {
 }
 
 // Process text into structured segments with lemmas
+// Handles EPUB heading markers like [H2]Chapter 1[/H2]
 function processTextToSegments(text: string): ProcessedContent {
-  const paragraphs = text.split(/\n\n+/);
-  return paragraphs.map((paragraph) => {
-    const segments: ProcessedSegment[] = [];
-    const regex = /([a-zA-Z]+|[^a-zA-Z\s]+|\s+)/g;
-    let match;
-    
-    while ((match = regex.exec(paragraph)) !== null) {
-      const token = match[0];
-      if (/^\s+$/.test(token)) {
-        segments.push({ text: token, lemma: "", type: "space" });
-      } else if (/^[a-zA-Z]+$/.test(token)) {
-        segments.push({ text: token, lemma: lemmatize(token.toLowerCase()), type: "word" });
-      } else {
-        segments.push({ text: token, lemma: "", type: "punctuation" });
+  // Pattern to match heading markers: [H1]...[H1], [H2]...[/H2], etc.
+  const headingPattern = /\[H(\d)\]([\s\S]*?)\[\/H\1\]/g;
+  
+  // Replace heading markers with a placeholder that we'll split on
+  const placeholderPrefix = '__HEADING_';
+  let processedText = text;
+  const headings: Array<{ index: number; level: number; text: string }> = [];
+  
+  let match;
+  let placeholderIndex = 0;
+  while ((match = headingPattern.exec(text)) !== null) {
+    const level = parseInt(match[1], 10);
+    const headingText = match[2].trim();
+    const placeholder = `${placeholderPrefix}${placeholderIndex}__`;
+    headings.push({ index: placeholderIndex, level, text: headingText });
+    processedText = processedText.replace(match[0], `\n\n${placeholder}\n\n`);
+    placeholderIndex++;
+  }
+  
+  const paragraphs = processedText.split(/\n\n+/);
+  const result: ProcessedParagraph[] = [];
+  
+  for (const paragraph of paragraphs) {
+    // Check if this paragraph contains a heading placeholder
+    const headingMatch = paragraph.match(new RegExp(`${placeholderPrefix}(\\d+)__`));
+    if (headingMatch) {
+      const headingIdx = parseInt(headingMatch[1], 10);
+      const headingInfo = headings.find(h => h.index === headingIdx);
+      if (headingInfo) {
+        // Create segments for the heading text
+        const segments: ProcessedSegment[] = [];
+        const regex = /([a-zA-Z]+|[^a-zA-Z\s]+|\s+)/g;
+        let segMatch;
+        
+        while ((segMatch = regex.exec(headingInfo.text)) !== null) {
+          const token = segMatch[0];
+          if (/^\s+$/.test(token)) {
+            segments.push({ text: token, lemma: "", type: "space" });
+          } else if (/^[a-zA-Z]+$/.test(token)) {
+            segments.push({ text: token, lemma: lemmatize(token.toLowerCase()), type: "word" });
+          } else {
+            segments.push({ text: token, lemma: "", type: "punctuation" });
+          }
+        }
+        
+        result.push({ segments, headingLevel: headingInfo.level });
       }
+    } else if (paragraph.trim()) {
+      // Regular paragraph
+      const segments: ProcessedSegment[] = [];
+      const regex = /([a-zA-Z]+|[^a-zA-Z\s]+|\s+)/g;
+      let segMatch;
+      
+      while ((segMatch = regex.exec(paragraph)) !== null) {
+        const token = segMatch[0];
+        if (/^\s+$/.test(token)) {
+          segments.push({ text: token, lemma: "", type: "space" });
+        } else if (/^[a-zA-Z]+$/.test(token)) {
+          segments.push({ text: token, lemma: lemmatize(token.toLowerCase()), type: "word" });
+        } else {
+          segments.push({ text: token, lemma: "", type: "punctuation" });
+        }
+      }
+      
+      result.push({ segments });
     }
-    
-    return segments;
-  });
+  }
+  
+  return result;
 }
 
 export default function Home() {
@@ -323,7 +374,7 @@ export default function Home() {
       const pageIndex = currentPage - 1;
       const paragraphs = processedContent;
       const previewText = paragraphs[pageIndex]
-        ? paragraphs[pageIndex].map(s => s.text).join('').substring(0, 50)
+        ? paragraphs[pageIndex].segments.map(s => s.text).join('').substring(0, 50)
         : '';
       addBookmark(bookId, currentPage, previewText);
     }

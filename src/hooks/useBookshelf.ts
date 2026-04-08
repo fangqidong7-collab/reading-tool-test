@@ -9,8 +9,14 @@ export interface ProcessedSegment {
   type: "word" | "space" | "punctuation";
 }
 
-// Processed content: array of paragraphs, each paragraph is array of segments
-export type ProcessedContent = ProcessedSegment[][];
+// Processed paragraph type
+export interface ProcessedParagraph {
+  segments: ProcessedSegment[];
+  headingLevel?: number; // 1-6 for headings, undefined for regular paragraphs
+}
+
+// Processed content: array of paragraphs
+export type ProcessedContent = ProcessedParagraph[];
 
 // TOC Entry
 export interface TocEntry {

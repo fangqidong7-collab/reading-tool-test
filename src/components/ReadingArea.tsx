@@ -7,7 +7,7 @@ import { ProcessedContent } from "@/hooks/useBookshelf";
 // Layout constants
 const HEADER_HEIGHT = 56;
 const MOBILE_HEADER_HEIGHT = 48;
-const PAGINATION_HEIGHT = 56;
+const PAGINATION_HEIGHT = 50;
 const MOBILE_PAGINATION_HEIGHT = 0;
 const READING_PADDING_HORIZONTAL = 32;
 const MOBILE_READING_PADDING_HORIZONTAL = 12;
@@ -35,6 +35,7 @@ interface ParagraphProps {
   searchQuery?: string;
   isCurrentSearchResult?: boolean;
   highlightBg?: string;
+  isDarkMode?: boolean;
 }
 
 const Paragraph = React.memo(({
@@ -46,6 +47,7 @@ const Paragraph = React.memo(({
   searchQuery = "",
   isCurrentSearchResult = false,
   highlightBg = "#FFEB3B",
+  isDarkMode = false,
 }: ParagraphProps) => {
   const handleClick = useCallback((e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
@@ -56,17 +58,63 @@ const Paragraph = React.memo(({
     }
   }, [onWordClick]);
 
+  // Check if this is a heading paragraph
+  const isHeading = paragraph.headingLevel !== undefined;
+  const headingLevel = paragraph.headingLevel || 2;
+
   // Build text content for search matching
-  const fullText = paragraph.map(s => s.text).join('');
+  const fullText = paragraph.segments.map(s => s.text).join('');
+
+  // Get heading styles based on level
+  const getHeadingStyles = (): React.CSSProperties => {
+    const baseColor = isDarkMode ? "#E0E0E0" : "#333";
+    switch (headingLevel) {
+      case 1:
+        return {
+          fontSize: '1.6em',
+          fontWeight: 'bold',
+          textAlign: 'center',
+          marginTop: '40px',
+          marginBottom: '20px',
+          color: baseColor,
+        };
+      case 2:
+        return {
+          fontSize: '1.4em',
+          fontWeight: 'bold',
+          textAlign: 'center',
+          marginTop: '30px',
+          marginBottom: '16px',
+          color: baseColor,
+        };
+      case 3:
+        return {
+          fontSize: '1.2em',
+          fontWeight: 'bold',
+          marginTop: '24px',
+          marginBottom: '12px',
+          color: baseColor,
+        };
+      default: // h4-h6
+        return {
+          fontSize: '1.1em',
+          fontWeight: 'bold',
+          marginTop: '20px',
+          marginBottom: '10px',
+          color: baseColor,
+        };
+    }
+  };
 
   return (
     <p 
-      className={`paragraph ${isCurrentSearchResult ? 'search-highlight' : ''}`}
+      className={`paragraph ${isHeading ? 'heading-paragraph' : ''} ${isCurrentSearchResult ? 'search-highlight' : ''}`}
       data-paragraph-index={pIndex}
+      data-heading-level={isHeading ? headingLevel : undefined}
       onClick={handleClick}
-      style={isCurrentSearchResult ? { backgroundColor: highlightBg } : undefined}
+      style={isCurrentSearchResult ? { backgroundColor: highlightBg } : (isHeading ? getHeadingStyles() : undefined)}
     >
-      {paragraph.map((segment, sIndex) => {
+      {paragraph.segments.map((segment, sIndex) => {
         const key = `${pIndex}-${sIndex}`;
         if (segment.type === "space" || segment.type === "punctuation") {
           return <span key={key}>{segment.text}</span>;
@@ -117,6 +165,7 @@ function paragraphPropsAreEqual(
     searchQuery?: string;
     isCurrentSearchResult?: boolean;
     highlightBg?: string;
+    isDarkMode?: boolean;
   },
   next: {
     paragraph: ProcessedContent[number];
@@ -127,6 +176,7 @@ function paragraphPropsAreEqual(
     searchQuery?: string;
     isCurrentSearchResult?: boolean;
     highlightBg?: string;
+    isDarkMode?: boolean;
   }
 ) {
   if (prev.pIndex !== next.pIndex) return false;
@@ -135,6 +185,7 @@ function paragraphPropsAreEqual(
   if (prev.searchQuery !== next.searchQuery) return false;
   if (prev.isCurrentSearchResult !== next.isCurrentSearchResult) return false;
   if (prev.highlightBg !== next.highlightBg) return false;
+  if (prev.isDarkMode !== next.isDarkMode) return false;
   
   const prevKeys = prev.annotations ? Object.keys(prev.annotations) : [];
   const nextKeys = next.annotations ? Object.keys(next.annotations) : [];
@@ -403,7 +454,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
             paddingLeft: `${currentHorizPadding}px`,
             paddingRight: `${currentHorizPadding}px`,
             paddingTop: `${MOBILE_TOP_GAP}px`,
-            paddingBottom: isMobile ? "0px" : "0px",
+            paddingBottom: isMobile ? "0px" : `${PAGINATION_HEIGHT}px`,
             boxSizing: "border-box",
           }}
           onTouchStart={handleTouchStart}
@@ -421,6 +472,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
                 searchQuery={searchQuery}
                 isCurrentSearchResult={searchResults.length > 0 && searchResults[currentSearchIndex]?.paragraphIndex === pIndex}
                 highlightBg={highlightBg}
+                isDarkMode={isDarkMode}
               />
             ))}
           </div>
@@ -448,8 +500,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
               </button>
 
               <div className={`pagination-info ${isDarkMode ? 'dark' : ''}`}>
-                <span>第 {safeCurrentPage} / {totalPagesState} 页</span>
-                <span className="pagination-percentage">({Math.round((safeCurrentPage / totalPagesState) * 100)}%)</span>
+                <span>第 {safeCurrentPage} / {totalPagesState} 页 · {safeCurrentPage === totalPagesState ? 100 : Math.max(1, Math.round((safeCurrentPage / totalPagesState) * 100))}%</span>
               </div>
 
               <button
@@ -468,7 +519,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
         {/* 移动端页码指示器 */}
         {isMobile && (
           <div className={`mobile-page-indicator ${isDarkMode ? 'dark' : ''}`}>
-            {safeCurrentPage}/{totalPagesState} ({Math.round((safeCurrentPage / totalPagesState) * 100)}%)
+            {safeCurrentPage}/{totalPagesState} · {safeCurrentPage === totalPagesState ? 100 : Math.max(1, Math.round((safeCurrentPage / totalPagesState) * 100))}%
           </div>
         )}
 
@@ -519,6 +570,11 @@ export const ReadingArea = forwardRef(function ReadingArea({
           .pagination-bar {
             border-top: 1px solid;
             flex-shrink: 0;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 50;
           }
 
           .pagination-controls {
@@ -547,8 +603,8 @@ export const ReadingArea = forwardRef(function ReadingArea({
           }
 
           .pagination-btn.dark {
-            background: #2a2a3e;
-            border-color: #444;
+            background: #1a1a2e;
+            border-color: #333;
             color: #ccc;
           }
 
@@ -558,8 +614,8 @@ export const ReadingArea = forwardRef(function ReadingArea({
           }
 
           .pagination-btn.dark:hover:not(:disabled) {
-            background: #3a3a4e;
-            border-color: #555;
+            background: #2a2a3e;
+            border-color: #444;
           }
 
           .pagination-btn:disabled {
@@ -572,40 +628,27 @@ export const ReadingArea = forwardRef(function ReadingArea({
             color: #666;
             min-width: 120px;
             text-align: center;
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
           }
 
           .pagination-info.dark {
-            color: #999;
-          }
-
-          .pagination-percentage {
-            font-size: 12px;
-            color: #888;
-          }
-
-          .pagination-info.dark .pagination-percentage {
-            color: #777;
+            color: #ccc;
           }
 
           .mobile-page-indicator {
             position: fixed;
-            bottom: 16px;
+            bottom: 12px;
             right: 16px;
             font-size: 12px;
-            color: #666666;
-            background: rgba(255, 255, 255, 0.9);
+            color: #999;
+            background: rgba(255, 255, 255, 0.8);
             border-radius: 12px;
-            padding: 6px 12px;
+            padding: 4px 10px;
             z-index: 100;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
           }
 
           .mobile-page-indicator.dark {
-            background: rgba(30, 30, 46, 0.9);
-            color: #aaaaaa;
+            background: rgba(0, 0, 0, 0.5);
+            color: #888;
           }
 
           @media (max-width: 768px) {

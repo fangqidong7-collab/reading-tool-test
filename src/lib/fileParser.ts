@@ -50,9 +50,15 @@ function cleanText(text: string): string {
 }
 
 // Helper function to extract text from HTML using DOMParser for proper parsing
-function extractParagraphsFromHtml(html: string): { paragraphs: string[]; headings: string[] } {
-  const paragraphs: string[] = [];
-  const headings: string[] = [];
+// Returns content blocks in order (headings and paragraphs mixed)
+interface ContentBlock {
+  type: 'heading' | 'paragraph';
+  level?: number; // 1-6 for headings
+  text: string;
+}
+
+function extractContentBlocksFromHtml(html: string): ContentBlock[] {
+  const blocks: ContentBlock[] = [];
   
   // Remove script and style tags first
   const cleanHtml = html
@@ -64,57 +70,65 @@ function extractParagraphsFromHtml(html: string): { paragraphs: string[]; headin
     const parser = new DOMParser();
     const doc = parser.parseFromString(cleanHtml, "text/html");
     
-    // Extract headings (h1-h6) directly
-    const headingElements = doc.querySelectorAll("h1, h2, h3, h4, h5, h6");
-    headingElements.forEach((el) => {
-      const text = cleanText(decodeHtmlEntities(el.textContent || ""));
-      if (text.length > 0) {
-        headings.push(text);
-      }
-    });
+    // Create a tree walker to walk through all elements in document order
+    const walker = doc.createTreeWalker(
+      doc.body,
+      NodeFilter.SHOW_ELEMENT,
+      null
+    );
     
-    // Extract paragraphs directly using querySelector
-    const paragraphElements = doc.querySelectorAll("p");
-    paragraphElements.forEach((el) => {
-      // Get text content, removing nested tags but preserving structure
-      let text = el.textContent || "";
-      text = decodeHtmlEntities(text);
-      text = cleanText(text);
-      // Only add non-empty paragraphs with meaningful content (at least 10 characters)
-      if (text.length >= 10) {
-        paragraphs.push(text);
+    let currentNode: Node | null = walker.currentNode;
+    while (currentNode) {
+      if (currentNode instanceof HTMLElement) {
+        const tagName = currentNode.tagName.toLowerCase();
+        
+        if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tagName)) {
+          const level = parseInt(tagName.charAt(1), 10);
+          const text = cleanText(decodeHtmlEntities(currentNode.textContent || ""));
+          if (text.length > 0) {
+            blocks.push({ type: 'heading', level, text });
+          }
+        } else if (tagName === 'p') {
+          let text = currentNode.textContent || "";
+          text = decodeHtmlEntities(text);
+          text = cleanText(text);
+          if (text.length >= 10) {
+            blocks.push({ type: 'paragraph', text });
+          }
+        }
       }
-    });
-    
-    // If no paragraphs found via querySelector, fall back to regex approach
-    if (paragraphs.length === 0) {
-      return extractParagraphsFromHtmlFallback(html);
+      currentNode = walker.nextNode();
     }
     
-    return { paragraphs, headings };
+    // If no blocks found via tree walker, fall back to simpler approach
+    if (blocks.length === 0) {
+      return extractContentBlocksFallback(html);
+    }
+    
+    return blocks;
   } catch {
-    // Fallback to regex-based extraction
-    return extractParagraphsFromHtmlFallback(html);
+    // Fallback to simpler regex-based extraction
+    return extractContentBlocksFallback(html);
   }
 }
 
-// Fallback function for extracting paragraphs when DOMParser fails
-function extractParagraphsFromHtmlFallback(html: string): { paragraphs: string[]; headings: string[] } {
-  const paragraphs: string[] = [];
-  const headings: string[] = [];
+// Fallback function for extracting content blocks when DOMParser fails
+function extractContentBlocksFallback(html: string): ContentBlock[] {
+  const blocks: ContentBlock[] = [];
   
   // Remove script and style tags first
   let cleanHtml = html
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "");
   
-  // Extract headings using regex
-  const headingRegex = /<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/gi;
+  // Extract headings using regex (in order)
+  const headingRegex = /<h([1-6])(?:[^>]*)>([\s\S]*?)<\/h\1>/gi;
   let headingMatch;
   while ((headingMatch = headingRegex.exec(cleanHtml)) !== null) {
+    const level = parseInt(headingMatch[1], 10);
     const headingText = cleanText(decodeHtmlEntities(headingMatch[2]));
     if (headingText.length > 0) {
-      headings.push(headingText);
+      blocks.push({ type: 'heading', level, text: headingText });
     }
   }
   
@@ -128,13 +142,13 @@ function extractParagraphsFromHtmlFallback(html: string): { paragraphs: string[]
     text = decodeHtmlEntities(text);
     text = cleanText(text);
     if (text.length >= 10) {
-      paragraphs.push(text);
+      blocks.push({ type: 'paragraph', text });
     }
   }
   
-  // If still no paragraphs, use the old approach of splitting by block elements
-  if (paragraphs.length === 0) {
-    // Replace block-level elements with double newlines
+  // If still no blocks, use block element splitting
+  if (blocks.length === 0) {
+    // Replace block-level elements with markers
     cleanHtml = cleanHtml.replace(/<br\s*\/?>/gi, "\n\n");
     cleanHtml = cleanHtml.replace(/<\/p>/gi, "\n\n");
     cleanHtml = cleanHtml.replace(/<\/div>/gi, "\n\n");
@@ -152,8 +166,25 @@ function extractParagraphsFromHtmlFallback(html: string): { paragraphs: string[]
     for (const line of lines) {
       const cleaned = cleanText(line);
       if (cleaned.length >= 10) {
-        paragraphs.push(cleaned);
+        blocks.push({ type: 'paragraph', text: cleaned });
       }
+    }
+  }
+  
+  return blocks;
+}
+
+// Legacy function for backward compatibility
+function extractParagraphsFromHtml(html: string): { paragraphs: string[]; headings: string[] } {
+  const blocks = extractContentBlocksFromHtml(html);
+  const paragraphs: string[] = [];
+  const headings: string[] = [];
+  
+  for (const block of blocks) {
+    if (block.type === 'heading') {
+      headings.push(block.text);
+    } else {
+      paragraphs.push(block.text);
     }
   }
   
@@ -249,25 +280,23 @@ async function parseEpub(file: File, onProgress: ProgressCallback): Promise<{ ti
       const chapterHtml = await zip.file(chapterPath)?.async("string");
       
       if (chapterHtml) {
-        // Extract paragraphs and headings from chapter
-        const { paragraphs, headings } = extractParagraphsFromHtml(chapterHtml);
+        // Extract content blocks (headings and paragraphs in order)
+        const blocks = extractContentBlocksFromHtml(chapterHtml);
         
-        // Update paragraph index for next chapter (count separator lines)
-        const separatorLine = headings[0] && paragraphs.length > 0 ? 1 : 0;
-        currentParagraphIndex += paragraphs.length + separatorLine;
-        
-        // Add headings to chapter headings list
-        allHeadings.push(...headings);
-        
-        // Add chapter heading if found in chapter
-        const chapterHeading = headings[0];
-        if (chapterHeading && paragraphs.length > 0) {
-          chapterContents.push(`\n\n--- ${chapterHeading} ---\n\n`);
-        }
-        
-        // Add paragraphs
-        if (paragraphs.length > 0) {
-          chapterContents.push(paragraphs.join("\n\n"));
+        // Process blocks and build content
+        for (const block of blocks) {
+          if (block.type === 'heading') {
+            // Add heading with special prefix for rendering (allowing clicks on words)
+            // Format: [H2]Chapter 1[/H2] - level is 2 for typical chapter headings
+            const level = block.level || 2;
+            chapterContents.push(`[H${level}]${block.text}[/H${level}]`);
+            allHeadings.push(block.text);
+            currentParagraphIndex++;
+          } else {
+            // Add paragraph
+            chapterContents.push(block.text);
+            currentParagraphIndex++;
+          }
         }
       }
       
