@@ -269,22 +269,10 @@ export const ReadingArea = forwardRef(function ReadingArea({
     ? window.innerHeight - currentHeaderHeight - MOBILE_TOP_GAP - MOBILE_BOTTOM_SAFE_ZONE
     : window.innerHeight - currentHeaderHeight - currentPaginationHeight;
 
-  // 计算每页内容高度（对齐到完整行数，避免半行截断）
   const getPageContentHeight = useCallback(() => {
     if (!containerRef.current) return 0;
-    const containerH = containerRef.current.clientHeight;
-    
-    // 计算实际行高（像素）
-    const lineHeightPx = fontSize * lineHeight;
-    
-    // 每页能完整显示的行数（向下取整，确保最后一行不被切断）
-    const linesPerPage = Math.floor(containerH / lineHeightPx);
-    
-    // 每页实际高度 = 完整行数 × 行高
-    const pageH = linesPerPage * lineHeightPx;
-    
-    return pageH > 0 ? pageH : containerH;
-  }, [containerHeight, fontSize, lineHeight]);
+    return containerRef.current.clientHeight;
+  }, [containerHeight]);
 
   // 使用 transform 方式翻页，计算总页数
   useEffect(() => {
@@ -465,6 +453,19 @@ export const ReadingArea = forwardRef(function ReadingArea({
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
+          {/* 顶部遮罩 - 盖住翻页后可能露出的上一页半行文字 */}
+          <div style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: "40px",
+            background: `linear-gradient(to bottom, ${backgroundColor} 0%, ${backgroundColor} 50%, transparent 100%)`,
+            zIndex: 10,
+            pointerEvents: "none",
+          }} />
+
+          {/* 内容区域 */}
           <div 
             ref={contentRef}
             className="reader-content"
@@ -491,15 +492,15 @@ export const ReadingArea = forwardRef(function ReadingArea({
               />
             ))}
           </div>
-          
-          {/* 底部遮罩 - 盖住对齐后的多余空间中可能露出的下一页内容 */}
+
+          {/* 底部遮罩 - 盖住页面底部可能露出的下一页半行文字 */}
           <div style={{
             position: "absolute",
             bottom: 0,
             left: 0,
             right: 0,
-            height: "50px",
-            background: `linear-gradient(to top, ${backgroundColor} 0%, ${backgroundColor} 60%, transparent 100%)`,
+            height: "40px",
+            background: `linear-gradient(to top, ${backgroundColor} 0%, ${backgroundColor} 50%, transparent 100%)`,
             zIndex: 10,
             pointerEvents: "none",
           }} />
