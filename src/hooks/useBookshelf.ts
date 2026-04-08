@@ -180,7 +180,12 @@ export function useBookshelf() {
     // Safety check for content
     if (!book.content) return -1;
 
-    // If book has page-based progress info, use it
+    // Priority 1: If book has scroll-based progress info (scroll mode), use it
+    if (book.lastScrollPosition !== undefined && book.lastScrollPosition > 0) {
+      return Math.min(Math.round(book.lastScrollPosition), 100);
+    }
+    
+    // Priority 2: If book has page-based progress info (page mode), use it
     if (book.lastReadPage !== undefined && book.lastReadPage > 0) {
       // Use stored progress if available, otherwise calculate from page
       if (book.annotations && Object.keys(book.annotations).length > 0) {

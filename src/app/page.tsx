@@ -340,7 +340,7 @@ export default function Home() {
         setLoading(false);
         
         // Restore last read scroll position (default to top)
-        const savedScrollPercent = currentBook.lastReadPage || 0;
+        const savedScrollPercent = currentBook.lastScrollPosition || 0;
         if (savedScrollPercent > 0 && readingAreaRef.current) {
           readingAreaRef.current.restoreScrollPosition(savedScrollPercent);
         }
@@ -383,6 +383,19 @@ export default function Home() {
 
   // Current scroll percent for bookmarks
   const [currentScrollPercent, setCurrentScrollPercent] = useState(0);
+  
+  // Save scroll percent to Book object when it changes
+  useEffect(() => {
+    const bookId = currentBookIdRef.current;
+    if (!bookId || currentScrollPercent === 0) return;
+    
+    // Debounce save to avoid frequent updates
+    const timeout = setTimeout(() => {
+      updateScrollPosition(bookId, currentScrollPercent);
+    }, 1000);
+    
+    return () => clearTimeout(timeout);
+  }, [currentScrollPercent, updateScrollPosition]);
 
   // Toggle bookmark for current position
   const toggleCurrentBookmark = useCallback(() => {
