@@ -208,15 +208,22 @@ export const ReadingArea = forwardRef(function ReadingArea({
   const currentHeaderHeight = isMobile ? MOBILE_HEADER_HEIGHT : HEADER_HEIGHT;
   const currentPaginationHeight = isMobile ? MOBILE_PAGINATION_HEIGHT : PAGINATION_HEIGHT;
 
-  // 【修正】计算移动端阅读区域可用高度
-  // 公式：100% - 顶栏(48px) - 顶部间距(5px) - 底部安全区(60px)
-  const availableHeight = isMobile
+  // 计算阅读区域布局参数
+  const lineHeightPx = fontSize * lineHeight;
+  const containerPaddingTop = isMobile ? MOBILE_TOP_GAP : 0;
+  const containerPaddingBottom = isMobile ? 20 : 0; // 移动端底部安全padding
+
+  // 【核心】计算每页高度：必须是行高的整数倍
+  // 容器总高度 = 视口 - 顶栏 - 顶部间距 - 底部安全区
+  const totalContainerHeight = isMobile
     ? window.innerHeight - currentHeaderHeight - MOBILE_TOP_GAP - MOBILE_BOTTOM_SAFE_ZONE
     : window.innerHeight - currentHeaderHeight - currentPaginationHeight;
-
-  // 每页高度 = Math.floor(阅读区域可用高度 / 行高) * 行高，保证无半截字
-  const lineHeightPx = fontSize * lineHeight;
-  const pageHeight = Math.floor(availableHeight / lineHeightPx) * lineHeightPx;
+  
+  // 实际可用内容高度 = 容器高度 - paddingTop - paddingBottom
+  const availableContentHeight = totalContainerHeight - containerPaddingTop - containerPaddingBottom;
+  
+  // 每页高度 = 行高的整数倍（向下取整）
+  const pageHeight = Math.floor(availableContentHeight / lineHeightPx) * lineHeightPx;
   const viewHeight = Math.max(lineHeightPx, pageHeight);
 
   // Calculate view height (recalculated on resize)
@@ -230,11 +237,14 @@ export const ReadingArea = forwardRef(function ReadingArea({
     
     const calculatePages = () => {
       const contentHeight = contentRef.current?.scrollHeight || 0;
-      // 每页高度 = Math.floor(阅读区域可用高度 / 行高) * 行高
-      const calcAvailableHeight = isMobile
+      
+      // 重新计算每页高度（与上面保持一致）
+      const calcTotalHeight = isMobile
         ? window.innerHeight - currentHeaderHeight - MOBILE_TOP_GAP - MOBILE_BOTTOM_SAFE_ZONE
         : window.innerHeight - currentHeaderHeight - currentPaginationHeight;
-      const calcPageHeight = Math.floor(calcAvailableHeight / lineHeightPx) * lineHeightPx;
+      const calcContentHeight = calcTotalHeight - containerPaddingTop - containerPaddingBottom;
+      const calcPageHeight = Math.floor(calcContentHeight / lineHeightPx) * lineHeightPx;
+      
       const total = Math.ceil(contentHeight / calcPageHeight) || 1;
       setTotalPagesState(total);
       
