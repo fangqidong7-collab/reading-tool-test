@@ -269,14 +269,22 @@ export const ReadingArea = forwardRef(function ReadingArea({
     ? window.innerHeight - currentHeaderHeight - MOBILE_TOP_GAP - MOBILE_BOTTOM_SAFE_ZONE
     : window.innerHeight - currentHeaderHeight - currentPaginationHeight;
 
-  // 计算每页内容高度（容器高度减去上下 padding）
+  // 计算每页内容高度（对齐到完整行数，避免半行截断）
   const getPageContentHeight = useCallback(() => {
     if (!containerRef.current) return 0;
-    const container = containerRef.current;
-    const paddingTop = MOBILE_TOP_GAP;
-    const paddingBottom = isMobile ? 0 : PAGINATION_HEIGHT;
-    return container.clientHeight - paddingTop - paddingBottom;
-  }, [isMobile, containerHeight]);
+    const containerH = containerRef.current.clientHeight;
+    
+    // 计算实际行高（像素）
+    const lineHeightPx = fontSize * lineHeight;
+    
+    // 每页能完整显示的行数（向下取整，确保最后一行不被切断）
+    const linesPerPage = Math.floor(containerH / lineHeightPx);
+    
+    // 每页实际高度 = 完整行数 × 行高
+    const pageH = linesPerPage * lineHeightPx;
+    
+    return pageH > 0 ? pageH : containerH;
+  }, [containerHeight, fontSize, lineHeight]);
 
   // 使用 transform 方式翻页，计算总页数
   useEffect(() => {
@@ -290,6 +298,8 @@ export const ReadingArea = forwardRef(function ReadingArea({
       if (pageH <= 0) return;
       
       const total = Math.max(1, Math.ceil(totalContentHeight / pageH));
+      
+      console.log('翻页调试 - 容器高度:', container.clientHeight, '行高px:', fontSize * lineHeight, '每页行数:', Math.floor(container.clientHeight / (fontSize * lineHeight)), '对齐后每页高度:', pageH, '总页数:', total);
       
       setTotalPagesState(total);
       if (onTotalPagesChange) {
@@ -451,10 +461,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
             height: containerHeight,
             overflow: "hidden",
             position: "relative",
-            paddingLeft: `${currentHorizPadding}px`,
-            paddingRight: `${currentHorizPadding}px`,
-            paddingTop: `${MOBILE_TOP_GAP}px`,
-            paddingBottom: isMobile ? "0px" : `${PAGINATION_HEIGHT}px`,
+            padding: "0px",
             boxSizing: "border-box",
           }}
           onTouchStart={handleTouchStart}
@@ -465,6 +472,10 @@ export const ReadingArea = forwardRef(function ReadingArea({
             className="reader-content"
             style={{
               transform: `translateY(-${(safeCurrentPage - 1) * getPageContentHeight()}px)`,
+              paddingLeft: `${currentHorizPadding}px`,
+              paddingRight: `${currentHorizPadding}px`,
+              paddingTop: "10px",
+              paddingBottom: "20px",
             }}
           >
             {processedContent.map((paragraph, pIndex) => (
