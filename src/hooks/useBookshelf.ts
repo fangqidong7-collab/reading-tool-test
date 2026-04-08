@@ -128,23 +128,39 @@ export function useBookshelf() {
     }
   }, []);
 
-  // Save books to localStorage
-  // Only save when books change, debounced to avoid excessive writes
-  // Note: processedContent is not saved to localStorage due to size constraints
+  // Load a single book's content from localStorage
+  const loadBookContent = useCallback((bookId: string): string | null => {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem(`book_content_${bookId}`);
+  }, []);
+
+  // Save books to localStorage (separate content from metadata)
+  // Note: processedContent is not saved, content is stored separately
   useEffect(() => {
     if (!isLoaded || typeof window === "undefined") return;
     
     const timeoutId = setTimeout(() => {
       try {
-        // Create a copy without processedContent to save storage space
-        const booksToSave = books.map((book) => {
+        // Save metadata without content
+        const booksMetadata = books.map((book) => {
           // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const { processedContent: _pc, ...rest } = book;
-          return rest;
+          const { content: _content, processedContent: _pc, ...metadata } = book;
+          return metadata;
         });
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(booksToSave));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(booksMetadata));
+        
+        // Save each book's content separately
+        for (const book of books) {
+          if (book.content) {
+            try {
+              localStorage.setItem(`book_content_${book.id}`, book.content);
+            } catch (e) {
+              console.warn(`书籍 "${book.title}" 内容存储失败:`, e);
+            }
+          }
+        }
       } catch (error) {
-        console.warn("Failed to save books to localStorage:", error);
+        console.warn("Failed to save books metadata:", error);
       }
     }, 500);
     
@@ -309,12 +325,17 @@ export function useBookshelf() {
     );
   }, []);
 
-  // Open a book for reading
+  // Open a book for reading - loads content from separate storage
   const openBook = useCallback((id: string) => {
+    // Load content from separate storage
+    const content = typeof window !== "undefined" 
+      ? localStorage.getItem(`book_content_${id}`) 
+      : null;
+    
     setBooks((prev) =>
       prev.map((b) =>
         b.id === id
-          ? { ...b, lastReadAt: Date.now() }
+          ? { ...b, lastReadAt: Date.now(), content: content || b.content }
           : b
       )
     );
