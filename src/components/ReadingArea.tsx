@@ -206,13 +206,14 @@ export const ReadingArea = forwardRef(function ReadingArea({
   const isMobile = typeof window !== 'undefined' && window.innerWidth <= MOBILE_BREAKPOINT;
   const currentHeaderHeight = isMobile ? MOBILE_HEADER_HEIGHT : HEADER_HEIGHT;
   const currentPaginationHeight = isMobile ? MOBILE_PAGINATION_HEIGHT : PAGINATION_HEIGHT;
-  const currentVerticalPadding = isMobile ? MOBILE_READING_PADDING_VERTICAL : READING_PADDING_VERTICAL;
 
-  // Calculate line-aligned page height (no vertical padding in reading-area)
+  // Calculate line-aligned page height
   const lineHeightPx = fontSize * lineHeight;
-  const rawViewHeight = window.innerHeight - currentHeaderHeight - currentPaginationHeight;
+  // Page bar height (mobile: fixed bar at bottom, PC: normal bar)
+  const pageBarHeight = isMobile ? 40 : PAGINATION_HEIGHT;
+  const rawViewHeight = window.innerHeight - currentHeaderHeight - pageBarHeight;
   const pageHeight = Math.floor(rawViewHeight / lineHeightPx) * lineHeightPx;
-  const viewHeight = Math.max(300, pageHeight);
+  const viewHeight = Math.max(200, pageHeight);
 
   // Calculate view height (recalculated on resize)
   useEffect(() => {
@@ -225,9 +226,10 @@ export const ReadingArea = forwardRef(function ReadingArea({
     
     const calculatePages = () => {
       const contentHeight = contentRef.current?.scrollHeight || 0;
-      // Use pageHeight (line-aligned) for pagination - no vertical padding
+      // Use pageHeight (line-aligned) for pagination
+      const pageBarH = isMobile ? 40 : PAGINATION_HEIGHT;
       const pageHeight = Math.floor(
-        (window.innerHeight - currentHeaderHeight - currentPaginationHeight) / lineHeightPx
+        (window.innerHeight - currentHeaderHeight - pageBarH) / lineHeightPx
       ) * lineHeightPx;
       const total = Math.ceil(contentHeight / pageHeight) || 1;
       setTotalPagesState(total);
@@ -267,10 +269,10 @@ export const ReadingArea = forwardRef(function ReadingArea({
   const safeCurrentPage = Math.min(Math.max(1, currentPageState), totalPagesState);
 
   // Calculate line-aligned page height for offset calculation
-  // No vertical padding since text-content now starts at top
   const getPageHeight = () => {
+    const pageBarH = isMobile ? 40 : PAGINATION_HEIGHT;
     return Math.floor(
-      (window.innerHeight - currentHeaderHeight - currentPaginationHeight) / lineHeightPx
+      (window.innerHeight - currentHeaderHeight - pageBarH) / lineHeightPx
     ) * lineHeightPx;
   };
 
@@ -401,46 +403,41 @@ export const ReadingArea = forwardRef(function ReadingArea({
 
   // Render content with all paragraphs
   if (processedContent && processedContent.length > 0) {
-    // Use dynamic viewport height for better mobile support (handles address bar)
-    // Mobile: reading area is between header (top + 5px) and page indicator (bottom + 5px)
     const currentHorizPadding = isMobile ? MOBILE_READING_PADDING_HORIZONTAL : READING_PADDING_HORIZONTAL;
-    const mobileTopMargin = 5; // 5px gap below header
-    const mobileBottomMargin = 5; // 5px gap above page indicator
-    const containerHeight = headerVisible 
-      ? `calc(100dvh - ${currentHeaderHeight}px - ${mobileTopMargin}px - ${mobileBottomMargin}px)` 
-      : `calc(100dvh - ${mobileBottomMargin}px)`;
+    // Page indicator height (mobile uses fixed bar at bottom)
+    const PAGE_BAR_HEIGHT = isMobile ? 40 : PAGINATION_HEIGHT;
+    
+    // Calculate reading area height: screen minus header minus page bar
+    const readingAreaHeight = headerVisible 
+      ? `calc(100vh - ${currentHeaderHeight}px - ${PAGE_BAR_HEIGHT}px)`
+      : `calc(100vh - ${PAGE_BAR_HEIGHT}px)`;
     
     return (
       <div 
         className="reading-wrapper" 
         style={{ 
           backgroundColor,
-          minHeight: '100dvh',
-          height: '100dvh',
-          display: 'flex',
-          flexDirection: 'column',
+          height: '100vh',
           overflow: 'hidden',
+          position: 'relative',
         }}
       >
-        {/* Reading Content Area - full height between header and page indicator */}
+        {/* Reading Content Area - fills space between header and page bar */}
         <div 
           ref={containerRef}
           className="reading-area"
           style={{
-            height: containerHeight,
-            maxHeight: containerHeight,
+            height: readingAreaHeight,
             overflow: 'hidden',
             paddingLeft: `${currentHorizPadding}px`,
             paddingRight: `${currentHorizPadding}px`,
-            paddingTop: `${mobileTopMargin}px`,
-            paddingBottom: `${mobileBottomMargin}px`,
             boxSizing: 'border-box',
-            flex: 1,
+            position: 'relative',
           }}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
-          {/* Scrolling content container with margin offset for pagination */}
+          {/* Content container - position relative, no absolute */}
           <div 
             ref={contentRef}
             className="text-content"
@@ -452,7 +449,13 @@ export const ReadingArea = forwardRef(function ReadingArea({
               textAlign: 'justify',
               marginTop: `-${offset}px`,
               willChange: 'margin-top',
-              minHeight: `${viewHeight}px`,
+              minHeight: `calc(100% - 40px)`,
+              height: '100%',
+              paddingTop: '20px',
+              paddingBottom: '60px',
+              boxSizing: 'border-box',
+              display: 'block',
+              flexShrink: 0,
             }}
           >
             {processedContent.map((paragraph, pIndex) => (
@@ -468,51 +471,41 @@ export const ReadingArea = forwardRef(function ReadingArea({
           </div>
         </div>
 
-        {/* Pagination Bar - Fixed at bottom (PC only) */}
+        {/* Page indicator bar - PC: shown normally, Mobile: fixed at bottom */}
         <div
-          className={`pagination-bar ${isDarkMode ? 'dark' : ''}`}
+          className={`page-indicator-bar ${isDarkMode ? 'dark' : ''} ${isMobile ? 'mobile-fixed' : ''}`}
           style={{
-            height: `${PAGINATION_HEIGHT}px`,
+            height: `${PAGE_BAR_HEIGHT}px`,
             backgroundColor,
             borderTopColor: isDarkMode ? "#333" : "#e0e0e0",
           }}
         >
-          <div className="pagination-controls">
+          <div className="page-indicator-controls">
             <button
-              className={`pagination-btn ${isDarkMode ? 'dark' : ''}`}
+              className={`page-btn ${isDarkMode ? 'dark' : ''}`}
               onClick={goToPrevPage}
               disabled={safeCurrentPage <= 1}
-              title="上一页 (←)"
             >
-              <ChevronLeft size={18} />
-              <span>上一页</span>
+              <ChevronLeft size={20} />
             </button>
-
-            <div className={`pagination-info ${isDarkMode ? 'dark' : ''}`}>
-              <span>第 {safeCurrentPage} / {totalPagesState} 页</span>
+            <div className={`page-info ${isDarkMode ? 'dark' : ''}`}>
+              {safeCurrentPage} / {totalPagesState}
             </div>
-
             <button
-              className={`pagination-btn ${isDarkMode ? 'dark' : ''}`}
+              className={`page-btn ${isDarkMode ? 'dark' : ''}`}
               onClick={goToNextPage}
               disabled={safeCurrentPage >= totalPagesState}
-              title="下一页 (→)"
             >
-              <span>下一页</span>
-              <ChevronRight size={18} />
+              <ChevronRight size={20} />
             </button>
           </div>
         </div>
 
-        {/* Mobile Page Indicator - Fixed at viewport bottom, next to N button */}
-        <div className={`mobile-page-indicator ${isDarkMode ? 'dark' : ''}`}>
-          {safeCurrentPage}/{totalPagesState}
-        </div>
-
         <style jsx>{`
           .reading-wrapper {
-            min-height: 100vh;
+            height: 100vh;
             position: relative;
+            overflow: hidden;
           }
 
           .reading-area {
@@ -552,72 +545,75 @@ export const ReadingArea = forwardRef(function ReadingArea({
             border-radius: 2px;
           }
 
-          .pagination-bar {
+          /* Page indicator bar - fixed at bottom */
+          .page-indicator-bar {
             border-top: 1px solid;
             flex-shrink: 0;
+            position: relative;
           }
 
-          .pagination-controls {
+          .page-indicator-bar.mobile-fixed {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+          }
+
+          .page-indicator-controls {
             display: flex;
             justify-content: center;
             align-items: center;
-            gap: 2rem;
             height: 100%;
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 0 1rem;
+            gap: 2rem;
           }
 
-          .pagination-btn {
+          .page-btn {
             display: flex;
             align-items: center;
-            gap: 0.25rem;
-            padding: 0.5rem 1rem;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            background: white;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            border: none;
+            border-radius: 50%;
+            background: rgba(200, 200, 200, 0.3);
             color: #333;
-            font-size: 14px;
             cursor: pointer;
             transition: all 0.2s ease;
           }
 
-          .pagination-btn.dark {
-            background: #2a2a3e;
-            border-color: #444;
+          .page-btn.dark {
+            background: rgba(80, 80, 80, 0.5);
             color: #ccc;
           }
 
-          .pagination-btn:hover:not(:disabled) {
-            background: #f5f5f5;
-            border-color: #ccc;
+          .page-btn:hover:not(:disabled) {
+            background: rgba(200, 200, 200, 0.5);
           }
 
-          .pagination-btn.dark:hover:not(:disabled) {
-            background: #3a3a4e;
-            border-color: #555;
+          .page-btn.dark:hover:not(:disabled) {
+            background: rgba(100, 100, 100, 0.5);
           }
 
-          .pagination-btn:disabled {
-            opacity: 0.4;
+          .page-btn:disabled {
+            opacity: 0.3;
             cursor: not-allowed;
           }
 
-          .pagination-info {
+          .page-info {
             font-size: 14px;
             color: #666;
-            min-width: 100px;
+            min-width: 80px;
             text-align: center;
           }
 
-          .pagination-info.dark {
+          .page-info.dark {
             color: #999;
           }
 
           @media (max-width: 768px) {
             .reading-wrapper {
-              min-height: 100dvh !important;
-              height: 100dvh !important;
+              height: 100vh !important;
             }
 
             .reading-area {
@@ -625,43 +621,9 @@ export const ReadingArea = forwardRef(function ReadingArea({
             }
           }
 
-          /* Mobile Page Indicator - Fixed at viewport bottom */
-          .mobile-page-indicator {
-            display: none;
-            position: fixed;
-            bottom: 16px;
-            right: 16px;
-            font-size: 12px;
-            color: #666666;
-            background: rgba(255, 255, 255, 0.9);
-            border-radius: 12px;
-            padding: 6px 12px;
-            z-index: 100;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-          }
-
-          .mobile-page-indicator.dark {
-            background: rgba(30, 30, 46, 0.9);
-            color: #aaaaaa;
-          }
-
-          @media (max-width: 768px) {
-            .pagination-bar {
-              display: none !important;
-            }
-
-            .mobile-page-indicator {
-              display: block;
-            }
-
-            .text-content {
-              padding-bottom: 60px !important; /* Space for page indicator */
-            }
-          }
-
           @media (min-width: 769px) {
-            .mobile-page-indicator {
-              display: none;
+            .page-indicator-bar.mobile-fixed {
+              position: relative;
             }
           }
         `}</style>
