@@ -268,7 +268,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
     ? window.innerHeight - currentHeaderHeight - MOBILE_TOP_GAP - MOBILE_BOTTOM_SAFE_ZONE
     : window.innerHeight - currentHeaderHeight - currentPaginationHeight;
 
-  // 使用 CSS column 分页，计算总页数
+  // 使用垂直滚动分页，计算总页数
   useEffect(() => {
     if (!containerRef.current) return;
     
@@ -276,9 +276,12 @@ export const ReadingArea = forwardRef(function ReadingArea({
       const container = containerRef.current;
       if (!container) return;
       
+      // 关键：使用 scrollWidth / clientWidth 来计算水平列数（如果用columns）
+      // 或者用 scrollHeight / clientHeight 来计算垂直页数
       const contentHeight = container.scrollHeight;
       const pageHeight = container.clientHeight;
-      const total = Math.ceil(contentHeight / pageHeight) || 1;
+      // 使用 Math.round 而不是 Math.ceil，避免多算一页空白页
+      const total = Math.max(1, Math.round(contentHeight / pageHeight));
       
       setTotalPagesState(total);
       if (onTotalPagesChange) {
@@ -319,12 +322,14 @@ export const ReadingArea = forwardRef(function ReadingArea({
     
     const container = containerRef.current;
     const pageHeight = container.clientHeight;
-    const scrollTop = (page - 1) * pageHeight;
+    // 计算内容区域高度（不含 padding）
+    const contentHeight = pageHeight;
+    // 滚动位置 = (页码 - 1) * 每页内容高度
+    // 不需要加 paddingTop，因为 scrollTop 是从内容区域开始计算的
+    const scrollTop = (page - 1) * contentHeight;
     
-    container.scrollTo({
-      top: scrollTop,
-      behavior: 'smooth'
-    });
+    // 直接赋值，不用 smooth，避免滚动不精确
+    container.scrollTop = scrollTop;
     
     setCurrentPageState(page);
     if (onPageChange) {
@@ -355,7 +360,8 @@ export const ReadingArea = forwardRef(function ReadingArea({
       const container = containerRef.current;
       const pageHeight = container.clientHeight;
       const elementTop = (element as HTMLElement).offsetTop;
-      const targetPage = Math.floor(elementTop / pageHeight) + 1;
+      // 使用 Math.round 替代 Math.floor，避免跳页不准
+      const targetPage = Math.max(1, Math.round(elementTop / pageHeight) + 1);
       const clampedPage = Math.min(Math.max(1, targetPage), totalPagesState);
       goToPage(clampedPage);
     }

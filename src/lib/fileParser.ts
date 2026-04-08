@@ -72,37 +72,30 @@ function extractContentBlocksFromHtml(html: string): ContentBlock[] {
     const parser = new DOMParser();
     const doc = parser.parseFromString(cleanHtml, "text/html");
     
-    // Create a tree walker to walk through all elements in document order
-    const walker = doc.createTreeWalker(
-      doc.body,
-      NodeFilter.SHOW_ELEMENT,
-      null
-    );
+    // Use querySelectorAll to get all headings and paragraphs in document order
+    const elements = doc.querySelectorAll('h1, h2, h3, h4, h5, h6, p');
     
-    let currentNode: Node | null = walker.currentNode;
-    while (currentNode) {
-      if (currentNode instanceof HTMLElement) {
-        const tagName = currentNode.tagName.toLowerCase();
-        
-        if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tagName)) {
-          const level = parseInt(tagName.charAt(1), 10);
-          const text = cleanText(decodeHtmlEntities(currentNode.textContent || ""));
-          if (text.length > 0) {
-            blocks.push({ type: 'heading', level, text });
-          }
-        } else if (tagName === 'p') {
-          let text = currentNode.textContent || "";
-          text = decodeHtmlEntities(text);
-          text = cleanText(text);
-          if (text.length >= 10) {
-            blocks.push({ type: 'paragraph', text });
-          }
+    elements.forEach(el => {
+      const tagName = el.tagName.toLowerCase();
+      let text = el.textContent || "";
+      text = decodeHtmlEntities(text);
+      text = cleanText(text);
+      
+      if (!text) return; // Skip empty content
+      
+      if (tagName.startsWith('h')) {
+        // This is a heading
+        const level = parseInt(tagName[1], 10);
+        blocks.push({ type: 'heading', level, text });
+      } else {
+        // This is a paragraph - only add if meaningful content (at least 10 chars)
+        if (text.length >= 10) {
+          blocks.push({ type: 'paragraph', text });
         }
       }
-      currentNode = walker.nextNode();
-    }
+    });
     
-    // If no blocks found via tree walker, fall back to simpler approach
+    // If no blocks found via querySelectorAll, fall back to simpler approach
     if (blocks.length === 0) {
       return extractContentBlocksFallback(html);
     }
