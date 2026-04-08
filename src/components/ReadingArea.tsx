@@ -20,14 +20,20 @@ export interface ReadingAreaRef {
 }
 
 // Memoized paragraph component with event delegation
+type Annotations = Record<string, { root: string; meaning: string; pos: string; count: number }>;
+
 const Paragraph = React.memo(({
   paragraph,
   pIndex,
   onWordClick,
+  annotations,
+  annotationColor = "#E74C3C",
 }: {
   paragraph: ProcessedContent[number];
   pIndex: number;
   onWordClick: (word: string, lemma: string, event: React.MouseEvent) => void;
+  annotations?: Annotations;
+  annotationColor?: string;
 }) => {
   const handleClick = useCallback((e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
@@ -49,16 +55,36 @@ const Paragraph = React.memo(({
         if (segment.type === "space" || segment.type === "punctuation") {
           return <span key={key}>{segment.text}</span>;
         }
-        // Word segment - store word and lemma in data attributes
+        
+        // Word segment - check if annotated
+        const lemma = segment.lemma;
+        const annotation = annotations?.[lemma];
+        const isAnnotated = !!annotation;
+        
         return (
-          <span 
-            key={key} 
-            className="word" 
-            data-word={segment.text}
-            data-lemma={segment.lemma}
-          >
-            {segment.text}
-          </span>
+          <>
+            <span 
+              key={key} 
+              className="word" 
+              data-word={segment.text}
+              data-lemma={lemma}
+            >
+              {segment.text}
+            </span>
+            {isAnnotated && (
+              <span 
+                key={`${key}-annotation`}
+                className="annotation"
+                style={{ 
+                  color: annotationColor,
+                  fontSize: '0.7em',
+                  fontFamily: '"Microsoft YaHei", "微软雅黑", sans-serif',
+                }}
+              >
+                ({annotation.meaning})
+              </span>
+            )}
+          </>
         );
       })}
     </p>
@@ -66,6 +92,49 @@ const Paragraph = React.memo(({
 });
 
 Paragraph.displayName = "Paragraph";
+
+// Custom comparison function to ensure re-render when annotations change
+function paragraphPropsAreEqual(
+  prev: {
+    paragraph: ProcessedContent[number];
+    pIndex: number;
+    onWordClick: (word: string, lemma: string, event: React.MouseEvent) => void;
+    annotations?: Annotations;
+    annotationColor?: string;
+  },
+  next: {
+    paragraph: ProcessedContent[number];
+    pIndex: number;
+    onWordClick: (word: string, lemma: string, event: React.MouseEvent) => void;
+    annotations?: Annotations;
+    annotationColor?: string;
+  }
+) {
+  // Always re-render if paragraph index changes
+  if (prev.pIndex !== next.pIndex) return false;
+  
+  // Always re-render if onWordClick changes
+  if (prev.onWordClick !== next.onWordClick) return false;
+  
+  // Always re-render if annotation color changes
+  if (prev.annotationColor !== next.annotationColor) return false;
+  
+  // Check if annotations have changed by comparing keys
+  const prevKeys = prev.annotations ? Object.keys(prev.annotations) : [];
+  const nextKeys = next.annotations ? Object.keys(next.annotations) : [];
+  
+  if (prevKeys.length !== nextKeys.length) return false;
+  
+  for (const key of nextKeys) {
+    if (!prev.annotations?.[key] || prev.annotations[key] !== next.annotations?.[key]) {
+      return false;
+    }
+  }
+  
+  return true;
+}
+
+const MemoizedParagraph = React.memo(Paragraph, paragraphPropsAreEqual);
 
 interface ReadingAreaProps {
   text: string;
@@ -98,6 +167,7 @@ interface ReadingAreaProps {
 export const ReadingArea = forwardRef(function ReadingArea({
   text,
   processedContent,
+  annotations,
   onWordClick,
   getWordAnnotation,
   isClickable,
@@ -360,11 +430,13 @@ export const ReadingArea = forwardRef(function ReadingArea({
             }}
           >
             {processedContent.map((paragraph, pIndex) => (
-              <Paragraph
+              <MemoizedParagraph
                 key={pIndex}
                 paragraph={paragraph}
                 pIndex={pIndex}
                 onWordClick={onWordClick}
+                annotations={annotations}
+                annotationColor={annotationColor}
               />
             ))}
           </div>
