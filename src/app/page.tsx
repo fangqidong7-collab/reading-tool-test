@@ -329,8 +329,8 @@ export default function Home() {
       setLoading(true);
       
       // DEBUG: 检查 content 是否正确包含 [H 标记
-      console.log('打开书籍时的content前500字符:', currentBook.content.substring(0, 500));
-      console.log('content中是否包含[H标记:', currentBook.content.includes('[H'));
+      console.log('打开书籍时的content前500字符:', (currentBook.content || '').substring(0, 500));
+      console.log('content中是否包含[H标记:', (currentBook.content || '').includes('[H'));
       
       setTimeout(() => {
         const processed = processTextToSegments(currentBook.content);
