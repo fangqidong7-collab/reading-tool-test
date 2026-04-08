@@ -819,12 +819,6 @@ export default function Home() {
           </h1>
         </div>
         
-        <div className="header-center">
-          <span className="page-display" style={{ color: headerTextColor }}>
-            第 {currentPage} / {totalPagesState} 页
-          </span>
-        </div>
-        
         <div className="header-right">
           {/* Bookmark Button */}
           <button
