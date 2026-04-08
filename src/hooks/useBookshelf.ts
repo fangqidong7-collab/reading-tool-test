@@ -177,6 +177,9 @@ export function useBookshelf() {
   // Calculate reading progress based on page number
   // Returns percentage (0-100), or -1 if unread
   const getProgress = useCallback((book: Book): number => {
+    // Safety check for content
+    if (!book.content) return -1;
+
     // If book has page-based progress info, use it
     if (book.lastReadPage !== undefined && book.lastReadPage > 0) {
       // Use stored progress if available, otherwise calculate from page
