@@ -17,11 +17,8 @@ const PARAGRAPH_GAP = 16; // Gap between paragraphs in px
 const MOBILE_BREAKPOINT = 768; // Mobile breakpoint in px
 const TOUCH_SWIPE_THRESHOLD = 50; // Minimum swipe distance in px
 // Mobile page indicator constants
-const MOBILE_PAGE_INDICATOR_HEIGHT = 40; // 页码指示器高度约40px
-const MOBILE_PAGE_INDICATOR_BOTTOM = 16; // 页码指示器距底部距离
-const MOBILE_SAFE_GAP = 10; // 安全间距
 const MOBILE_TOP_GAP = 5; // 顶部间距（工作栏下方）
-const MOBILE_BOTTOM_PADDING = 20; // 阅读区域底部padding，给页码留安全冗余
+const MOBILE_BOTTOM_SAFE_ZONE = 60; // 底部页码安全区（阅读区域底部抬高，完全避开页码指示器）
 
 // Ref type for exposing jumpToParagraph
 export interface ReadingAreaRef {
@@ -72,9 +69,8 @@ const Paragraph = React.memo(({
         const isAnnotated = !!annotation;
         
         return (
-          <>
+          <React.Fragment key={key}>
             <span 
-              key={key} 
               className="word" 
               data-word={segment.text}
               data-lemma={lemma}
@@ -83,7 +79,6 @@ const Paragraph = React.memo(({
             </span>
             {isAnnotated && (
               <span 
-                key={`${key}-annotation`}
                 className="annotation"
                 style={{ 
                   color: annotationColor,
@@ -94,7 +89,7 @@ const Paragraph = React.memo(({
                 ({annotation.meaning})
               </span>
             )}
-          </>
+          </React.Fragment>
         );
       })}
     </p>
@@ -213,14 +208,11 @@ export const ReadingArea = forwardRef(function ReadingArea({
   const currentHeaderHeight = isMobile ? MOBILE_HEADER_HEIGHT : HEADER_HEIGHT;
   const currentPaginationHeight = isMobile ? MOBILE_PAGINATION_HEIGHT : PAGINATION_HEIGHT;
 
-  // 【修正一】计算移动端底部需要预留的空间：页码高度 + bottom间距 + 安全间距
-  const mobileBottomReserved = isMobile 
-    ? MOBILE_PAGE_INDICATOR_HEIGHT + MOBILE_PAGE_INDICATOR_BOTTOM + MOBILE_SAFE_GAP
-    : 0;
-
-  // 【修正一】计算阅读区域可用高度（已对齐行高）
-  // 公式：100dvh - 顶栏 - 顶部间距 - 底部预留空间
-  const availableHeight = window.innerHeight - currentHeaderHeight - MOBILE_TOP_GAP - mobileBottomReserved;
+  // 【修正一】计算移动端阅读区域可用高度
+  // 公式：100dvh - 顶栏(48px) - 顶部间距(5px) - 底部安全区(60px)
+  const availableHeight = isMobile
+    ? window.innerHeight - currentHeaderHeight - MOBILE_TOP_GAP - MOBILE_BOTTOM_SAFE_ZONE
+    : window.innerHeight - currentHeaderHeight - currentPaginationHeight;
 
   // 【修正二】严格对齐行高：Math.floor向下取整，确保每页第一行、最后一行完整
   const lineHeightPx = fontSize * lineHeight;
@@ -238,11 +230,10 @@ export const ReadingArea = forwardRef(function ReadingArea({
     
     const calculatePages = () => {
       const contentHeight = contentRef.current?.scrollHeight || 0;
-      // 【修正一】使用正确的可用高度计算（已对齐行高）
-      const calcBottomReserved = isMobile 
-        ? MOBILE_PAGE_INDICATOR_HEIGHT + MOBILE_PAGE_INDICATOR_BOTTOM + MOBILE_SAFE_GAP
-        : 0;
-      const calcAvailableHeight = window.innerHeight - currentHeaderHeight - MOBILE_TOP_GAP - calcBottomReserved;
+      // 【修正一】使用正确的可用高度计算
+      const calcAvailableHeight = isMobile
+        ? window.innerHeight - currentHeaderHeight - MOBILE_TOP_GAP - MOBILE_BOTTOM_SAFE_ZONE
+        : window.innerHeight - currentHeaderHeight - currentPaginationHeight;
       // 【修正二】严格按行高整数倍计算
       const calcPageHeight = Math.floor(calcAvailableHeight / lineHeightPx) * lineHeightPx;
       const total = Math.ceil(contentHeight / calcPageHeight) || 1;
@@ -407,15 +398,11 @@ export const ReadingArea = forwardRef(function ReadingArea({
   // Render content with all paragraphs
   if (processedContent && processedContent.length > 0) {
     // 【修正一】重新计算阅读区域高度，完全避开页码指示器
+    // 公式：100dvh - 顶栏(48px) - 顶部间距(5px) - 底部安全区(60px)
     const currentHorizPadding = isMobile ? MOBILE_READING_PADDING_HORIZONTAL : READING_PADDING_HORIZONTAL;
-    // 底部预留空间 = 页码高度(40) + bottom间距(16) + 安全间距(10) = 66px
-    const mobileBottomReserved = isMobile 
-      ? MOBILE_PAGE_INDICATOR_HEIGHT + MOBILE_PAGE_INDICATOR_BOTTOM + MOBILE_SAFE_GAP 
-      : 0;
-    // 阅读区域高度 = 100dvh - 顶栏 - 顶部间距(5px) - 底部预留
     const containerHeight = headerVisible 
-      ? `calc(100dvh - ${currentHeaderHeight}px - ${MOBILE_TOP_GAP}px - ${mobileBottomReserved}px)` 
-      : `calc(100dvh - ${mobileBottomReserved}px)`;
+      ? `calc(100dvh - ${currentHeaderHeight}px - ${MOBILE_TOP_GAP}px - ${MOBILE_BOTTOM_SAFE_ZONE}px)` 
+      : `calc(100dvh - ${MOBILE_BOTTOM_SAFE_ZONE}px)`;
     
     return (
       <div 
@@ -440,7 +427,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
             paddingLeft: `${currentHorizPadding}px`,
             paddingRight: `${currentHorizPadding}px`,
             paddingTop: `${MOBILE_TOP_GAP}px`,
-            paddingBottom: isMobile ? `${MOBILE_BOTTOM_PADDING}px` : '0px', // 移动端底部20px，给页码留安全冗余
+            paddingBottom: '0px',
             boxSizing: 'border-box',
             flex: 1,
           }}
