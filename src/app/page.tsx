@@ -80,6 +80,8 @@ export default function Home() {
     saveProcessedContent,
     openBook,
     closeBook,
+    addBookmark,
+    removeBookmark,
   } = useBookshelf();
 
   // Reading settings
@@ -119,11 +121,14 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
+  const [leftDrawerOpen, setLeftDrawerOpen] = useState(false);
+  const [leftDrawerTab, setLeftDrawerTab] = useState<'toc' | 'bookmarks'>('toc');
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // Pagination state - managed by ReadingArea internally
   const [currentPage, setCurrentPage] = useState(1);
+  const [totalPagesState, setTotalPagesState] = useState(1);
   
   // Ref to track if we're currently in a programmatic scroll
   const isProgrammaticScrollRef = useRef(false);
@@ -212,6 +217,36 @@ export default function Home() {
       setSidebarState(bookId, newState);
     }
   }, [sidebarOpen, setSidebarState]);
+
+  // Handle TOC button click
+  const handleTocClick = useCallback(() => {
+    setLeftDrawerTab('toc');
+    setLeftDrawerOpen(true);
+  }, []);
+
+  // Handle bookmark button click
+  const handleBookmarkClick = useCallback(() => {
+    setLeftDrawerTab('bookmarks');
+    setLeftDrawerOpen(true);
+  }, []);
+
+  // Toggle bookmark for current page
+  const toggleCurrentBookmark = useCallback(() => {
+    const bookId = currentBookIdRef.current;
+    if (!bookId || !currentBook) return;
+    
+    const bookmarks = currentBook.bookmarks || [];
+    const hasBookmark = bookmarks.some((bm) => bm.page === currentPage);
+    
+    if (hasBookmark) {
+      const bookmark = bookmarks.find((bm) => bm.page === currentPage);
+      if (bookmark) {
+        removeBookmark(bookId, bookmark.id);
+      }
+    } else {
+      addBookmark(bookId, currentPage);
+    }
+  }, [currentBook, currentPage, addBookmark, removeBookmark]);
 
   // Save annotations when they change
   useEffect(() => {
@@ -388,6 +423,12 @@ export default function Home() {
     window.scrollTo({ top: 0, behavior: "auto" });
   }, [updateReadPage]);
 
+  // Go to page from TOC or bookmark
+  const goToPage = useCallback((page: number) => {
+    handlePageChange(page);
+    setLeftDrawerOpen(false);
+  }, [handlePageChange]);
+
   // Handle return to bookshelf
   const handleReturnToBookshelf = useCallback(() => {
     isProgrammaticScrollRef.current = true;
@@ -469,6 +510,131 @@ export default function Home() {
         isDarkMode={isDarkMode}
       />
 
+      {/* Left Drawer - TOC and Bookmarks */}
+      <div className={`left-drawer-overlay ${leftDrawerOpen ? 'open' : ''}`} onClick={() => setLeftDrawerOpen(false)} />
+      <div className={`left-drawer ${leftDrawerOpen ? 'open' : ''}`} style={{ backgroundColor: isDarkMode ? "#1e1e2e" : "#ffffff" }}>
+        <div className="left-drawer-header" style={{ borderBottomColor: isDarkMode ? "#333" : "#e0e0e0" }}>
+          <div className="left-drawer-tabs">
+            <button
+              className={`drawer-tab ${leftDrawerTab === 'toc' ? 'active' : ''}`}
+              onClick={() => setLeftDrawerTab('toc')}
+              style={{ 
+                color: leftDrawerTab === 'toc' ? (isDarkMode ? "#6ba3e0" : "#4a90d9") : (isDarkMode ? "#888" : "#666"),
+                borderBottomColor: leftDrawerTab === 'toc' ? (isDarkMode ? "#6ba3e0" : "#4a90d9") : "transparent",
+              }}
+            >
+              目录
+            </button>
+            <button
+              className={`drawer-tab ${leftDrawerTab === 'bookmarks' ? 'active' : ''}`}
+              onClick={() => setLeftDrawerTab('bookmarks')}
+              style={{ 
+                color: leftDrawerTab === 'bookmarks' ? (isDarkMode ? "#6ba3e0" : "#4a90d9") : (isDarkMode ? "#888" : "#666"),
+                borderBottomColor: leftDrawerTab === 'bookmarks' ? (isDarkMode ? "#6ba3e0" : "#4a90d9") : "transparent",
+              }}
+            >
+              书签 ({currentBook?.bookmarks?.length || 0})
+            </button>
+          </div>
+          <button 
+            className="drawer-close" 
+            onClick={() => setLeftDrawerOpen(false)}
+            style={{ color: isDarkMode ? "#888" : "#666" }}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+        
+        <div className="left-drawer-content">
+          {/* TOC Tab */}
+          {leftDrawerTab === 'toc' && (
+            <div className="toc-list">
+              {currentBook?.tableOfContents && currentBook.tableOfContents.length > 0 ? (
+                currentBook.tableOfContents.map((entry, index) => (
+                  <button
+                    key={index}
+                    className="toc-item"
+                    onClick={() => goToPage(entry.page)}
+                    style={{ color: isDarkMode ? "#ccc" : "#333" }}
+                  >
+                    {entry.title}
+                  </button>
+                ))
+              ) : (
+                <div className="empty-message" style={{ color: isDarkMode ? "#666" : "#999" }}>
+                  {currentBook?.isSample ? "示例书籍暂无目录" : "暂无目录信息"}
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* Bookmarks Tab */}
+          {leftDrawerTab === 'bookmarks' && (
+            <div className="bookmark-list">
+              {currentBook?.bookmarks && currentBook.bookmarks.length > 0 ? (
+                <>
+                  <button
+                    className="add-bookmark-btn"
+                    onClick={toggleCurrentBookmark}
+                    style={{ 
+                      backgroundColor: isDarkMode ? "#3a3a4e" : "#f0f0f0",
+                      color: isDarkMode ? "#6ba3e0" : "#4a90d9",
+                    }}
+                  >
+                    {currentBook.bookmarks.some(bm => bm.page === currentPage) ? "移除当前页书签" : "添加当前页书签"}
+                  </button>
+                  {currentBook.bookmarks
+                    .sort((a, b) => a.page - b.page)
+                    .map((bookmark) => (
+                      <div
+                        key={bookmark.id}
+                        className="bookmark-item"
+                        style={{ backgroundColor: isDarkMode ? "#2a2a3e" : "#f8f9fa" }}
+                      >
+                        <button
+                          className="bookmark-page"
+                          onClick={() => goToPage(bookmark.page)}
+                          style={{ color: isDarkMode ? "#ccc" : "#333" }}
+                        >
+                          第 {bookmark.page} 页
+                        </button>
+                        <button
+                          className="bookmark-delete"
+                          onClick={() => removeBookmark(currentBook!.id, bookmark.id)}
+                          style={{ color: isDarkMode ? "#888" : "#999" }}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polyline points="3 6 5 6 21 6" />
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))
+                  }
+                </>
+              ) : (
+                <div className="empty-message" style={{ color: isDarkMode ? "#666" : "#999" }}>
+                  <p>暂无书签</p>
+                  <button
+                    className="add-bookmark-btn"
+                    onClick={toggleCurrentBookmark}
+                    style={{ 
+                      backgroundColor: isDarkMode ? "#3a3a4e" : "#f0f0f0",
+                      color: isDarkMode ? "#6ba3e0" : "#4a90d9",
+                    }}
+                  >
+                    添加当前页书签
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Reading Header */}
       <header className="app-header" style={{ backgroundColor: headerBg, color: headerTextColor }}>
         <div className="header-left">
@@ -490,13 +656,71 @@ export default function Home() {
             >
               <polyline points="15 18 9 12 15 6" />
             </svg>
-            书架
           </button>
+          
+          {/* TOC Button */}
+          <button 
+            className={`toc-btn ${isDarkMode ? 'dark' : ''}`}
+            onClick={handleTocClick}
+            style={{ 
+              backgroundColor: leftDrawerOpen && leftDrawerTab === 'toc' ? (isDarkMode ? "#3a3a4e" : "#e0e0e0") : "transparent",
+              borderColor: isDarkMode ? "#444" : "#ddd",
+              color: headerTextColor,
+            }}
+            title="目录"
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <line x1="8" y1="6" x2="21" y2="6" />
+              <line x1="8" y1="12" x2="21" y2="12" />
+              <line x1="8" y1="18" x2="21" y2="18" />
+              <line x1="3" y1="6" x2="3.01" y2="6" />
+              <line x1="3" y1="12" x2="3.01" y2="12" />
+              <line x1="3" y1="18" x2="3.01" y2="18" />
+            </svg>
+          </button>
+          
           <h1 className="app-title" title={currentBook.title} style={{ color: headerTextColor }}>
             {currentBook.title}
           </h1>
         </div>
+        
+        <div className="header-center">
+          <span className="page-display" style={{ color: headerTextColor }}>
+            第 {currentPage} / {totalPagesState} 页
+          </span>
+        </div>
+        
         <div className="header-right">
+          {/* Bookmark Button */}
+          <button
+            className={`bookmark-btn ${isDarkMode ? 'dark' : ''}`}
+            onClick={handleBookmarkClick}
+            title="书签"
+            style={{ 
+              backgroundColor: leftDrawerOpen && leftDrawerTab === 'bookmarks' ? (isDarkMode ? "#3a3a4e" : "#e0e0e0") : "transparent",
+              borderColor: isDarkMode ? "#444" : "#ddd",
+              color: headerTextColor,
+            }}
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill={currentBook?.bookmarks?.some(bm => bm.page === currentPage) ? "currentColor" : "none"}
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+            </svg>
+          </button>
+
           {/* Settings Button */}
           <button
             className="settings-btn"
@@ -584,6 +808,7 @@ export default function Home() {
             isClickable={isClickable}
             currentPage={currentPage}
             onPageChange={handlePageChange}
+            onTotalPagesChange={setTotalPagesState}
             fontSize={fontSize}
             lineHeight={lineHeight}
             textColor={textColor}
@@ -767,6 +992,190 @@ export default function Home() {
 
         .sidebar-toggle:hover {
           filter: brightness(0.95);
+        }
+
+        .header-center {
+          position: absolute;
+          left: 50%;
+          transform: translateX(-50%);
+        }
+
+        .page-display {
+          font-size: 14px;
+          font-weight: 500;
+        }
+
+        .toc-btn,
+        .bookmark-btn {
+          background: none;
+          border: 1px solid #ddd;
+          padding: 8px;
+          border-radius: 6px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          transition: all 0.15s ease;
+        }
+
+        .toc-btn:hover,
+        .bookmark-btn:hover {
+          filter: brightness(0.95);
+        }
+
+        /* Left Drawer Styles */
+        .left-drawer-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.5);
+          z-index: 100;
+          opacity: 0;
+          visibility: hidden;
+          transition: all 0.3s ease;
+        }
+
+        .left-drawer-overlay.open {
+          opacity: 1;
+          visibility: visible;
+        }
+
+        .left-drawer {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 300px;
+          height: 100vh;
+          z-index: 101;
+          transform: translateX(-100%);
+          transition: transform 0.3s ease;
+          box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+          display: flex;
+          flex-direction: column;
+        }
+
+        .left-drawer.open {
+          transform: translateX(0);
+        }
+
+        .left-drawer-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 12px 16px;
+          border-bottom: 1px solid;
+        }
+
+        .left-drawer-tabs {
+          display: flex;
+          gap: 16px;
+        }
+
+        .drawer-tab {
+          background: none;
+          border: none;
+          padding: 8px 4px;
+          font-size: 14px;
+          font-weight: 500;
+          cursor: pointer;
+          border-bottom: 2px solid transparent;
+          transition: all 0.15s ease;
+        }
+
+        .drawer-close {
+          background: none;
+          border: none;
+          padding: 8px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+        }
+
+        .left-drawer-content {
+          flex: 1;
+          overflow-y: auto;
+          padding: 16px;
+        }
+
+        .toc-list,
+        .bookmark-list {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .toc-item {
+          width: 100%;
+          text-align: left;
+          padding: 10px 12px;
+          background: none;
+          border: none;
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 14px;
+          transition: all 0.15s ease;
+        }
+
+        .toc-item:hover {
+          background: rgba(0, 0, 0, 0.05);
+        }
+
+        .add-bookmark-btn {
+          width: 100%;
+          padding: 12px;
+          border: none;
+          border-radius: 6px;
+          font-size: 14px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .add-bookmark-btn:hover {
+          filter: brightness(0.95);
+        }
+
+        .bookmark-item {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 10px 12px;
+          border-radius: 6px;
+        }
+
+        .bookmark-page {
+          background: none;
+          border: none;
+          font-size: 14px;
+          cursor: pointer;
+        }
+
+        .bookmark-page:hover {
+          text-decoration: underline;
+        }
+
+        .bookmark-delete {
+          background: none;
+          border: none;
+          padding: 4px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+        }
+
+        .bookmark-delete:hover {
+          color: #e74c3c !important;
+        }
+
+        .empty-message {
+          text-align: center;
+          padding: 24px;
+          font-size: 14px;
+        }
+
+        .empty-message p {
+          margin: 0 0 16px 0;
         }
 
         .main-content {

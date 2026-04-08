@@ -106,6 +106,7 @@ interface ReadingAreaProps {
   isClickable: (word: string) => boolean;
   currentPage?: number;
   onPageChange?: (page: number) => void;
+  onTotalPagesChange?: (total: number) => void;
   // Settings
   fontSize?: number;
   lineHeight?: number;
@@ -126,6 +127,7 @@ export function ReadingArea({
   isClickable,
   currentPage = 1,
   onPageChange,
+  onTotalPagesChange,
   fontSize = 18,
   lineHeight = 1.8,
   textColor = "#333333",
@@ -242,6 +244,13 @@ export function ReadingArea({
   useEffect(() => {
     setTotalPagesState(totalPages);
   }, [totalPages]);
+
+  // Call onTotalPagesChange when totalPages changes
+  useEffect(() => {
+    if (onTotalPagesChange) {
+      onTotalPagesChange(totalPages);
+    }
+  }, [totalPages, onTotalPagesChange]);
 
   useEffect(() => {
     if (currentPage && currentPage !== currentPageState) {

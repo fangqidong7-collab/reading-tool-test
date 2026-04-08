@@ -4,12 +4,13 @@ import React, { useState } from "react";
 import { BookCard } from "./BookCard";
 import { AddBookModal } from "./AddBookModal";
 import type { Book } from "@/hooks/useBookshelf";
+import type { TocEntry } from "@/lib/fileParser";
 
 interface BookshelfProps {
   books: Book[];
   getProgress: (book: Book) => number;
   formatLastRead: (timestamp: number) => string;
-  onAddBook: (title: string, content: string) => Book;
+  onAddBook: (title: string, content: string, tableOfContents?: TocEntry[]) => Book;
   onDeleteBook: (id: string) => void;
   onOpenBook: (id: string) => void;
 }
@@ -24,8 +25,8 @@ export function Bookshelf({
 }: BookshelfProps) {
   const [showAddModal, setShowAddModal] = useState(false);
 
-  const handleAddBook = (title: string, content: string) => {
-    const newBook = onAddBook(title, content);
+  const handleAddBook = (title: string, content: string, tableOfContents?: TocEntry[]) => {
+    const newBook = onAddBook(title, content, tableOfContents);
     onOpenBook(newBook.id);
   };
 

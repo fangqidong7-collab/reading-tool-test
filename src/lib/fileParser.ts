@@ -1,5 +1,12 @@
 "use client";
 
+// TOC Entry interface
+export interface TocEntry {
+  title: string;
+  href: string;
+  page: number;
+}
+
 // Types for file parsing
 export interface ParseProgress {
   stage: "idle" | "reading" | "parsing" | "analyzing" | "complete" | "error";
@@ -10,6 +17,7 @@ export interface ParseProgress {
 export interface ParseResult {
   title: string;
   content: string;
+  tableOfContents?: TocEntry[];
   success: boolean;
   error?: string;
 }
@@ -152,7 +160,7 @@ function extractParagraphsFromHtmlFallback(html: string): { paragraphs: string[]
 }
 
 // Parse EPUB file
-async function parseEpub(file: File, onProgress: ProgressCallback): Promise<{ title: string; content: string }> {
+async function parseEpub(file: File, onProgress: ProgressCallback): Promise<{ title: string; content: string; tableOfContents: TocEntry[] }> {
   onProgress({ stage: "reading", percent: 10, message: "正在读取文件..." });
   
   // @ts-expect-error - JSZip loaded via CDN
@@ -172,6 +180,7 @@ async function parseEpub(file: File, onProgress: ProgressCallback): Promise<{ ti
   
   let title = file.name.replace(/\.[^/.]+$/, "");
   let content = "";
+  const tableOfContents: TocEntry[] = [];
 
   // Find and parse container.xml to get content path
   const containerXml = await zip.file("META-INF/container.xml")?.async("string");
@@ -198,6 +207,9 @@ async function parseEpub(file: File, onProgress: ProgressCallback): Promise<{ ti
       title = titleMatch[1].trim();
     }
 
+    // Try to find and parse TOC from nav.xhtml (EPUB 3) or toc.ncx (EPUB 2)
+    await extractEpubToc(zip, opfContent, opfPrefix, tableOfContents);
+
     // Get spine items
     const spineMatches = opfContent.match(/<itemref[^>]*idref="([^"]+)"[^>]*>/g) || [];
     const spineIds = spineMatches.map((match: string) => {
@@ -220,10 +232,17 @@ async function parseEpub(file: File, onProgress: ProgressCallback): Promise<{ ti
     const chapterContents: string[] = [];
     const allHeadings: string[] = [];
     
+    // Track chapter start pages for TOC
+    let currentPage = 1;
+    const chapterStartPages: { href: string; page: number }[] = [];
+    
     for (let i = 0; i < spineIds.length; i++) {
       const id = spineIds[i];
       const href = manifest[id as string];
       if (!href) continue;
+
+      // Record chapter start page
+      chapterStartPages.push({ href, page: currentPage });
 
       const chapterPath = opfPrefix + href;
       const chapterHtml = await zip.file(chapterPath)?.async("string");
@@ -231,6 +250,9 @@ async function parseEpub(file: File, onProgress: ProgressCallback): Promise<{ ti
       if (chapterHtml) {
         // Extract paragraphs and headings from chapter
         const { paragraphs, headings } = extractParagraphsFromHtml(chapterHtml);
+        
+        // Update page count for next chapter (rough estimate)
+        currentPage += Math.ceil(paragraphs.length / 10) || 1;
         
         // Add headings to chapter headings list
         allHeadings.push(...headings);
@@ -280,7 +302,91 @@ async function parseEpub(file: File, onProgress: ProgressCallback): Promise<{ ti
   onProgress({ stage: "analyzing", percent: 90, message: "正在分析词汇..." });
   onProgress({ stage: "complete", percent: 100, message: "解析完成！" });
 
-  return { title, content };
+  return { title, content, tableOfContents };
+}
+
+// Helper function to extract TOC from EPUB
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function extractEpubToc(zip: any, opfContent: string, opfPrefix: string, tableOfContents: TocEntry[]): Promise<void> {
+  // Find nav.xhtml (EPUB 3) or toc.ncx (EPUB 2) in manifest
+  const manifestMatches = opfContent.match(/<item[^>]+>/g) || [];
+  let navPath = "";
+  
+  for (const item of manifestMatches) {
+    // Look for EPUB 3 nav
+    if (item.includes('epub:type="toc"') || item.includes("nav")) {
+      const hrefMatch = item.match(/href="([^"]+)"/);
+      if (hrefMatch) {
+        navPath = opfPrefix + hrefMatch[1];
+        break;
+      }
+    }
+    // Look for NCX (EPUB 2)
+    if (item.includes('media-type="application/x-dtbncx+xml"')) {
+      const hrefMatch = item.match(/href="([^"]+)"/);
+      if (hrefMatch) {
+        navPath = opfPrefix + hrefMatch[1];
+        break;
+      }
+    }
+  }
+  
+  if (!navPath) return;
+  
+  const navContent = await zip.file(navPath)?.async("string");
+  if (!navContent) return;
+  
+  // Try EPUB 3 nav.xhtml format
+  // Look for <nav epub:type="toc"> or <nav id="toc">
+  const navMatch = navContent.match(/<nav[^>]*epub:type="toc"[^>]*>([\s\S]*?)<\/nav>/i) ||
+                   navContent.match(/<nav[^>]*id="toc"[^>]*>([\s\S]*?)<\/nav>/i) ||
+                   navContent.match(/<nav[^>]*>([\s\S]*?)<\/nav>/i);
+  
+  if (navMatch) {
+    const navHtml = navMatch[1];
+    // Extract links
+    const linkMatches = navHtml.matchAll(/<a[^>]+href="([^"]+)"[^>]*>([^<]+)<\/a>/gi);
+    for (const match of linkMatches) {
+      const href = match[1];
+      const text = match[2].trim();
+      if (text) {
+        // Decode HTML entities
+        const decodedText = text
+          .replace(/&amp;/g, "&")
+          .replace(/&lt;/g, "<")
+          .replace(/&gt;/g, ">")
+          .replace(/&quot;/g, '"')
+          .replace(/&#39;/g, "'");
+        tableOfContents.push({
+          title: decodedText,
+          href: href,
+          page: 1, // Will be refined later based on content position
+        });
+      }
+    }
+  }
+  
+  // If no EPUB 3 nav found, try NCX format (EPUB 2)
+  if (tableOfContents.length === 0) {
+    const ncxMatch = navContent.match(/<navMap>([\s\S]*?)<\/navMap>/i);
+    if (ncxMatch) {
+      const navMap = ncxMatch[1];
+      // Extract navPoints
+      const navPointMatches = navMap.matchAll(/<navPoint[^>]*>([\s\S]*?)<\/navPoint>/gi);
+      for (const match of navPointMatches) {
+        const navPointContent = match[1];
+        const labelMatch = navPointContent.match(/<text>([^<]+)<\/text>/i);
+        const srcMatch = navPointContent.match(/<content[^>]+src="([^"]+)"/i);
+        if (labelMatch) {
+          tableOfContents.push({
+            title: labelMatch[1].trim(),
+            href: srcMatch ? srcMatch[1] : "",
+            page: 1,
+          });
+        }
+      }
+    }
+  }
 }
 
 // Parse TXT file
@@ -344,7 +450,7 @@ export async function parseFile(
   const extension = file.name.split(".").pop()?.toLowerCase();
 
   try {
-    let result: { title: string; content: string };
+    let result: { title: string; content: string; tableOfContents?: TocEntry[] };
 
     switch (extension) {
       case "epub":
@@ -352,7 +458,8 @@ export async function parseFile(
         break;
       case "txt":
       default:
-        result = await parseTxt(file, onProgress);
+        const txtResult = await parseTxt(file, onProgress);
+        result = { ...txtResult, tableOfContents: [] };
         break;
     }
 
@@ -362,6 +469,7 @@ export async function parseFile(
     return {
       title: result.title,
       content: result.content,
+      tableOfContents: result.tableOfContents,
       success: true,
     };
   } catch (error) {

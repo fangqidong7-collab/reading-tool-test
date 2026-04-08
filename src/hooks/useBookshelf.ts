@@ -12,6 +12,21 @@ export interface ProcessedSegment {
 // Processed content: array of paragraphs, each paragraph is array of segments
 export type ProcessedContent = ProcessedSegment[][];
 
+// TOC Entry
+export interface TocEntry {
+  title: string;
+  href: string;
+  page: number;
+}
+
+// Bookmark Entry
+export interface BookmarkEntry {
+  id: string;
+  page: number;
+  note?: string;
+  createdAt: number;
+}
+
 export interface Book {
   id: string;
   title: string;
@@ -23,6 +38,8 @@ export interface Book {
   lastScrollPosition?: number;
   lastReadPage?: number; // Track current page for progress calculation
   processedContent?: ProcessedContent;
+  tableOfContents?: TocEntry[]; // Extracted TOC from EPUB
+  bookmarks?: BookmarkEntry[]; // User bookmarks
 }
 
 const STORAGE_KEY = "english-reader-books";
@@ -54,6 +71,7 @@ So whether you are a student in a classroom or an adult pursuing a hobby, rememb
   isSample: true,
   lastScrollPosition: 0,
   processedContent: undefined,
+  bookmarks: [],
 };
 
 export function useBookshelf() {
@@ -153,7 +171,7 @@ export function useBookshelf() {
 
   // Add a new book
   const addBook = useCallback(
-    (title: string, content: string): Book => {
+    (title: string, content: string, tableOfContents?: TocEntry[]): Book => {
       const newBook: Book = {
         id: `book-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         title: title.trim() || "未命名书籍",
@@ -162,6 +180,8 @@ export function useBookshelf() {
         createdAt: Date.now(),
         lastReadAt: Date.now(),
         isSample: false,
+        bookmarks: [],
+        tableOfContents: tableOfContents || [],
       };
       setBooks((prev) => [newBook, ...prev]);
       return newBook;
@@ -229,6 +249,38 @@ export function useBookshelf() {
     );
   }, []);
 
+  // Add a bookmark
+  const addBookmark = useCallback((id: string, page: number, note?: string) => {
+    setBooks((prev) =>
+      prev.map((b) => {
+        if (b.id !== id) return b;
+        const bookmarks = b.bookmarks || [];
+        // Check if bookmark already exists for this page
+        if (bookmarks.some((bm) => bm.page === page)) {
+          return b; // Already bookmarked
+        }
+        const newBookmark: BookmarkEntry = {
+          id: `bm-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+          page,
+          note: note || "",
+          createdAt: Date.now(),
+        };
+        return { ...b, bookmarks: [...bookmarks, newBookmark] };
+      })
+    );
+  }, []);
+
+  // Remove a bookmark
+  const removeBookmark = useCallback((id: string, bookmarkId: string) => {
+    setBooks((prev) =>
+      prev.map((b) => {
+        if (b.id !== id) return b;
+        const bookmarks = (b.bookmarks || []).filter((bm) => bm.id !== bookmarkId);
+        return { ...b, bookmarks };
+      })
+    );
+  }, []);
+
   // Save processed content for faster loading
   const saveProcessedContent = useCallback((id: string, processedContent: ProcessedContent) => {
     // Only save processed content if it's not too large (to avoid quota issues)
@@ -291,5 +343,7 @@ export function useBookshelf() {
     openBook,
     closeBook,
     reorderBooks,
+    addBookmark,
+    removeBookmark,
   };
 }

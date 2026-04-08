@@ -2,17 +2,18 @@
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { X } from "lucide-react";
-import { parseFile, ParseProgress } from "@/lib/fileParser";
+import { parseFile, ParseProgress, TocEntry } from "@/lib/fileParser";
 
 interface AddBookModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAdd: (title: string, content: string) => void;
+  onAdd: (title: string, content: string, tableOfContents?: TocEntry[]) => void;
 }
 
 export function AddBookModal({ isOpen, onClose, onAdd }: AddBookModalProps) {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  const [tableOfContents, setTableOfContents] = useState<TocEntry[]>([]);
   const [mode, setMode] = useState<"upload" | "paste">("paste");
   const [fileName, setFileName] = useState<string>("");
   const [parsing, setParsing] = useState(false);
@@ -49,6 +50,7 @@ export function AddBookModal({ isOpen, onClose, onAdd }: AddBookModalProps) {
   const resetForm = useCallback(() => {
     setTitle("");
     setContent("");
+    setTableOfContents([]);
     setFileName("");
     setParsing(false);
     setProgress({ stage: "idle", percent: 0, message: "" });
@@ -84,6 +86,7 @@ export function AddBookModal({ isOpen, onClose, onAdd }: AddBookModalProps) {
         const finalTitle = result.title || defaultTitle;
         setTitle(finalTitle);
         setContent(result.content);
+        setTableOfContents(result.tableOfContents || []);
         setMode("paste"); // Switch to paste mode to show preview
         
         // Move cursor to end of title input
@@ -103,10 +106,10 @@ export function AddBookModal({ isOpen, onClose, onAdd }: AddBookModalProps) {
 
   const handleSubmit = useCallback(() => {
     if (!content.trim()) return;
-    onAdd(title.trim() || "未命名书籍", content);
+    onAdd(title.trim() || "未命名书籍", content, tableOfContents);
     resetForm();
     onClose();
-  }, [content, title, onAdd, resetForm, onClose]);
+  }, [content, title, tableOfContents, onAdd, resetForm, onClose]);
 
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget && !parsing) {
