@@ -176,7 +176,6 @@ export default function Home() {
     updateBookAnnotations,
     updateScrollPosition,
     updateReadPage,
-    saveProcessedContent,
     openBook,
     closeBook,
     addBookmark,
@@ -294,44 +293,18 @@ export default function Home() {
         setAnnotations(currentBook.annotations);
       }
       
-      // Process content - try to load from localStorage first
-      let processed = currentBook.processedContent;
-      if (!processed) {
-        // Try to load from localStorage chunked storage
-        const bookId = currentBook.id;
-        const cachedVersion = parseInt(localStorage.getItem(`book_${bookId}_cache_version`) || '0', 10);
-        const currentVersion = 2; // Must match PROCESSED_CONTENT_CACHE_VERSION in useBookshelf
+      // Process content - always re-process in real-time (processedContent not cached to localStorage)
+      // Show loading state while processing large books
+      setLoading(true);
+      setTimeout(() => {
+        const processed = processTextToSegments(currentBook.content);
+        setProcessedContent(processed);
+        setLoading(false);
         
-        if (cachedVersion >= currentVersion) {
-          const totalChunks = parseInt(localStorage.getItem(`book_${bookId}_content_chunks`) || '0', 10);
-          if (totalChunks > 0) {
-            let loadedContent: ProcessedContent = [];
-            for (let i = 0; i < totalChunks; i++) {
-              const chunkStr = localStorage.getItem(`book_${bookId}_content_chunk_${i}`);
-              if (chunkStr) {
-                const chunk = JSON.parse(chunkStr);
-                loadedContent = loadedContent.concat(chunk);
-              }
-            }
-            if (loadedContent.length > 0) {
-              processed = loadedContent;
-            }
-          }
-        }
-      }
-      
-      if (!processed) {
-        // Re-process from raw content
-        processed = processTextToSegments(currentBook.content);
-        setProcessedContent(processed);
-        saveProcessedContent(currentBook.id, processed);
-      } else {
-        setProcessedContent(processed);
-      }
-      
-      // Restore last read page (default to page 1)
-      const savedPage = currentBook.lastReadPage || 1;
-      setCurrentPage(Math.min(savedPage, Math.max(1, processed?.length || 1)));
+        // Restore last read page (default to page 1)
+        const savedPage = currentBook.lastReadPage || 1;
+        setCurrentPage(Math.min(savedPage, Math.max(1, processed?.length || 1)));
+      }, 50);
       
       // 始终默认关闭词汇表，不自动打开
       setSidebarOpen(false);
@@ -342,9 +315,10 @@ export default function Home() {
       currentBookAnnotationsRef.current = {};
       setProcessedContent(null);
       setCurrentPage(1);
+      setLoading(false);
       setSidebarOpen(false);
     }
-  }, [currentBook, saveProcessedContent, getSidebarState]);
+  }, [currentBook, getSidebarState]);
 
   // Handle sidebar toggle with localStorage memory
   const handleSidebarToggle = useCallback(() => {
@@ -1256,6 +1230,13 @@ export default function Home() {
       {/* Main Content */}
       <main className="main-content" style={{ backgroundColor }}>
         <div ref={containerRef} className="reading-container">
+          {/* Loading overlay for processing large books */}
+          {loading && (
+            <div className="loading-overlay">
+              <div className="loading-spinner"></div>
+              <div style={{ color: '#666', fontSize: '14px' }}>正在处理文本...</div>
+            </div>
+          )}
           <ReadingArea
             ref={readingAreaRef}
             text={text}
@@ -1760,6 +1741,20 @@ export default function Home() {
           align-items: center;
           gap: 12px;
           z-index: 100;
+        }
+
+        /* Full-screen loading overlay for processing large books */
+        .reading-container > .loading-overlay {
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          transform: none;
+          background: rgba(255, 248, 240, 0.95);
+          border-radius: 0;
+          box-shadow: none;
+          justify-content: center;
         }
 
         .loading-spinner {

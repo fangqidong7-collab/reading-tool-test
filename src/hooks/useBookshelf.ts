@@ -2,12 +2,6 @@
 
 import { useState, useCallback, useEffect } from "react";
 
-// Cache version for processedContent storage format
-const PROCESSED_CONTENT_CACHE_VERSION = 2;
-
-// Chunk size for storing large processedContent (1000 paragraphs per chunk)
-const PROCESSED_CONTENT_CHUNK_SIZE = 1000;
-
 // Processed content segment type
 export interface ProcessedSegment {
   text: string;
@@ -95,6 +89,24 @@ export function useBookshelf() {
   // Load books from localStorage
   useEffect(() => {
     if (typeof window !== "undefined") {
+      // Clean up old chunked processedContent cache data
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (
+          key.includes('_content_chunk') ||
+          key.includes('_cache_version') ||
+          key.includes('_content_chunks') ||
+          key.includes('_processedContent')
+        )) {
+          keysToRemove.push(key);
+        }
+      }
+      if (keysToRemove.length > 0) {
+        console.log(`清理旧缓存数据 ${keysToRemove.length} 项`);
+        keysToRemove.forEach(key => localStorage.removeItem(key));
+      }
+      
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         try {
@@ -297,42 +309,6 @@ export function useBookshelf() {
     );
   }, []);
 
-  // Save processed content for faster loading (using chunked storage)
-  const saveProcessedContent = useCallback((id: string, processedContent: ProcessedContent) => {
-    if (!processedContent || processedContent.length === 0) return;
-    
-    // Use chunked storage for large content
-    const totalChunks = Math.ceil(processedContent.length / PROCESSED_CONTENT_CHUNK_SIZE);
-    
-    // Clear old cached data first (single chunk if exists)
-    const oldSingleChunk = localStorage.getItem(`book_${id}_processedContent`);
-    if (oldSingleChunk) {
-      localStorage.removeItem(`book_${id}_processedContent`);
-    }
-    
-    // Save new chunked data
-    for (let i = 0; i < totalChunks; i++) {
-      const chunk = processedContent.slice(i * PROCESSED_CONTENT_CHUNK_SIZE, (i + 1) * PROCESSED_CONTENT_CHUNK_SIZE);
-      localStorage.setItem(
-        `book_${id}_content_chunk_${i}`,
-        JSON.stringify(chunk)
-      );
-    }
-    
-    // Store metadata (version and chunk count)
-    localStorage.setItem(`book_${id}_cache_version`, String(PROCESSED_CONTENT_CACHE_VERSION));
-    localStorage.setItem(`book_${id}_content_chunks`, String(totalChunks));
-    
-    // Also update the in-memory state for immediate access
-    setBooks((prev) =>
-      prev.map((b) =>
-        b.id === id
-          ? { ...b, processedContent }
-          : b
-      )
-    );
-  }, []);
-
   // Open a book for reading
   const openBook = useCallback((id: string) => {
     setBooks((prev) =>
@@ -374,7 +350,6 @@ export function useBookshelf() {
     updateBookContent,
     updateScrollPosition,
     updateReadPage,
-    saveProcessedContent,
     openBook,
     closeBook,
     reorderBooks,
