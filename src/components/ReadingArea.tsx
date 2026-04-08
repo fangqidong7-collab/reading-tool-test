@@ -1,32 +1,29 @@
 "use client";
 
-import React, { useMemo, useCallback, useRef, useEffect, useState, forwardRef, useImperativeHandle } from "react";
+import React, { useCallback, useRef, useEffect, useState, forwardRef, useImperativeHandle } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { ProcessedContent } from "@/hooks/useBookshelf";
 
 // Layout constants
-const HEADER_HEIGHT = 56; // Fixed header height in px
-const MOBILE_HEADER_HEIGHT = 48; // Mobile header height in px
-const PAGINATION_HEIGHT = 56; // Fixed pagination bar height in px
-const MOBILE_PAGINATION_HEIGHT = 0; // Mobile has no pagination bar (uses indicator)
-const READING_PADDING_VERTICAL = 40; // Vertical padding in px
-const MOBILE_READING_PADDING_VERTICAL = 16; // Mobile vertical padding
-const READING_PADDING_HORIZONTAL = 32; // Horizontal padding in px
-const MOBILE_READING_PADDING_HORIZONTAL = 12; // Mobile horizontal padding
-const PARAGRAPH_GAP = 16; // Gap between paragraphs in px
-const MOBILE_BREAKPOINT = 768; // Mobile breakpoint in px
-const TOUCH_SWIPE_THRESHOLD = 50; // Minimum swipe distance in px
-// Mobile page indicator constants
-const MOBILE_TOP_GAP = 5; // 顶部间距
-const MOBILE_BOTTOM_SAFE_ZONE = 60; // 底部页码安全区
+const HEADER_HEIGHT = 56;
+const MOBILE_HEADER_HEIGHT = 48;
+const PAGINATION_HEIGHT = 56;
+const MOBILE_PAGINATION_HEIGHT = 0;
+const READING_PADDING_HORIZONTAL = 32;
+const MOBILE_READING_PADDING_HORIZONTAL = 12;
+const PARAGRAPH_GAP = 16;
+const MOBILE_BREAKPOINT = 768;
+const TOUCH_SWIPE_THRESHOLD = 50;
+const MOBILE_TOP_GAP = 5;
+const MOBILE_BOTTOM_SAFE_ZONE = 60;
 
-// Ref type for exposing jumpToParagraph
+// Ref type
 export interface ReadingAreaRef {
   jumpToParagraph: (paragraphIndex: number) => void;
   jumpToSearchResult: (result: { paragraphIndex: number; charIndex: number }) => void;
 }
 
-// Memoized paragraph component with event delegation
+// Memoized paragraph component
 type Annotations = Record<string, { root: string; meaning: string; pos: string; count: number }>;
 
 const Paragraph = React.memo(({
@@ -63,7 +60,6 @@ const Paragraph = React.memo(({
           return <span key={key}>{segment.text}</span>;
         }
         
-        // Word segment - check if annotated
         const lemma = segment.lemma;
         const annotation = annotations?.[lemma];
         const isAnnotated = !!annotation;
@@ -98,7 +94,7 @@ const Paragraph = React.memo(({
 
 Paragraph.displayName = "Paragraph";
 
-// Custom comparison function to ensure re-render when annotations change
+// Custom comparison function
 function paragraphPropsAreEqual(
   prev: {
     paragraph: ProcessedContent[number];
@@ -115,16 +111,10 @@ function paragraphPropsAreEqual(
     annotationColor?: string;
   }
 ) {
-  // Always re-render if paragraph index changes
   if (prev.pIndex !== next.pIndex) return false;
-  
-  // Always re-render if onWordClick changes
   if (prev.onWordClick !== next.onWordClick) return false;
-  
-  // Always re-render if annotation color changes
   if (prev.annotationColor !== next.annotationColor) return false;
   
-  // Check if annotations have changed by comparing keys
   const prevKeys = prev.annotations ? Object.keys(prev.annotations) : [];
   const nextKeys = next.annotations ? Object.keys(next.annotations) : [];
   
@@ -151,7 +141,6 @@ interface ReadingAreaProps {
   currentPage?: number;
   onPageChange?: (page: number) => void;
   onTotalPagesChange?: (total: number) => void;
-  // Settings
   fontSize?: number;
   lineHeight?: number;
   textColor?: string;
@@ -161,9 +150,7 @@ interface ReadingAreaProps {
   highlightBg?: string;
   highlightBgHover?: string;
   isDarkMode?: boolean;
-  // External control states
   headerVisible?: boolean;
-  // Search props
   searchQuery?: string;
   searchResults?: Array<{ paragraphIndex: number; charIndex: number }>;
   currentSearchIndex?: number;
@@ -184,168 +171,130 @@ export const ReadingArea = forwardRef(function ReadingArea({
   textColor = "#333333",
   backgroundColor = "#FFF8F0",
   annotationColor = "#E74C3C",
-  annotationFontSize = 13,
-  highlightBg = "#FFF3CD",
-  highlightBgHover = "#FFE69C",
   isDarkMode = false,
   headerVisible = true,
-  searchQuery = "",
-  searchResults = [],
-  currentSearchIndex = 0,
 }: ReadingAreaProps, ref: React.Ref<ReadingAreaRef>) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
   
   const [currentPageState, setCurrentPageState] = useState(currentPage || 1);
   const [totalPagesState, setTotalPagesState] = useState(1);
   
-  // Touch tracking refs
   const touchStartXRef = useRef<number>(0);
   const touchStartYRef = useRef<number>(0);
 
-  // Detect mobile
   const isMobile = typeof window !== 'undefined' && window.innerWidth <= MOBILE_BREAKPOINT;
   const currentHeaderHeight = isMobile ? MOBILE_HEADER_HEIGHT : HEADER_HEIGHT;
   const currentPaginationHeight = isMobile ? MOBILE_PAGINATION_HEIGHT : PAGINATION_HEIGHT;
 
-  // 计算阅读区域布局参数
-  const lineHeightPx = fontSize * lineHeight;
-  const containerPaddingTop = isMobile ? MOBILE_TOP_GAP : 0;
-  const containerPaddingBottom = isMobile ? 20 : 0; // 移动端底部安全padding
-
-  // 【核心】计算每页高度：必须是行高的整数倍
-  // 容器总高度 = 视口 - 顶栏 - 顶部间距 - 底部安全区
-  const totalContainerHeight = isMobile
+  // 计算容器高度
+  const containerHeight = isMobile
     ? window.innerHeight - currentHeaderHeight - MOBILE_TOP_GAP - MOBILE_BOTTOM_SAFE_ZONE
     : window.innerHeight - currentHeaderHeight - currentPaginationHeight;
-  
-  // 实际可用内容高度 = 容器高度 - paddingTop - paddingBottom
-  const availableContentHeight = totalContainerHeight - containerPaddingTop - containerPaddingBottom;
-  
-  // 每页高度 = 行高的整数倍（向下取整）
-  const pageHeight = Math.floor(availableContentHeight / lineHeightPx) * lineHeightPx;
-  const viewHeight = Math.max(lineHeightPx, pageHeight);
 
-  // Calculate view height (recalculated on resize)
+  // 使用 CSS column 分页，计算总页数
   useEffect(() => {
-    // viewHeight is now calculated from pageHeight which is already line-aligned
-  }, [fontSize, lineHeight]);
-
-  // Calculate total pages based on content height
-  useEffect(() => {
-    if (!contentRef.current) return;
+    if (!containerRef.current) return;
     
     const calculatePages = () => {
-      const contentHeight = contentRef.current?.scrollHeight || 0;
+      const container = containerRef.current;
+      if (!container) return;
       
-      // 重新计算每页高度（与上面保持一致）
-      const calcTotalHeight = isMobile
-        ? window.innerHeight - currentHeaderHeight - MOBILE_TOP_GAP - MOBILE_BOTTOM_SAFE_ZONE
-        : window.innerHeight - currentHeaderHeight - currentPaginationHeight;
-      const calcContentHeight = calcTotalHeight - containerPaddingTop - containerPaddingBottom;
-      const calcPageHeight = Math.floor(calcContentHeight / lineHeightPx) * lineHeightPx;
+      const contentHeight = container.scrollHeight;
+      const pageHeight = container.clientHeight;
+      const total = Math.ceil(contentHeight / pageHeight) || 1;
       
-      const total = Math.ceil(contentHeight / calcPageHeight) || 1;
       setTotalPagesState(total);
-      
       if (onTotalPagesChange) {
         onTotalPagesChange(total);
       }
     };
     
-    // Small delay to ensure content is rendered
-    const timer = setTimeout(calculatePages, 100);
+    // 等待内容渲染
+    const timer = setTimeout(calculatePages, 150);
     
-    // Also recalculate on font/size changes
     const resizeObserver = new ResizeObserver(() => {
       clearTimeout(timer);
       calculatePages();
     });
     
-    if (contentRef.current) {
-      resizeObserver.observe(contentRef.current);
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
     }
     
     return () => {
       clearTimeout(timer);
       resizeObserver.disconnect();
     };
-  }, [processedContent, fontSize, lineHeight, lineHeightPx, onTotalPagesChange, currentHeaderHeight, currentPaginationHeight]);
+  }, [processedContent, fontSize, lineHeight, onTotalPagesChange, containerHeight]);
 
-  // Update state when props change
+  // 更新状态当 props 变化时
   useEffect(() => {
     if (currentPage && currentPage !== currentPageState) {
       setCurrentPageState(currentPage);
     }
   }, [currentPage]);
 
-  // Clamp current page to valid range
   const safeCurrentPage = Math.min(Math.max(1, currentPageState), totalPagesState);
 
-  // 【修正二】分页偏移量：严格按行高整数倍计算
-  // 首页 marginTop=0，后续页按行高整数倍偏移
-  const offset = (safeCurrentPage - 1) * pageHeight;
+  // 翻到指定页
+  const goToPage = useCallback((page: number) => {
+    if (!containerRef.current) return;
+    
+    const container = containerRef.current;
+    const pageHeight = container.clientHeight;
+    const scrollTop = (page - 1) * pageHeight;
+    
+    container.scrollTo({
+      top: scrollTop,
+      behavior: 'smooth'
+    });
+    
+    setCurrentPageState(page);
+    if (onPageChange) {
+      onPageChange(page);
+    }
+  }, [onPageChange]);
 
-  // Handle page navigation
+  // 上一页
   const goToPrevPage = useCallback(() => {
     if (safeCurrentPage > 1) {
-      const newPage = safeCurrentPage - 1;
-      setCurrentPageState(newPage);
-      if (onPageChange) {
-        onPageChange(newPage);
-      }
+      goToPage(safeCurrentPage - 1);
     }
-  }, [safeCurrentPage, onPageChange]);
+  }, [safeCurrentPage, goToPage]);
 
+  // 下一页
   const goToNextPage = useCallback(() => {
     if (safeCurrentPage < totalPagesState) {
-      const newPage = safeCurrentPage + 1;
-      setCurrentPageState(newPage);
-      if (onPageChange) {
-        onPageChange(newPage);
-      }
+      goToPage(safeCurrentPage + 1);
     }
-  }, [safeCurrentPage, totalPagesState, onPageChange]);
+  }, [safeCurrentPage, totalPagesState, goToPage]);
 
-  // Jump to specific page based on paragraph index
+  // 跳转到段落（目录跳转）
   const jumpToParagraph = useCallback((paragraphIndex: number) => {
-    if (!contentRef.current) return;
+    if (!containerRef.current) return;
     
-    const element = contentRef.current.querySelector(`[data-paragraph-index="${paragraphIndex}"]`);
+    const element = containerRef.current.querySelector(`[data-paragraph-index="${paragraphIndex}"]`);
     if (element) {
-      const offsetTop = (element as HTMLElement).offsetTop;
-      const targetPage = Math.floor(offsetTop / pageHeight) + 1;
+      const container = containerRef.current;
+      const pageHeight = container.clientHeight;
+      const elementTop = (element as HTMLElement).offsetTop;
+      const targetPage = Math.floor(elementTop / pageHeight) + 1;
       const clampedPage = Math.min(Math.max(1, targetPage), totalPagesState);
-      setCurrentPageState(clampedPage);
-      if (onPageChange) {
-        onPageChange(clampedPage);
-      }
+      goToPage(clampedPage);
     }
-  }, [pageHeight, totalPagesState, onPageChange]);
+  }, [totalPagesState, goToPage]);
 
-  // Expose jumpToParagraph via ref
+  // 暴露方法给父组件
   useImperativeHandle(ref, () => ({
-    jumpToParagraph: jumpToParagraph,
+    jumpToParagraph,
     jumpToSearchResult: (result: { paragraphIndex: number; charIndex: number }) => {
-      // Jump to the paragraph's page first
       jumpToParagraph(result.paragraphIndex);
-      
-      // Then scroll to the character position within the paragraph
-      setTimeout(() => {
-        if (!contentRef.current) return;
-        const paraEl = contentRef.current.querySelector(`[data-paragraph-index="${result.paragraphIndex}"]`);
-        if (paraEl) {
-          // Simple scroll into view
-          paraEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-      }, 100);
     },
   }));
 
-  // Keyboard navigation
+  // 键盘导航
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't handle keyboard when typing in inputs or modals are open
       if (
         e.target instanceof HTMLInputElement ||
         e.target instanceof HTMLTextAreaElement
@@ -353,17 +302,16 @@ export const ReadingArea = forwardRef(function ReadingArea({
         return;
       }
 
-      // Check if tooltip or settings panel is open
       const tooltip = document.querySelector('.word-tooltip, .tooltip');
       const settingsPanel = document.querySelector('.settings-panel');
       if (tooltip || settingsPanel) {
         return;
       }
 
-      if (e.key === 'ArrowRight' || e.key === ' ') {
+      if (e.key === 'ArrowDown' || e.key === ' ' || e.key === 'PageDown') {
         e.preventDefault();
         goToNextPage();
-      } else if (e.key === 'ArrowLeft') {
+      } else if (e.key === 'ArrowUp' || e.key === 'PageUp') {
         e.preventDefault();
         goToPrevPage();
       }
@@ -373,7 +321,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [goToNextPage, goToPrevPage]);
 
-  // Touch event handlers for mobile swipe
+  // 触摸翻页
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     touchStartXRef.current = e.touches[0].clientX;
     touchStartYRef.current = e.touches[0].clientY;
@@ -386,15 +334,15 @@ export const ReadingArea = forwardRef(function ReadingArea({
     const deltaX = touchEndX - touchStartXRef.current;
     const deltaY = touchEndY - touchStartYRef.current;
     
-    // Check if it's a horizontal swipe (more horizontal than vertical)
-    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > TOUCH_SWIPE_THRESHOLD) {
-      if (deltaX < 0) {
+    // 垂直滑动翻页
+    if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > TOUCH_SWIPE_THRESHOLD) {
+      if (deltaY < 0) {
         goToNextPage();
       } else {
         goToPrevPage();
       }
     } else if (Math.abs(deltaX) < 10 && Math.abs(deltaY) < 10) {
-      // It's a tap, handle tap zones
+      // 点击分区翻页
       const screenWidth = window.innerWidth;
       if (touchEndX < screenWidth / 3) {
         goToPrevPage();
@@ -404,14 +352,9 @@ export const ReadingArea = forwardRef(function ReadingArea({
     }
   }, [goToNextPage, goToPrevPage]);
 
-  // Render content with all paragraphs
   if (processedContent && processedContent.length > 0) {
-    // 阅读区域高度：calc(100% - 48px - 5px - 60px)
     const currentHorizPadding = isMobile ? MOBILE_READING_PADDING_HORIZONTAL : READING_PADDING_HORIZONTAL;
-    const containerHeight = headerVisible 
-      ? `calc(100% - ${currentHeaderHeight}px - ${MOBILE_TOP_GAP}px - ${MOBILE_BOTTOM_SAFE_ZONE}px)` 
-      : `calc(100% - ${MOBILE_BOTTOM_SAFE_ZONE}px)`;
-    
+
     return (
       <div 
         className="reading-wrapper" 
@@ -423,39 +366,24 @@ export const ReadingArea = forwardRef(function ReadingArea({
           overflow: "hidden",
         }}
       >
-        {/* 阅读区域 - 高度锁定，overflow: hidden */}
+        {/* 阅读容器 - CSS column 分页 */}
         <div 
           ref={containerRef}
-          className="reading-area"
+          className="reading-container"
           style={{
             height: containerHeight,
-            maxHeight: containerHeight,
-            overflow: "hidden",
+            overflowY: "auto",
+            overflowX: "hidden",
             paddingLeft: `${currentHorizPadding}px`,
             paddingRight: `${currentHorizPadding}px`,
             paddingTop: `${MOBILE_TOP_GAP}px`,
-            paddingBottom: "20px",
+            paddingBottom: isMobile ? "0px" : "0px",
             boxSizing: "border-box",
-            flex: 1,
           }}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
-          {/* text-content - marginTop翻页 */}
-          <div 
-            ref={contentRef}
-            className="text-content"
-            style={{
-              fontSize: `${fontSize}px`,
-              lineHeight: lineHeight,
-              color: textColor,
-              fontFamily: "Georgia, \"Times New Roman\", serif",
-              textAlign: "justify",
-              marginTop: safeCurrentPage === 1 ? "0px" : `-${offset}px`,
-              willChange: "margin-top",
-              minHeight: `${viewHeight}px`,
-            }}
-          >
+          <div className="reader-content">
             {processedContent.map((paragraph, pIndex) => (
               <MemoizedParagraph
                 key={pIndex}
@@ -469,46 +397,50 @@ export const ReadingArea = forwardRef(function ReadingArea({
           </div>
         </div>
 
-        {/* Pagination Bar - Fixed at bottom (PC only) */}
-        <div
-          className={`pagination-bar ${isDarkMode ? 'dark' : ''}`}
-          style={{
-            height: `${PAGINATION_HEIGHT}px`,
-            backgroundColor,
-            borderTopColor: isDarkMode ? "#333" : "#e0e0e0",
-          }}
-        >
-          <div className="pagination-controls">
-            <button
-              className={`pagination-btn ${isDarkMode ? 'dark' : ''}`}
-              onClick={goToPrevPage}
-              disabled={safeCurrentPage <= 1}
-              title="上一页 (←)"
-            >
-              <ChevronLeft size={18} />
-              <span>上一页</span>
-            </button>
+        {/* PC 端分页栏 */}
+        {!isMobile && (
+          <div
+            className={`pagination-bar ${isDarkMode ? 'dark' : ''}`}
+            style={{
+              height: `${PAGINATION_HEIGHT}px`,
+              backgroundColor,
+              borderTopColor: isDarkMode ? "#333" : "#e0e0e0",
+            }}
+          >
+            <div className="pagination-controls">
+              <button
+                className={`pagination-btn ${isDarkMode ? 'dark' : ''}`}
+                onClick={goToPrevPage}
+                disabled={safeCurrentPage <= 1}
+                title="上一页 (↑)"
+              >
+                <ChevronLeft size={18} />
+                <span>上一页</span>
+              </button>
 
-            <div className={`pagination-info ${isDarkMode ? 'dark' : ''}`}>
-              <span>第 {safeCurrentPage} / {totalPagesState} 页</span>
+              <div className={`pagination-info ${isDarkMode ? 'dark' : ''}`}>
+                <span>第 {safeCurrentPage} / {totalPagesState} 页</span>
+              </div>
+
+              <button
+                className={`pagination-btn ${isDarkMode ? 'dark' : ''}`}
+                onClick={goToNextPage}
+                disabled={safeCurrentPage >= totalPagesState}
+                title="下一页 (↓)"
+              >
+                <span>下一页</span>
+                <ChevronRight size={18} />
+              </button>
             </div>
-
-            <button
-              className={`pagination-btn ${isDarkMode ? 'dark' : ''}`}
-              onClick={goToNextPage}
-              disabled={safeCurrentPage >= totalPagesState}
-              title="下一页 (→)"
-            >
-              <span>下一页</span>
-              <ChevronRight size={18} />
-            </button>
           </div>
-        </div>
+        )}
 
-        {/* Mobile Page Indicator - Fixed at viewport bottom, next to N button */}
-        <div className={`mobile-page-indicator ${isDarkMode ? 'dark' : ''}`}>
-          {safeCurrentPage}/{totalPagesState}
-        </div>
+        {/* 移动端页码指示器 */}
+        {isMobile && (
+          <div className={`mobile-page-indicator ${isDarkMode ? 'dark' : ''}`}>
+            {safeCurrentPage}/{totalPagesState}
+          </div>
+        )}
 
         <style jsx>{`
           .reading-wrapper {
@@ -516,41 +448,42 @@ export const ReadingArea = forwardRef(function ReadingArea({
             position: relative;
           }
 
-          .reading-area {
-            box-sizing: border-box;
-            position: relative;
+          .reading-container {
+            flex: 1;
+            scroll-behavior: smooth;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
           }
 
-          .text-content {
-            box-sizing: border-box;
-            max-width: 800px;
-            margin: 0 auto;
+          .reading-container::-webkit-scrollbar {
+            display: none;
           }
 
-          .text-content :global(.paragraph) {
+          .reader-content {
+            font-size: ${fontSize}px;
+            line-height: ${lineHeight};
+            color: ${textColor};
+            font-family: Georgia, "Times New Roman", serif;
+            text-align: justify;
+          }
+
+          .reader-content :global(.paragraph) {
             margin-bottom: ${PARAGRAPH_GAP}px;
           }
 
-          .text-content :global(.word) {
+          .reader-content :global(.word) {
             cursor: pointer;
             transition: color 0.15s;
           }
 
-          .text-content :global(.word:hover) {
+          .reader-content :global(.word:hover) {
             color: #4A90D9;
           }
 
-          .text-content :global(.search-highlight) {
-            background-color: #FFEB3B;
-            padding: 1px 2px;
-            border-radius: 2px;
-          }
-
-          .text-content :global(.search-highlight-current) {
-            background-color: #FF9800;
-            color: #fff;
-            padding: 1px 2px;
-            border-radius: 2px;
+          .reader-content :global(.annotation) {
+            color: ${annotationColor};
+            font-size: 0.7em;
+            font-family: "Microsoft YaHei", "微软雅黑", sans-serif;
           }
 
           .pagination-bar {
@@ -615,21 +548,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
             color: #999;
           }
 
-          @media (max-width: 768px) {
-            .reading-wrapper {
-              min-height: 100dvh !important;
-              height: 100dvh !important;
-            }
-
-            .reading-area {
-              /* padding 由内联样式控制，保持一致 */
-              overflow: hidden !important;
-            }
-          }
-
-          /* Mobile Page Indicator - Fixed at viewport bottom */
           .mobile-page-indicator {
-            display: none;
             position: fixed;
             bottom: 16px;
             right: 16px;
@@ -648,16 +567,13 @@ export const ReadingArea = forwardRef(function ReadingArea({
           }
 
           @media (max-width: 768px) {
+            .reading-wrapper {
+              min-height: 100dvh !important;
+              height: 100dvh !important;
+            }
+
             .pagination-bar {
               display: none !important;
-            }
-
-            .mobile-page-indicator {
-              display: block;
-            }
-
-            .text-content {
-              padding-bottom: 60px !important; /* Space for page indicator */
             }
           }
 
@@ -671,13 +587,13 @@ export const ReadingArea = forwardRef(function ReadingArea({
     );
   }
 
-  // Fallback: plain text
+  // 无内容时显示原文
   return (
     <div className="reading-wrapper" style={{ backgroundColor, minHeight: '100vh' }}>
       <div 
         className="reading-area"
         style={{
-          padding: `${READING_PADDING_VERTICAL}px ${READING_PADDING_HORIZONTAL}px`,
+          padding: `40px ${READING_PADDING_HORIZONTAL}px`,
           maxWidth: '800px',
           margin: '0 auto',
         }}
@@ -689,6 +605,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
             fontSize: `${fontSize}px`,
             lineHeight: lineHeight,
             color: textColor,
+            fontFamily: "Georgia, \"Times New Roman\", serif",
           }}
         >
           {text}
