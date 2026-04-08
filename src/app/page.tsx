@@ -770,13 +770,11 @@ export default function Home() {
         }
 
         .main-content {
-          display: flex;
-          min-height: calc(100vh - 60px);
+          /* Let ReadingArea manage its own layout */
         }
 
         .reading-container {
-          flex: 1;
-          padding-bottom: 40px;
+          /* Let ReadingArea manage its own layout */
         }
 
         .loading-overlay {

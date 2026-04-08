@@ -1,18 +1,19 @@
 "use client";
 
-import React, { useMemo, useCallback, useRef, useEffect, useState, memo } from "react";
+import React, { useMemo, useCallback, useRef, useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { ProcessedContent } from "@/hooks/useBookshelf";
 
 // Layout constants
-const READING_PADDING_TOP = 32; // padding-top in rem
-const READING_PADDING_BOTTOM = 32; // padding-bottom in rem
-const PARAGRAPH_MARGIN_BOTTOM = 1.2; // margin-bottom in em
-const HEADER_HEIGHT = 64; // approximate header height in px
-const PAGINATION_HEIGHT = 100; // approximate pagination controls height in px
+const HEADER_HEIGHT = 56; // Fixed header height in px
+const PAGINATION_HEIGHT = 56; // Fixed pagination bar height in px
+const READING_PADDING_VERTICAL = 20; // Vertical padding in px
+const READING_PADDING_HORIZONTAL = 32; // Horizontal padding in px
+const PARAGRAPH_GAP = 16; // Gap between paragraphs in px
+const MOBILE_BREAKPOINT = 768; // Mobile breakpoint in px
 
 // Memoized segment component
-const Segment = memo(({
+const Segment = React.memo(({
   segment,
   pIndex,
   sIndex,
@@ -26,8 +27,6 @@ const Segment = memo(({
   getWordAnnotation: (word: string) => { root: string; meaning: string; pos: string; count: number } | null;
   isClickable: (word: string) => boolean;
   onWordClick: (word: string, event: React.MouseEvent) => void;
-  annotationColor?: string;
-  annotationFontSize?: number;
 }) => {
   const key = `${pIndex}-${sIndex}`;
   
@@ -47,10 +46,7 @@ const Segment = memo(({
   if (isAnnotated) {
     return (
       <span key={key} className="annotated">
-        {word}<span 
-          className="annotation"
-          data-annotation={annotation?.meaning}
-        >({annotation.meaning})</span>
+        {word}<span className="annotation">({annotation.meaning})</span>
       </span>
     );
   }
@@ -69,7 +65,7 @@ const Segment = memo(({
 Segment.displayName = "Segment";
 
 // Memoized paragraph component
-const Paragraph = memo(({
+const Paragraph = React.memo(({
   paragraph,
   pIndex,
   onWordClick,
@@ -109,7 +105,6 @@ interface ReadingAreaProps {
   getWordAnnotation: (word: string) => { root: string; meaning: string; pos: string; count: number } | null;
   isClickable: (word: string) => boolean;
   currentPage?: number;
-  totalPages?: number;
   onPageChange?: (page: number) => void;
   // Settings
   fontSize?: number;
@@ -130,7 +125,6 @@ export function ReadingArea({
   getWordAnnotation,
   isClickable,
   currentPage = 1,
-  totalPages = 1,
   onPageChange,
   fontSize = 18,
   lineHeight = 1.8,
@@ -143,245 +137,272 @@ export function ReadingArea({
   isDarkMode = false,
 }: ReadingAreaProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const measureRef = useRef<HTMLDivElement>(null);
-  const [paragraphHeights, setParagraphHeights] = useState<number[]>([]);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [currentPageState, setCurrentPageState] = useState(currentPage || 1);
+  const [totalPagesState, setTotalPagesState] = useState(1);
 
-  // Calculate page breaks based on viewport height
-  const { pages, computedTotalPages } = useMemo(() => {
+  // Get paragraph text content for height estimation
+  const getParagraphText = useCallback((index: number): string => {
+    if (!processedContent || !processedContent[index]) return "";
+    return processedContent[index]
+      .filter(s => s.type === "word")
+      .map(s => s.text)
+      .join(" ");
+  }, [processedContent]);
+
+  // Calculate pages based on viewport height and content
+  const { pages, totalPages } = useMemo(() => {
     if (!processedContent || processedContent.length === 0) {
-      return { pages: [[]], computedTotalPages: 1 };
+      return { pages: [[]], totalPages: 1 };
     }
 
-    // Get available height
-    const availableHeight = typeof window !== "undefined"
-      ? window.innerHeight - HEADER_HEIGHT - PAGINATION_HEIGHT - (READING_PADDING_TOP + READING_PADDING_BOTTOM) * 16
-      : 600;
-
-    // Calculate line height in pixels
-    const lineHeightPx = fontSize * lineHeight;
+    // Get viewport info
+    const viewportHeight = typeof window !== "undefined" ? window.innerHeight : 800;
+    const isMobile = typeof window !== "undefined" && window.innerWidth < MOBILE_BREAKPOINT;
     
-    // Calculate paragraph margins
-    const paragraphMarginPx = fontSize * PARAGRAPH_MARGIN_BOTTOM;
+    // Calculate available content height
+    const availableHeight = viewportHeight - HEADER_HEIGHT - PAGINATION_HEIGHT - READING_PADDING_VERTICAL;
+    
+    // Container width for estimating chars per line
+    const containerWidth = isMobile ? window.innerWidth - READING_PADDING_HORIZONTAL * 2 : 800 - READING_PADDING_HORIZONTAL * 2;
 
-    // If we have measured heights, use them; otherwise estimate
-    const getParagraphHeight = (index: number): number => {
-      if (paragraphHeights[index] && paragraphHeights[index] > 0) {
-        return paragraphHeights[index] + paragraphMarginPx;
-      }
-      // Estimate: paragraph has roughly 5-10 words per line, average 20 chars
-      const paragraphText = processedContent[index]
-        .filter(s => s.type === "word")
-        .map(s => s.text)
-        .join(" ");
-      const charsPerLine = 40; // approximate chars per line at 18px font
-      const lines = Math.max(1, Math.ceil(paragraphText.length / charsPerLine));
-      return lines * lineHeightPx + paragraphMarginPx + 20; // add padding
-    };
+    // Estimate chars per line based on font size
+    // Using 0.5 as the ratio for proportional fonts (average character width relative to font size)
+    const charsPerLine = Math.floor(containerWidth / (fontSize * 0.5));
+
+    // Calculate estimated height for each paragraph
+    const paragraphHeights: number[] = [];
+    for (let i = 0; i < processedContent.length; i++) {
+      const paragraphText = getParagraphText(i);
+      const textLength = paragraphText.length;
+      
+      // Calculate number of lines for this paragraph
+      const lines = Math.max(1, Math.ceil(textLength / charsPerLine));
+      
+      // Calculate height: lines * lineHeight (in em) * fontSize + paragraph gap
+      const height = lines * lineHeight * fontSize + PARAGRAPH_GAP;
+      paragraphHeights.push(height);
+    }
 
     // Calculate page breaks
-    const pageBreaks: number[][] = [];
+    const pages: number[][] = [];
     let currentPageParagraphs: number[] = [];
     let currentPageHeight = 0;
 
     for (let i = 0; i < processedContent.length; i++) {
-      const paraHeight = getParagraphHeight(i);
+      const paraHeight = paragraphHeights[i];
+
+      // If this paragraph alone exceeds available height, it gets its own page
+      if (paraHeight > availableHeight) {
+        // First, push current page if it has content
+        if (currentPageParagraphs.length > 0) {
+          pages.push(currentPageParagraphs);
+          currentPageParagraphs = [];
+          currentPageHeight = 0;
+        }
+        // Then add the oversized paragraph as a single-page
+        pages.push([i]);
+        continue;
+      }
 
       // Check if adding this paragraph would exceed the page
-      if (currentPageHeight + paraHeight > availableHeight && currentPageParagraphs.length > 0) {
-        // Start a new page
-        pageBreaks.push(currentPageParagraphs);
-        currentPageParagraphs = [i];
-        currentPageHeight = paraHeight;
-      } else {
+      if (currentPageHeight + paraHeight <= availableHeight) {
+        // Add to current page
         currentPageParagraphs.push(i);
         currentPageHeight += paraHeight;
+      } else {
+        // Start a new page
+        if (currentPageParagraphs.length > 0) {
+          pages.push(currentPageParagraphs);
+        }
+        currentPageParagraphs = [i];
+        currentPageHeight = paraHeight;
       }
     }
 
-    // Add the last page
+    // Push the last page
     if (currentPageParagraphs.length > 0) {
-      pageBreaks.push(currentPageParagraphs);
+      pages.push(currentPageParagraphs);
     }
 
     // Ensure at least one page
-    if (pageBreaks.length === 0) {
-      pageBreaks.push([0]);
+    if (pages.length === 0) {
+      pages.push([0]);
     }
 
-    return {
-      pages: pageBreaks,
-      computedTotalPages: pageBreaks.length,
-    };
-  }, [processedContent, fontSize, lineHeight, paragraphHeights]);
+    const computedTotalPages = pages.length;
+    
+    // Debug output
+    console.log('分页完成：共', computedTotalPages, '页，总段落数', processedContent.length);
 
-  // Actual total pages
-  const actualTotalPages = totalPages > 0 ? totalPages : computedTotalPages;
+    return { pages, totalPages: computedTotalPages };
+  }, [processedContent, fontSize, lineHeight, getParagraphText]);
+
+  // Update state when props change
+  useEffect(() => {
+    setTotalPagesState(totalPages);
+  }, [totalPages]);
+
+  useEffect(() => {
+    if (currentPage && currentPage !== currentPageState) {
+      setCurrentPageState(currentPage);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage]);
+
+  // Clamp current page to valid range
+  const safeCurrentPage = Math.min(Math.max(1, currentPageState), totalPagesState);
 
   // Get paragraphs for current page
   const visibleParagraphs = useMemo(() => {
     if (pages.length === 0) return [];
-    const pageIndex = Math.min(currentPage - 1, pages.length - 1);
+    const pageIndex = Math.min(safeCurrentPage - 1, pages.length - 1);
     const paragraphIndices = pages[pageIndex] || [];
     return paragraphIndices.map((pIndex) => ({
       paragraph: processedContent![pIndex],
       pIndex,
     }));
-  }, [pages, currentPage, processedContent]);
-
-  // Measure paragraph heights after render
-  useEffect(() => {
-    if (!measureRef.current || !processedContent) return;
-
-    const newHeights: number[] = [...paragraphHeights];
-    let hasChanges = false;
-
-    const observer = new ResizeObserver((entries) => {
-      entries.forEach((entry) => {
-        const index = parseInt((entry.target as HTMLElement).dataset.paraIndex || "0", 10);
-        const height = entry.contentRect.height;
-        if (newHeights[index] !== height) {
-          newHeights[index] = height;
-          hasChanges = true;
-        }
-      });
-
-      if (hasChanges) {
-        setParagraphHeights(newHeights);
-      }
-    });
-
-    const elements = measureRef.current.querySelectorAll(".paragraph");
-    elements.forEach((el) => observer.observe(el));
-
-    return () => observer.disconnect();
-  }, [visibleParagraphs, processedContent, paragraphHeights]);
+  }, [pages, safeCurrentPage, processedContent]);
 
   // Handle page navigation
   const goToPrevPage = useCallback(() => {
-    if (currentPage > 1 && onPageChange) {
-      onPageChange(currentPage - 1);
+    if (safeCurrentPage > 1) {
+      const newPage = safeCurrentPage - 1;
+      setCurrentPageState(newPage);
+      if (onPageChange) {
+        onPageChange(newPage);
+      }
       window.scrollTo({ top: 0, behavior: "auto" });
     }
-  }, [currentPage, onPageChange]);
+  }, [safeCurrentPage, onPageChange]);
 
   const goToNextPage = useCallback(() => {
-    if (currentPage < actualTotalPages && onPageChange) {
-      onPageChange(currentPage + 1);
+    if (safeCurrentPage < totalPagesState) {
+      const newPage = safeCurrentPage + 1;
+      setCurrentPageState(newPage);
+      if (onPageChange) {
+        onPageChange(newPage);
+      }
       window.scrollTo({ top: 0, behavior: "auto" });
     }
-  }, [currentPage, actualTotalPages, onPageChange]);
-
-  // Apply dynamic styles based on settings
-  const textStyle = {
-    fontSize: `${fontSize}px`,
-    lineHeight: lineHeight,
-    color: textColor,
-    backgroundColor: backgroundColor,
-  };
+  }, [safeCurrentPage, totalPagesState, onPageChange]);
 
   // Render content with pagination
   if (processedContent && processedContent.length > 0) {
     return (
-      <div className="reading-area" ref={containerRef} style={{ backgroundColor }}>
-        {/* Hidden measurement container */}
-        <div
-          ref={measureRef}
-          className="measure-container"
+      <div 
+        className="reading-wrapper" 
+        style={{ 
+          backgroundColor,
+          minHeight: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
+        {/* Reading Content Area - Takes remaining space */}
+        <div 
+          ref={containerRef}
+          className="reading-area"
           style={{
-            ...textStyle,
-            position: "absolute",
-            visibility: "hidden",
-            pointerEvents: "none",
-            width: "800px",
-            maxWidth: "100%",
-            padding: "2rem",
-          }}
-        />
-
-        <div className="text-content" style={textStyle}>
-          {visibleParagraphs.map(({ paragraph, pIndex }) => (
-            <Paragraph
-              key={pIndex}
-              paragraph={paragraph}
-              pIndex={pIndex}
-              onWordClick={onWordClick}
-              getWordAnnotation={getWordAnnotation}
-              isClickable={isClickable}
-            />
-          ))}
-        </div>
-
-        {/* Pagination Controls */}
-        <div
-          className="pagination-controls"
-          style={{
-            backgroundColor,
-            borderTopColor: isDarkMode ? "#333" : "#e5e5e5",
+            flex: 1,
+            padding: `${READING_PADDING_VERTICAL}px ${READING_PADDING_HORIZONTAL}px`,
+            maxWidth: '800px',
+            margin: '0 auto',
+            width: '100%',
+            boxSizing: 'border-box',
           }}
         >
-          <button
-            className={`pagination-btn ${isDarkMode ? "dark" : ""}`}
-            onClick={goToPrevPage}
-            disabled={currentPage <= 1}
-            title="上一页"
+          <div 
+            ref={contentRef}
+            className="text-content"
+            style={{
+              fontSize: `${fontSize}px`,
+              lineHeight: lineHeight,
+              color: textColor,
+              fontFamily: 'Georgia, "Times New Roman", serif',
+              textAlign: 'justify',
+            }}
           >
-            <ChevronLeft size={18} />
-            <span>上一页</span>
-          </button>
-
-          <div className={`pagination-info ${isDarkMode ? "dark" : ""}`}>
-            <span>第 {currentPage} / {actualTotalPages} 页</span>
+            {visibleParagraphs.map(({ paragraph, pIndex }) => (
+              <Paragraph
+                key={pIndex}
+                paragraph={paragraph}
+                pIndex={pIndex}
+                onWordClick={onWordClick}
+                getWordAnnotation={getWordAnnotation}
+                isClickable={isClickable}
+              />
+            ))}
           </div>
-
-          <button
-            className={`pagination-btn ${isDarkMode ? "dark" : ""}`}
-            onClick={goToNextPage}
-            disabled={currentPage >= actualTotalPages}
-            title="下一页"
-          >
-            <span>下一页</span>
-            <ChevronRight size={18} />
-          </button>
         </div>
 
-        <style>{`
+        {/* Pagination Bar - Fixed at bottom */}
+        <div
+          className={`pagination-bar ${isDarkMode ? 'dark' : ''}`}
+          style={{
+            height: `${PAGINATION_HEIGHT}px`,
+            backgroundColor,
+            borderTopColor: isDarkMode ? "#333" : "#e0e0e0",
+          }}
+        >
+          <div className="pagination-controls">
+            <button
+              className={`pagination-btn ${isDarkMode ? 'dark' : ''}`}
+              onClick={goToPrevPage}
+              disabled={safeCurrentPage <= 1}
+              title="上一页"
+            >
+              <ChevronLeft size={18} />
+              <span>上一页</span>
+            </button>
+
+            <div className={`pagination-info ${isDarkMode ? 'dark' : ''}`}>
+              <span>第 {safeCurrentPage} / {totalPagesState} 页</span>
+            </div>
+
+            <button
+              className={`pagination-btn ${isDarkMode ? 'dark' : ''}`}
+              onClick={goToNextPage}
+              disabled={safeCurrentPage >= totalPagesState}
+              title="下一页"
+            >
+              <span>下一页</span>
+              <ChevronRight size={18} />
+            </button>
+          </div>
+        </div>
+
+        <style jsx>{`
+          .reading-wrapper {
+            min-height: 100vh;
+          }
+
           .reading-area {
-            padding: 2rem;
-            max-width: 800px;
-            margin: 0 auto;
-            min-height: calc(100vh - 64px);
-            display: flex;
-            flex-direction: column;
+            box-sizing: border-box;
           }
 
-          .reading-area .text-content {
-            font-family: Georgia, "Times New Roman", serif;
-            text-align: justify;
-            flex: 1;
+          .text-content :global(.paragraph) {
+            margin-bottom: ${PARAGRAPH_GAP}px;
           }
 
-          .reading-area .paragraph {
-            margin-bottom: 1.2em;
-          }
-
-          .reading-area .whitespace {
+          .text-content :global(.whitespace) {
             white-space: pre-wrap;
           }
 
-          .reading-area .punctuation {
+          .text-content :global(.punctuation) {
             opacity: 0.7;
           }
 
-          .reading-area .word.clickable {
+          .text-content :global(.word.clickable) {
             cursor: pointer;
             transition: color 0.15s;
           }
 
-          .reading-area .word.clickable:hover {
+          .text-content :global(.word.clickable:hover) {
             color: #4A90D9;
           }
 
-          .reading-area .annotated {
+          .text-content :global(.annotated) {
             cursor: pointer;
             background-color: ${highlightBg};
             padding: 1px 0;
@@ -389,11 +410,11 @@ export function ReadingArea({
             transition: background-color 0.15s;
           }
 
-          .reading-area .annotated:hover {
+          .text-content :global(.annotated:hover) {
             background-color: ${highlightBgHover};
           }
 
-          .reading-area .annotation {
+          .text-content :global(.annotation) {
             color: ${annotationColor};
             font-size: ${annotationFontSize}px;
             font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
@@ -402,17 +423,23 @@ export function ReadingArea({
             margin-right: 1px;
           }
 
-          .reading-area .pagination-controls {
+          .pagination-bar {
+            border-top: 1px solid;
+            flex-shrink: 0;
+          }
+
+          .pagination-controls {
             display: flex;
             justify-content: center;
             align-items: center;
-            gap: 1.5rem;
-            padding: 1.5rem 0;
-            border-top: 1px solid #e5e5e5;
-            margin-top: auto;
+            gap: 2rem;
+            height: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 0 1rem;
           }
 
-          .reading-area .pagination-btn {
+          .pagination-btn {
             display: flex;
             align-items: center;
             gap: 0.25rem;
@@ -426,36 +453,42 @@ export function ReadingArea({
             transition: all 0.2s ease;
           }
 
-          .reading-area .pagination-btn.dark {
+          .pagination-btn.dark {
             background: #2a2a3e;
             border-color: #444;
             color: #ccc;
           }
 
-          .reading-area .pagination-btn:hover:not(:disabled) {
+          .pagination-btn:hover:not(:disabled) {
             background: #f5f5f5;
             border-color: #ccc;
           }
 
-          .reading-area .pagination-btn.dark:hover:not(:disabled) {
+          .pagination-btn.dark:hover:not(:disabled) {
             background: #3a3a4e;
             border-color: #555;
           }
 
-          .reading-area .pagination-btn:disabled {
+          .pagination-btn:disabled {
             opacity: 0.4;
             cursor: not-allowed;
           }
 
-          .reading-area .pagination-info {
+          .pagination-info {
             font-size: 14px;
             color: #666;
             min-width: 100px;
             text-align: center;
           }
 
-          .reading-area .pagination-info.dark {
+          .pagination-info.dark {
             color: #999;
+          }
+
+          @media (max-width: ${MOBILE_BREAKPOINT}px) {
+            .reading-area {
+              padding: 16px !important;
+            }
           }
         `}</style>
       </div>
@@ -464,21 +497,30 @@ export function ReadingArea({
 
   // Fallback: plain text
   return (
-    <div className="reading-area" style={{ backgroundColor }}>
-      <div className="text-content" style={{ ...textStyle, whiteSpace: "pre-wrap" }}>
-        {text}
+    <div className="reading-wrapper" style={{ backgroundColor, minHeight: '100vh' }}>
+      <div 
+        className="reading-area"
+        style={{
+          padding: `${READING_PADDING_VERTICAL}px ${READING_PADDING_HORIZONTAL}px`,
+          maxWidth: '800px',
+          margin: '0 auto',
+        }}
+      >
+        <div 
+          className="text-content" 
+          style={{ 
+            whiteSpace: "pre-wrap",
+            fontSize: `${fontSize}px`,
+            lineHeight: lineHeight,
+            color: textColor,
+          }}
+        >
+          {text}
+        </div>
       </div>
-      <style>{`
-        .reading-area {
-          padding: 2rem;
-          max-width: 800px;
-          margin: 0 auto;
-        }
-        .reading-area .text-content {
+      <style jsx>{`
+        .text-content {
           font-family: Georgia, "Times New Roman", serif;
-          font-size: 18px;
-          line-height: 1.8;
-          color: #333;
         }
       `}</style>
     </div>
