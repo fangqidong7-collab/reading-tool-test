@@ -11,7 +11,7 @@ import { useBookshelf, ProcessedContent, ProcessedSegment } from "@/hooks/useBoo
 import { useReadingSettings } from "@/hooks/useReadingSettings";
 import { lemmatize, getWordMeaning, findWordFamily } from "@/lib/dictionary";
 import { translateWord } from "@/lib/translate";
-import { forceReloadDictionary, lookupExternalDict, type DictLoadStatus } from "@/lib/dictLoader";
+import { forceReloadDictionary, lookupExternalDict, getDictLoadStatus, getExternalDictSize, type DictLoadStatus } from "@/lib/dictLoader";
 
 /**
  * Clean translation text - remove parts of speech and extra info
@@ -41,6 +41,65 @@ function cleanTranslation(text: string): string {
   cleaned = cleaned.replace(/^[，。、；：.!?,]+/, '').replace(/[，。、；：.!?,]+$/, '');
   
   return cleaned.trim();
+}
+
+/**
+ * Shorten translation text - keep only 1-2 most concise meanings
+ * This is used to prevent overly long annotations like "(会话说话交谈)"
+ */
+function shortenTranslation(text: string): string {
+  if (!text) return '未知';
+  
+  // First, clean the text (remove POS tags, brackets, etc.)
+  let cleaned = text;
+  cleaned = cleaned.replace(/^[a-z]+\.(?:\/[a-z]+\.)*\s*/gi, '');
+  cleaned = cleaned.replace(/^(名词|动词|形容词|副词|介词|连词|代词|冠词|感叹词|数词|前缀|后缀)[;；\s]*/g, '');
+  cleaned = cleaned.replace(/^[.。:：]+/, '');
+  cleaned = cleaned.replace(/\[[^\]]+\]/g, '');
+  cleaned = cleaned.replace(/\s+/g, ' ');
+  cleaned = cleaned.replace(/^[，。、；：.!?,]+/, '').replace(/[，。、；：.!?,]+$/, '');
+  cleaned = cleaned.trim();
+  
+  if (!cleaned) return '未知';
+  
+  // Split by various separators first
+  let items = cleaned.split(/[;；,，、/\n\\n]+/);
+  
+  // If only one item and it's all Chinese with no separators, smart split it
+  if (items.length === 1 && /^[\u4e00-\u9fff]+$/.test(items[0])) {
+    const str = items[0];
+    // Split by common word boundaries (2-4 chars each)
+    const newItems: string[] = [];
+    for (let i = 0; i < str.length; i += 2) {
+      newItems.push(str.substring(i, Math.min(i + 3, str.length)));
+    }
+    items = newItems;
+  }
+  
+  // Clean each item and filter: must have Chinese characters, max 6 chars each
+  items = items
+    .map(s => s.trim())
+    .filter(s => s.length > 0 && s.length <= 6)
+    .filter(s => /[\u4e00-\u9fff]/.test(s));
+  
+  // Take first 2 items
+  items = items.slice(0, 2);
+  
+  if (items.length === 0) {
+    // Fallback: be more lenient, just take first 2 parts and extract Chinese
+    const parts = cleaned.split(/[;；,，、/\n\\n]+/);
+    items = parts
+      .map(s => s.trim())
+      .filter(s => s.length > 0)
+      .slice(0, 2);
+    // Extract Chinese characters only, max 4 chars each
+    items = items.map(s => {
+      const chinese = s.replace(/[^\u4e00-\u9fff]/g, '');
+      return chinese.substring(0, 4);
+    }).filter(s => s.length > 0);
+  }
+  
+  return items.length > 0 ? items.join(',') : '未知';
 }
 
 // Process text into structured segments with lemmas
@@ -159,6 +218,26 @@ export default function Home() {
 
   // Cloud sync modal state
   const [cloudSyncOpen, setCloudSyncOpen] = useState(false);
+
+  // Diagnostic state for debugging dictionary issues
+  const [showDictDebug, setShowDictDebug] = useState(false);
+  const [dictDebugInfo, setDictDebugInfo] = useState<{status: string; size: number; testWords: Record<string, string | null>}>({status: 'unknown', size: 0, testWords: {}});
+
+  const runDictDebug = useCallback(() => {
+    const status = getDictLoadStatus();
+    const size = getExternalDictSize();
+    const testWords = {
+      after: lookupExternalDict('after'),
+      something: lookupExternalDict('something'),
+      craft: lookupExternalDict('craft'),
+    };
+    setDictDebugInfo({ status, size, testWords });
+    setShowDictDebug(true);
+    console.log('=== 词典诊断信息 ===');
+    console.log('加载状态:', status);
+    console.log('词条数量:', size);
+    console.log('测试词条:', testWords);
+  }, []);
 
   // Load external dictionary on mount (force reload to get latest dict.json)
   useEffect(() => {
@@ -333,15 +412,24 @@ export default function Home() {
       try {
         let rawMeaning = "";
 
+        // 调试日志
+        console.log('=== 开始查词 ===');
+        console.log('原始单词:', word);
+        console.log('词根:', root);
+
         // 1. 先查内置词典
+        console.log('第一层：查 englishDictionary');
         const entry = getWordMeaning(root);
+        console.log('内置词典结果:', entry);
         if (entry?.meaning) {
           rawMeaning = entry.meaning;
         }
 
         // 2. 查外部词典（带智能后缀去除）
         if (!rawMeaning) {
+          console.log('第二层：查 dict.json (externalDict)');
           const extMeaning = lookupExternalDict(cleanWord);
+          console.log('外部词典结果:', extMeaning);
           if (extMeaning) {
             rawMeaning = extMeaning;
           }
@@ -349,11 +437,12 @@ export default function Home() {
 
         // 3. 最后才调用AI翻译
         if (!rawMeaning) {
+          console.log('第三层：前两层都没找到，准备调用AI翻译');
           rawMeaning = await translateWord(root);
         }
 
-        // 清洗释义，去除词性标注
-        const meaning = cleanTranslation(rawMeaning);
+        // 清洗并精简释义
+        const meaning = shortenTranslation(rawMeaning);
         const family = findWordFamily(root, text);
 
         setAnnotations((prev) => ({
@@ -886,6 +975,22 @@ export default function Home() {
             <span style={{ fontSize: "14px", fontWeight: "bold" }}>Aa</span>
           </button>
 
+          {/* Dict Debug Button */}
+          <button
+            className="dict-debug-btn"
+            onClick={runDictDebug}
+            title="词典诊断"
+            style={{ 
+              backgroundColor: "transparent",
+              borderColor: isDarkMode ? "#444" : "#ddd",
+              color: headerTextColor,
+              fontSize: "12px",
+              padding: "4px 8px",
+            }}
+          >
+            Debug
+          </button>
+
           {/* Bookmark Button - Hidden on mobile */}
           <button
             className={`bookmark-btn nav-btn-bookmark ${isDarkMode ? 'dark' : ''}`}
@@ -936,6 +1041,70 @@ export default function Home() {
                   <span>词典加载失败</span>
                 </>
               )}
+            </div>
+          )}
+
+          {/* Dictionary Debug Modal */}
+          {showDictDebug && (
+            <div style={{
+              position: 'fixed',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              backgroundColor: isDarkMode ? '#2a2a3e' : '#fff',
+              padding: '20px',
+              borderRadius: '8px',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+              zIndex: 1000,
+              maxWidth: '90%',
+              width: '400px',
+            }}>
+              <h3 style={{ marginTop: 0, color: isDarkMode ? '#fff' : '#333' }}>词典诊断</h3>
+              <div style={{ color: isDarkMode ? '#ccc' : '#666', marginBottom: '10px' }}>
+                <div>加载状态: <strong>{dictDebugInfo.status}</strong></div>
+                <div>词条数量: <strong>{dictDebugInfo.size}</strong></div>
+              </div>
+              <div style={{ color: isDarkMode ? '#ccc' : '#666', marginBottom: '15px' }}>
+                <div>测试 "after": <strong style={{ color: dictDebugInfo.testWords.after ? '#4CAF50' : '#F44336' }}>
+                  {dictDebugInfo.testWords.after || '未找到'}
+                </strong></div>
+                <div>测试 "something": <strong style={{ color: dictDebugInfo.testWords.something ? '#4CAF50' : '#F44336' }}>
+                  {dictDebugInfo.testWords.something || '未找到'}
+                </strong></div>
+                <div>测试 "craft": <strong style={{ color: dictDebugInfo.testWords.craft ? '#4CAF50' : '#F44336' }}>
+                  {dictDebugInfo.testWords.craft || '未找到'}
+                </strong></div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowDictDebug(false);
+                  forceReloadDictionary().then(() => runDictDebug());
+                }}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#4a90d9',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  marginRight: '10px',
+                }}
+              >
+                重新加载词典
+              </button>
+              <button
+                onClick={() => setShowDictDebug(false)}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: isDarkMode ? '#444' : '#e0e0e0',
+                  color: isDarkMode ? '#fff' : '#333',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                }}
+              >
+                关闭
+              </button>
             </div>
           )}
           <div className="header-stats" style={{ color: isDarkMode ? "#999" : "#666" }}>

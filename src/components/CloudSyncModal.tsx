@@ -1,19 +1,12 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
-import { BookOpen, Upload, Download, Copy, Check, AlertCircle, Cloud } from "lucide-react";
+import { Upload, Download, Copy, Check, AlertCircle, X } from "lucide-react";
 
 interface CloudSyncModalProps {
   open: boolean;
@@ -37,33 +30,86 @@ export function CloudSyncModal({ open, onOpenChange }: CloudSyncModalProps) {
   const [inputCode, setInputCode] = useState("");
   const [copied, setCopied] = useState(false);
 
-  // 收集所有本地数据
+  // 收集所有本地数据 - 使用正确的 localStorage 键名
   const collectLocalData = (): string => {
     const data: Record<string, unknown> = {};
 
-    // 收集 localStorage 中的应用数据
-    const keys = [
-      "bookshelf",
-      "reading-settings",
-      "bookmarks",
-      "annotations",
-      "processed-content",
-      "external-dict-cache",
-      "last-sync-code",
+    // 使用正确的 localStorage 键名
+    const storageKeys = [
+      { key: "english-reader-books", name: "books" },
+      { key: "english-reader-settings", name: "settings" },
+      { key: "reading-sidebar-states", name: "sidebarStates" },
     ];
 
-    for (const key of keys) {
-      const value = localStorage.getItem(key);
+    for (const item of storageKeys) {
+      const value = localStorage.getItem(item.key);
       if (value) {
         try {
-          data[key] = JSON.parse(value);
+          data[item.name] = JSON.parse(value);
         } catch {
-          data[key] = value;
+          data[item.name] = value;
         }
       }
     }
 
+    // 额外收集每个书籍的标注、书签、进度等
+    const booksData = data.books as Array<{
+      id: string;
+      annotations?: Record<string, unknown>;
+      bookmarks?: Array<unknown>;
+      lastReadPage?: number;
+      lastScrollPosition?: number;
+      processedContent?: unknown;
+    }> | undefined;
+
+    if (booksData && Array.isArray(booksData)) {
+      const bookDetails: Record<string, {
+        annotations: Record<string, unknown>;
+        bookmarks: Array<unknown>;
+        lastReadPage?: number;
+        lastScrollPosition?: number;
+      }> = {};
+
+      for (const book of booksData) {
+        bookDetails[book.id] = {
+          annotations: book.annotations || {},
+          bookmarks: book.bookmarks || [],
+          lastReadPage: book.lastReadPage,
+          lastScrollPosition: book.lastScrollPosition,
+        };
+      }
+
+      data.bookDetails = bookDetails;
+    }
+
     return JSON.stringify(data);
+  };
+
+  // 检查是否有可同步的数据
+  const hasSyncableData = (): boolean => {
+    // 检查书架
+    const books = localStorage.getItem("english-reader-books");
+    if (books) {
+      try {
+        const parsed = JSON.parse(books);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return true;
+        }
+      } catch {}
+    }
+
+    // 检查设置
+    const settings = localStorage.getItem("english-reader-settings");
+    if (settings) {
+      try {
+        const parsed = JSON.parse(settings);
+        if (Object.keys(parsed).length > 0) {
+          return true;
+        }
+      } catch {}
+    }
+
+    return false;
   };
 
   // 解析云端数据
@@ -77,12 +123,9 @@ export function CloudSyncModal({ open, onOpenChange }: CloudSyncModalProps) {
 
   // 统计书籍数量
   const countBooks = (data: Record<string, unknown>): number => {
-    const bookshelf = data.bookshelf;
-    if (typeof bookshelf === "object" && bookshelf !== null) {
-      const books = (bookshelf as Record<string, unknown>).books;
-      if (Array.isArray(books)) {
-        return books.length;
-      }
+    const books = data.books;
+    if (Array.isArray(books)) {
+      return books.length;
     }
     return 0;
   };
@@ -93,13 +136,20 @@ export function CloudSyncModal({ open, onOpenChange }: CloudSyncModalProps) {
     setResult(null);
 
     try {
-      const localData = collectLocalData();
-      
-      // 检查是否有数据
-      const parsedData = parseCloudData(localData);
-      if (Object.keys(parsedData).length === 0) {
+      // 先检查是否有数据
+      if (!hasSyncableData()) {
         setStatus("error");
         setResult({ error: "没有找到可同步的数据" });
+        return;
+      }
+
+      const localData = collectLocalData();
+      const dataSize = new Blob([localData]).size;
+
+      // 检查数据大小
+      if (dataSize > 10 * 1024 * 1024) {
+        setStatus("error");
+        setResult({ error: "数据过大，请删除部分书籍后重试" });
         return;
       }
 
@@ -122,10 +172,11 @@ export function CloudSyncModal({ open, onOpenChange }: CloudSyncModalProps) {
       // 保存同步码到本地
       localStorage.setItem("last-sync-code", resData.syncCode);
 
+      const parsedData = parseCloudData(localData);
       setStatus("success");
       setResult({
         syncCode: resData.syncCode,
-        dataSize: resData.dataSize,
+        dataSize: dataSize,
         bookCount: countBooks(parsedData),
       });
     } catch (err) {
@@ -180,9 +231,15 @@ export function CloudSyncModal({ open, onOpenChange }: CloudSyncModalProps) {
     try {
       const cloudData = parseCloudData(result.data as string);
 
-      // 写入 localStorage
-      for (const [key, value] of Object.entries(cloudData)) {
-        localStorage.setItem(key, typeof value === "string" ? value : JSON.stringify(value));
+      // 写入 localStorage - 恢复 books 和 settings
+      if (cloudData.books) {
+        localStorage.setItem("english-reader-books", JSON.stringify(cloudData.books));
+      }
+      if (cloudData.settings) {
+        localStorage.setItem("english-reader-settings", JSON.stringify(cloudData.settings));
+      }
+      if (cloudData.sidebarStates) {
+        localStorage.setItem("reading-sidebar-states", JSON.stringify(cloudData.sidebarStates));
       }
 
       // 关闭弹窗并刷新页面
@@ -233,180 +290,233 @@ export function CloudSyncModal({ open, onOpenChange }: CloudSyncModalProps) {
     }
   }, [open]);
 
+  // 如果弹窗未打开，不渲染
+  if (!open) return null;
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[450px]">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Cloud className="h-5 w-5" />
-            云同步
-          </DialogTitle>
-        </DialogHeader>
+    <>
+      {/* 半透明黑色遮罩 */}
+      <div 
+        className="fixed inset-0 bg-black/60 z-[9998]"
+        onClick={() => onOpenChange(false)}
+      />
+      
+      {/* 悬浮对话框 */}
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+        <div 
+          className="bg-white rounded-lg w-full max-w-md shadow-2xl border border-gray-200 overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* 标题栏 */}
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+            <h2 className="text-lg font-bold text-gray-900">云同步</h2>
+            <button 
+              onClick={() => onOpenChange(false)}
+              className="p-1 rounded-full hover:bg-gray-100 transition-colors"
+            >
+              <X className="h-5 w-5 text-gray-500" />
+            </button>
+          </div>
 
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "upload" | "download")}>
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="upload" className="flex items-center gap-1.5">
-              <Upload className="h-4 w-4" />
-              上传备份
-            </TabsTrigger>
-            <TabsTrigger value="download" className="flex items-center gap-1.5">
-              <Download className="h-4 w-4" />
-              恢复数据
-            </TabsTrigger>
-          </TabsList>
+          {/* 内容区域 */}
+          <div className="p-5">
+            {/* Tab 切换 */}
+            <div className="flex border-b border-gray-200 mb-5">
+              <button
+                className={`flex-1 pb-3 text-sm font-medium transition-colors relative ${
+                  activeTab === "upload" 
+                    ? "text-blue-600" 
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+                onClick={() => setActiveTab("upload")}
+              >
+                <span className="flex items-center justify-center gap-1.5">
+                  <Upload className="h-4 w-4" />
+                  上传备份
+                </span>
+                {activeTab === "upload" && (
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600" />
+                )}
+              </button>
+              <button
+                className={`flex-1 pb-3 text-sm font-medium transition-colors relative ${
+                  activeTab === "download" 
+                    ? "text-blue-600" 
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+                onClick={() => setActiveTab("download")}
+              >
+                <span className="flex items-center justify-center gap-1.5">
+                  <Download className="h-4 w-4" />
+                  恢复数据
+                </span>
+                {activeTab === "download" && (
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600" />
+                )}
+              </button>
+            </div>
 
-          {/* 上传标签页 */}
-          <TabsContent value="upload" className="space-y-4">
-            {status === "idle" && (
-              <>
-                <p className="text-sm text-muted-foreground">
-                  点击下方按钮，将您当前设备的所有数据（书架、标注、书签、阅读进度）上传到云端。
-                </p>
-                <Button onClick={handleUpload} className="w-full">
-                  <Upload className="mr-2 h-4 w-4" />
-                  生成同步码并上传
-                </Button>
-              </>
-            )}
-
-            {status === "uploading" && (
-              <div className="flex flex-col items-center gap-3 py-8">
-                <Spinner />
-                <p className="text-sm text-muted-foreground">正在上传数据...</p>
-              </div>
-            )}
-
-            {status === "success" && result?.syncCode && (
+            {/* 上传标签页 */}
+            {activeTab === "upload" && (
               <div className="space-y-4">
-                <Alert className="border-green-500 bg-green-50">
-                  <Check className="h-4 w-4 text-green-600" />
-                  <AlertDescription className="text-green-800">
-                    上传成功！您的数据已同步到云端。
-                  </AlertDescription>
-                </Alert>
+                {status === "idle" && (
+                  <>
+                    <p className="text-sm text-gray-600">
+                      点击下方按钮，将您当前设备的所有数据（书架、标注、书签、阅读进度）上传到云端。
+                    </p>
+                    <Button onClick={handleUpload} className="w-full bg-blue-600 hover:bg-blue-700">
+                      <Upload className="mr-2 h-4 w-4" />
+                      生成同步码并上传
+                    </Button>
+                  </>
+                )}
 
-                <div className="space-y-2">
-                  <Label>您的同步码</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      value={result.syncCode}
-                      readOnly
-                      className="font-mono text-lg tracking-wider font-bold"
-                    />
-                    <Button variant="outline" onClick={handleCopyCode} className="shrink-0">
-                      {copied ? (
-                        <Check className="h-4 w-4 text-green-600" />
-                      ) : (
-                        <Copy className="h-4 w-4" />
-                      )}
+                {status === "uploading" && (
+                  <div className="flex flex-col items-center gap-3 py-8">
+                    <Spinner />
+                    <p className="text-sm text-gray-600">正在上传数据...</p>
+                  </div>
+                )}
+
+                {status === "success" && result?.syncCode && (
+                  <div className="space-y-4">
+                    <Alert className="border-green-500 bg-green-50">
+                      <Check className="h-4 w-4 text-green-600" />
+                      <AlertDescription className="text-green-800">
+                        上传成功！您的数据已同步到云端。
+                      </AlertDescription>
+                    </Alert>
+
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium text-gray-700">您的同步码</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          value={result.syncCode}
+                          readOnly
+                          className="font-mono text-lg tracking-wider font-bold"
+                        />
+                        <Button variant="outline" onClick={handleCopyCode} className="shrink-0">
+                          {copied ? (
+                            <Check className="h-4 w-4 text-green-600" />
+                          ) : (
+                            <Copy className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="text-sm text-gray-600 space-y-1">
+                      <p>包含 {result.bookCount} 本书籍</p>
+                      <p>数据大小：{result.dataSize && formatSize(result.dataSize)}</p>
+                    </div>
+
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
+                      <p className="font-medium">请妥善保存此同步码</p>
+                      <p className="text-amber-700">在其他设备上输入此同步码即可恢复数据</p>
+                    </div>
+                  </div>
+                )}
+
+                {status === "error" && (
+                  <div className="space-y-4">
+                    <Alert className="border-red-500 bg-red-50">
+                      <AlertCircle className="h-4 w-4 text-red-600" />
+                      <AlertDescription className="text-red-800">
+                        {result?.error || "上传失败，请重试"}
+                      </AlertDescription>
+                    </Alert>
+                    <Button onClick={() => setStatus("idle")} variant="outline" className="w-full">
+                      重新上传
                     </Button>
                   </div>
-                </div>
-
-                <div className="text-sm text-muted-foreground space-y-1">
-                  <p>包含 {result.bookCount} 本书籍</p>
-                  <p>数据大小：{result.dataSize && formatSize(result.dataSize)}</p>
-                </div>
-
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
-                  <p className="font-medium">请妥善保存此同步码</p>
-                  <p className="text-amber-700">在其他设备上输入此同步码即可恢复数据</p>
-                </div>
+                )}
               </div>
             )}
 
-            {status === "error" && (
+            {/* 下载标签页 */}
+            {activeTab === "download" && (
               <div className="space-y-4">
-                <Alert className="border-red-500 bg-red-50">
-                  <AlertCircle className="h-4 w-4 text-red-600" />
-                  <AlertDescription className="text-red-800">
-                    {result?.error || "上传失败，请重试"}
-                  </AlertDescription>
-                </Alert>
-                <Button onClick={() => setStatus("idle")} variant="outline" className="w-full">
-                  重新上传
-                </Button>
+                {status === "idle" && (
+                  <>
+                    <p className="text-sm text-gray-600">
+                      输入在其他设备上获取的同步码，即可恢复云端保存的数据。
+                    </p>
+                    <div className="space-y-2">
+                      <Label htmlFor="syncCode" className="text-sm font-medium text-gray-700">同步码</Label>
+                      <Input
+                        id="syncCode"
+                        value={inputCode}
+                        onChange={(e) => setInputCode(e.target.value.toUpperCase())}
+                        placeholder="例如：A3K9M2X7"
+                        maxLength={8}
+                        className="font-mono text-lg tracking-wider font-bold uppercase"
+                      />
+                    </div>
+                    <Button 
+                      onClick={handleDownload} 
+                      className="w-full bg-blue-600 hover:bg-blue-700" 
+                      disabled={inputCode.length !== 8}
+                    >
+                      <Download className="mr-2 h-4 w-4" />
+                      恢复数据
+                    </Button>
+                  </>
+                )}
+
+                {status === "downloading" && (
+                  <div className="flex flex-col items-center gap-3 py-8">
+                    <Spinner />
+                    <p className="text-sm text-gray-600">正在查询云端数据...</p>
+                  </div>
+                )}
+
+                {status === "success" && result?.data && (
+                  <div className="space-y-4">
+                    <Alert className="border-blue-500 bg-blue-50">
+                      <AlertCircle className="h-4 w-4 text-blue-600" />
+                      <AlertDescription className="text-blue-800">
+                        找到云端数据，包含 <strong>{result.bookCount}</strong> 本书籍
+                      </AlertDescription>
+                    </Alert>
+
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
+                      <p className="font-medium">确认要恢复数据吗？</p>
+                      <p className="text-amber-700">云端数据将覆盖您当前设备上的所有数据</p>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={() => setStatus("idle")}
+                        variant="outline"
+                        className="flex-1"
+                      >
+                        取消
+                      </Button>
+                      <Button onClick={handleConfirmRestore} className="flex-1 bg-blue-600 hover:bg-blue-700">
+                        确认恢复
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {status === "error" && (
+                  <div className="space-y-4">
+                    <Alert className="border-red-500 bg-red-50">
+                      <AlertCircle className="h-4 w-4 text-red-600" />
+                      <AlertDescription className="text-red-800">
+                        {result?.error || "同步码无效，请检查是否输入正确"}
+                      </AlertDescription>
+                    </Alert>
+                    <Button onClick={() => setStatus("idle")} variant="outline" className="w-full">
+                      返回重试
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
-          </TabsContent>
-
-          {/* 下载标签页 */}
-          <TabsContent value="download" className="space-y-4">
-            {status === "idle" && (
-              <>
-                <p className="text-sm text-muted-foreground">
-                  输入在其他设备上获取的同步码，即可恢复云端保存的数据。
-                </p>
-                <div className="space-y-2">
-                  <Label htmlFor="syncCode">同步码</Label>
-                  <Input
-                    id="syncCode"
-                    value={inputCode}
-                    onChange={(e) => setInputCode(e.target.value.toUpperCase())}
-                    placeholder="例如：A3K9M2X7"
-                    maxLength={8}
-                    className="font-mono text-lg tracking-wider font-bold uppercase"
-                  />
-                </div>
-                <Button onClick={handleDownload} className="w-full" disabled={inputCode.length !== 8}>
-                  <Download className="mr-2 h-4 w-4" />
-                  恢复数据
-                </Button>
-              </>
-            )}
-
-            {status === "downloading" && (
-              <div className="flex flex-col items-center gap-3 py-8">
-                <Spinner />
-                <p className="text-sm text-muted-foreground">正在查询云端数据...</p>
-              </div>
-            )}
-
-            {status === "success" && result?.data && (
-              <div className="space-y-4">
-                <Alert className="border-blue-500 bg-blue-50">
-                  <BookOpen className="h-4 w-4 text-blue-600" />
-                  <AlertDescription className="text-blue-800">
-                    找到云端数据，包含 <strong>{result.bookCount}</strong> 本书籍
-                  </AlertDescription>
-                </Alert>
-
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
-                  <p className="font-medium">确认要恢复数据吗？</p>
-                  <p className="text-amber-700">云端数据将覆盖您当前设备上的所有数据</p>
-                </div>
-
-                <div className="flex gap-2">
-                  <Button
-                    onClick={() => setStatus("idle")}
-                    variant="outline"
-                    className="flex-1"
-                  >
-                    取消
-                  </Button>
-                  <Button onClick={handleConfirmRestore} className="flex-1">
-                    确认恢复
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {status === "error" && (
-              <div className="space-y-4">
-                <Alert className="border-red-500 bg-red-50">
-                  <AlertCircle className="h-4 w-4 text-red-600" />
-                  <AlertDescription className="text-red-800">
-                    {result?.error || "同步码无效，请检查是否输入正确"}
-                  </AlertDescription>
-                </Alert>
-                <Button onClick={() => setStatus("idle")} variant="outline" className="w-full">
-                  重新输入
-                </Button>
-              </div>
-            )}
-          </TabsContent>
-        </Tabs>
-      </DialogContent>
-    </Dialog>
+          </div>
+        </div>
+      </div>
+    </>
   );
 }

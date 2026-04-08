@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { lemmatize, getWordMeaning } from "@/lib/dictionary";
+import { lookupExternalDict } from "@/lib/dictLoader";
 
 interface WordTooltipProps {
   word: string;
@@ -22,6 +23,52 @@ interface WordTooltipProps {
   accentColor?: string;
 }
 
+/**
+ * Shorten translation text - keep only 1-2 most concise meanings
+ */
+function shortenTranslation(text: string): string {
+  if (!text) return '未知';
+  
+  // First, clean the text (remove POS tags, brackets, etc.)
+  let cleaned = text;
+  cleaned = cleaned.replace(/^[a-z]+\.(?:\/[a-z]+\.)*\s*/gi, '');
+  cleaned = cleaned.replace(/^(名词|动词|形容词|副词|介词|连词|代词|冠词|感叹词|数词|前缀|后缀)[;；\s]*/g, '');
+  cleaned = cleaned.replace(/^[.。:：]+/, '');
+  cleaned = cleaned.replace(/\[[^\]]+\]/g, '');
+  cleaned = cleaned.replace(/\s+/g, ' ');
+  cleaned = cleaned.replace(/^[，。、；：.!?,]+/, '').replace(/[，。、；：.!?,]+$/, '');
+  cleaned = cleaned.trim();
+  
+  if (!cleaned) return '未知';
+  
+  // Split by various separators
+  let items = cleaned.split(/[;；,，、/\n\\n]+/);
+  
+  // Clean each item and filter: must have Chinese characters, max 6 chars each
+  items = items
+    .map(s => s.trim())
+    .filter(s => s.length > 0 && s.length <= 6)
+    .filter(s => /[\u4e00-\u9fff]/.test(s));
+  
+  // Take first 2 items
+  items = items.slice(0, 2);
+  
+  if (items.length === 0) {
+    // Fallback: be more lenient, just take first 2 parts and extract Chinese
+    items = cleaned.split(/[;；,，、/\n\\n]+/)
+      .map(s => s.trim())
+      .filter(s => s.length > 0)
+      .slice(0, 2);
+    // Extract Chinese characters only, max 4 chars each
+    items = items.map(s => {
+      const chinese = s.replace(/[^\u4e00-\u9fff]/g, '');
+      return chinese.substring(0, 4);
+    }).filter(s => s.length > 0);
+  }
+  
+  return items.length > 0 ? items.join(',') : '未知';
+}
+
 export function WordTooltip({
   word,
   position,
@@ -37,7 +84,15 @@ export function WordTooltip({
 }: WordTooltipProps) {
   const [visible, setVisible] = useState(false);
   const root = lemmatize(word);
-  const entry = annotation || getWordMeaning(root);
+  
+  // 智能查词：先查内置词典，再查外部词典，最后精简
+  const internalEntry = annotation || getWordMeaning(root);
+  const externalRaw = !annotation ? lookupExternalDict(word) : null;
+  const externalShortened = externalRaw ? shortenTranslation(externalRaw) : null;
+  const displayMeaning = internalEntry 
+    ? shortenTranslation(internalEntry.meaning)
+    : (externalShortened || null);
+  const displayEntry = displayMeaning ? { meaning: displayMeaning, pos: internalEntry?.pos || "" } : null;
 
   useEffect(() => {
     // 延迟显示以实现淡入效果
@@ -92,16 +147,16 @@ export function WordTooltip({
           <span className="tooltip-word" style={{ color: colors.text }}>
             {word}
           </span>
-          {entry && (
+          {displayEntry && (
             <span className="tooltip-pos" style={{ color: colors.secondaryText }}>
-              {entry.pos}
+              {displayEntry.pos}
             </span>
           )}
         </div>
 
-        {entry ? (
+        {displayEntry ? (
           <div className="tooltip-meaning" style={{ color: colors.accent }}>
-            {entry.meaning}
+            {displayEntry.meaning}
           </div>
         ) : (
           <div className="tooltip-meaning tooltip-unknown" style={{ color: colors.secondaryText }}>
@@ -109,7 +164,7 @@ export function WordTooltip({
           </div>
         )}
 
-        {entry && (
+        {displayEntry && (
           <div className="tooltip-root" style={{ color: colors.secondaryText }}>
             词根: {root}
           </div>
