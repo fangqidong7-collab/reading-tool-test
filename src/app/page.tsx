@@ -8,7 +8,7 @@ import { VocabularySidebar } from "@/components/VocabularySidebar";
 import { useBookshelf, ProcessedContent, ProcessedSegment } from "@/hooks/useBookshelf";
 import { lemmatize, getWordMeaning, findWordFamily } from "@/lib/dictionary";
 import { translateWord } from "@/lib/translate";
-import { loadExternalDictionary, lookupExternalDict, type DictLoadStatus } from "@/lib/dictLoader";
+import { forceReloadDictionary, lookupExternalDict, type DictLoadStatus } from "@/lib/dictLoader";
 
 // Process text into structured segments with lemmas
 function processTextToSegments(text: string): ProcessedContent {
@@ -78,9 +78,9 @@ export default function Home() {
   const [dictLoadStatus, setDictLoadStatus] = useState<DictLoadStatus>('idle');
   const dictStatusTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Load external dictionary on mount
+  // Load external dictionary on mount (force reload to get latest dict.json)
   useEffect(() => {
-    loadExternalDictionary().then((status) => {
+    forceReloadDictionary().then((status) => {
       setDictLoadStatus(status);
       
       // Auto-dismiss status after 3 seconds

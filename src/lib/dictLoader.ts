@@ -31,6 +31,7 @@ const CACHE_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 /**
  * Load external dictionary from server or cache
+ * Always fetches from server to check for updates
  */
 export async function loadExternalDictionary(): Promise<DictLoadStatus> {
   if (loadStatus === 'loaded' || loadStatus === 'loading') {
@@ -41,16 +42,14 @@ export async function loadExternalDictionary(): Promise<DictLoadStatus> {
   loadError = null;
 
   try {
-    // Try to load from cache first
-    const cached = loadFromCache();
-    if (cached) {
-      externalDict = cached;
-      loadStatus = 'loaded';
-      return 'loaded';
-    }
-
-    // Load from server
-    const response = await fetch('/dict.json');
+    // Always fetch from server to check if dict.json has been updated
+    const response = await fetch('/dict.json', {
+      headers: {
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache'
+      }
+    });
+    
     if (!response.ok) {
       throw new Error(`Failed to load dictionary: ${response.status}`);
     }
@@ -71,7 +70,7 @@ export async function loadExternalDictionary(): Promise<DictLoadStatus> {
       externalDict = data as unknown as Record<string, string>;
     }
     
-    // Save to cache
+    // Save to cache (this will overwrite any old cache)
     saveToCache(externalDict);
     
     loadStatus = 'loaded';
@@ -79,9 +78,27 @@ export async function loadExternalDictionary(): Promise<DictLoadStatus> {
   } catch (error) {
     console.error('Failed to load external dictionary:', error);
     loadError = error instanceof Error ? error.message : 'Unknown error';
+    
+    // If we have cache, use it even if fetch fails
+    const cached = loadFromCache();
+    if (cached) {
+      externalDict = cached;
+      loadStatus = 'loaded';
+      return 'loaded';
+    }
+    
     loadStatus = 'failed';
     return 'failed';
   }
+}
+
+/**
+ * Clear old cache and reload dictionary
+ */
+export async function forceReloadDictionary(): Promise<DictLoadStatus> {
+  resetDictState();
+  clearCache();
+  return loadExternalDictionary();
 }
 
 /**
