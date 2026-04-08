@@ -8,6 +8,7 @@ import { VocabularySidebar } from "@/components/VocabularySidebar";
 import { useBookshelf, ProcessedContent, ProcessedSegment } from "@/hooks/useBookshelf";
 import { lemmatize, getWordMeaning, findWordFamily } from "@/lib/dictionary";
 import { translateWord } from "@/lib/translate";
+import { loadExternalDictionary, type DictLoadStatus } from "@/lib/dictLoader";
 
 // Process text into structured segments with lemmas
 function processTextToSegments(text: string): ProcessedContent {
@@ -72,6 +73,31 @@ export default function Home() {
   const currentBookAnnotationsRef = useRef<
     Record<string, { root: string; meaning: string; pos: string; count: number }>
   >({});
+
+  // Dictionary loading status
+  const [dictLoadStatus, setDictLoadStatus] = useState<DictLoadStatus>('idle');
+  const dictStatusTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Load external dictionary on mount
+  useEffect(() => {
+    loadExternalDictionary().then((status) => {
+      setDictLoadStatus(status);
+      
+      // Auto-dismiss status after 3 seconds
+      if (dictStatusTimeoutRef.current) {
+        clearTimeout(dictStatusTimeoutRef.current);
+      }
+      dictStatusTimeoutRef.current = setTimeout(() => {
+        setDictLoadStatus('idle');
+      }, 3000);
+    });
+    
+    return () => {
+      if (dictStatusTimeoutRef.current) {
+        clearTimeout(dictStatusTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Sync refs when currentBook changes
   useEffect(() => {
@@ -355,6 +381,35 @@ export default function Home() {
           </h1>
         </div>
         <div className="header-right">
+          {/* Dictionary Loading Status */}
+          {dictLoadStatus !== 'idle' && (
+            <div className={`dict-status dict-status-${dictLoadStatus}`}>
+              {dictLoadStatus === 'loading' && (
+                <>
+                  <span className="dict-status-spinner"></span>
+                  <span>词典加载中...</span>
+                </>
+              )}
+              {dictLoadStatus === 'loaded' && (
+                <>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                  <span>词典已就绪</span>
+                </>
+              )}
+              {dictLoadStatus === 'failed' && (
+                <>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="15" y1="9" x2="9" y2="15" />
+                    <line x1="9" y1="9" x2="15" y2="15" />
+                  </svg>
+                  <span>词典加载失败</span>
+                </>
+              )}
+            </div>
+          )}
           <div className="header-stats">
             <span className="stat">
               词汇: <strong>{Object.keys(annotations).length}</strong>
@@ -496,6 +551,45 @@ export default function Home() {
 
         .stat strong {
           color: #4a90d9;
+        }
+
+        .dict-status {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 6px 12px;
+          border-radius: 6px;
+          font-size: 12px;
+          animation: fadeIn 0.2s ease;
+        }
+
+        .dict-status-loading {
+          background: #fff3cd;
+          color: #856404;
+        }
+
+        .dict-status-loaded {
+          background: #d4edda;
+          color: #155724;
+        }
+
+        .dict-status-failed {
+          background: #f8d7da;
+          color: #721c24;
+        }
+
+        .dict-status-spinner {
+          width: 14px;
+          height: 14px;
+          border: 2px solid rgba(0, 0, 0, 0.1);
+          border-top-color: #856404;
+          border-radius: 50%;
+          animation: spin 0.6s linear infinite;
+        }
+
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(-4px); }
+          to { opacity: 1; transform: translateY(0); }
         }
 
         .sidebar-toggle {

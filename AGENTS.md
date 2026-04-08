@@ -12,6 +12,8 @@
 
 ```
 ├── public/                 # 静态资源
+│   ├── miniDict.js        # 内置迷你词典（可被外部词典覆盖）
+│   └── dict.json          # 外部大词典文件
 ├── scripts/                # 构建与启动脚本
 │   ├── build.sh            # 构建脚本
 │   ├── dev.sh              # 开发环境启动脚本
@@ -19,15 +21,38 @@
 │   └── start.sh            # 生产环境启动脚本
 ├── src/
 │   ├── app/                # 页面路由与布局
+│   │   └── api/translate/  # 翻译API
 │   ├── components/ui/      # Shadcn UI 组件库
 │   ├── hooks/              # 自定义 Hooks
+│   │   └── useBookshelf.ts # 书架管理Hook
 │   ├── lib/                # 工具库
-│   │   └── utils.ts        # 通用工具函数 (cn)
+│   │   ├── utils.ts        # 通用工具函数 (cn)
+│   │   ├── dictionary.ts   # 词典查找、词根还原
+│   │   ├── translate.ts    # AI翻译客户端
+│   │   └── dictLoader.ts   # 外部词典加载器
 │   └── server.ts           # 自定义服务端入口
 ├── next.config.ts          # Next.js 配置
 ├── package.json            # 项目依赖管理
 └── tsconfig.json           # TypeScript 配置
 ```
+
+## 双层词典机制
+
+### 加载优先级
+1. **内置迷你词典 (miniDict.js)** - 包含常见1000+词汇，随应用加载
+2. **外部大词典 (dict.json)** - 按需从服务器加载并缓存到localStorage
+3. **词根还原** - 对未找到的词尝试去后缀还原词根
+4. **AI翻译** - 最终回退方案，调用豆包大模型
+
+### 词典缓存
+- external dictionary 缓存到 localStorage
+- 缓存有效期：24小时
+- 可通过 `reloadExternalDictionary()` 强制刷新
+
+### 标注格式
+- 格式：`word(中文)`
+- 中文部分：字号70%，颜色#E74C3C，字体微软雅黑
+- 行高统一：1.8
 
 - 项目文件（如 app 目录、pages 目录、components 等）默认初始化到 `src/` 目录下。
 

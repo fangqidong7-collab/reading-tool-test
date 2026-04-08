@@ -1,13 +1,58 @@
-// 翻译缓存
+// Translation cache
 const translationCache: Record<string, string> = {};
 
 /**
- * 翻译英文单词为中文
+ * Post-process translation on client side (fallback)
+ */
+function postProcessTranslation(translation: string, maxLength: number = 15): string {
+  let result = translation
+    .replace(/\*\*/g, '')
+    .replace(/\*/g, '')
+    .replace(/`/g, '')
+    .trim();
+  
+  // Remove common filler phrases
+  const fillers = [
+    /^意思是[：:]/,
+    /^中文意思是[：:]/,
+    /^翻译[：:]/,
+    /^英文单词[：:]/,
+    /^表示[：:]/,
+    /^(这个|该)?(词|单词|词的意思|含义)是[：:]/,
+  ];
+  
+  for (const filler of fillers) {
+    result = result.replace(filler, '');
+  }
+  
+  result = result.trim();
+  
+  // Truncate if too long (count Chinese characters)
+  const chineseChars = (result.match(/[\u4e00-\u9fa5]/g) || []).length;
+  
+  if (chineseChars > maxLength) {
+    let truncAt = 0;
+    let count = 0;
+    for (let i = 0; i < result.length && count < maxLength; i++) {
+      const char = result[i];
+      if (/[\u4e00-\u9fa5]/.test(char)) {
+        count++;
+      }
+      truncAt = i + 1;
+    }
+    result = result.substring(0, truncAt) + '...';
+  }
+  
+  return result;
+}
+
+/**
+ * Translate English word to Chinese
  */
 export async function translateWord(word: string): Promise<string> {
   const lowerWord = word.toLowerCase().trim();
   
-  // 检查缓存
+  // Check cache first
   if (translationCache[lowerWord]) {
     return translationCache[lowerWord];
   }
@@ -26,9 +71,14 @@ export async function translateWord(word: string): Promise<string> {
     }
     
     const data = await response.json();
-    const translation = data.translation || "未找到释义";
+    let translation = data.translation || "未找到释义";
     
-    // 缓存结果
+    // Additional client-side post-processing as fallback
+    if (translation && translation.length > 20) {
+      translation = postProcessTranslation(translation);
+    }
+    
+    // Cache the result
     translationCache[lowerWord] = translation;
     
     return translation;
