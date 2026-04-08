@@ -252,6 +252,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
   currentSearchIndex = 0,
 }: ReadingAreaProps, ref: React.Ref<ReadingAreaRef>) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   
   const [currentPageState, setCurrentPageState] = useState(currentPage || 1);
   const [totalPagesState, setTotalPagesState] = useState(1);
@@ -268,20 +269,27 @@ export const ReadingArea = forwardRef(function ReadingArea({
     ? window.innerHeight - currentHeaderHeight - MOBILE_TOP_GAP - MOBILE_BOTTOM_SAFE_ZONE
     : window.innerHeight - currentHeaderHeight - currentPaginationHeight;
 
-  // 使用垂直滚动分页，计算总页数
+  // 计算每页内容高度（容器高度减去上下 padding）
+  const getPageContentHeight = useCallback(() => {
+    if (!containerRef.current) return 0;
+    const container = containerRef.current;
+    const paddingTop = MOBILE_TOP_GAP;
+    const paddingBottom = isMobile ? 0 : PAGINATION_HEIGHT;
+    return container.clientHeight - paddingTop - paddingBottom;
+  }, [isMobile, containerHeight]);
+
+  // 使用 transform 方式翻页，计算总页数
   useEffect(() => {
-    if (!containerRef.current) return;
-    
     const calculatePages = () => {
+      const contentEl = contentRef.current;
       const container = containerRef.current;
-      if (!container) return;
+      if (!contentEl || !container) return;
       
-      // 关键：使用 scrollWidth / clientWidth 来计算水平列数（如果用columns）
-      // 或者用 scrollHeight / clientHeight 来计算垂直页数
-      const contentHeight = container.scrollHeight;
-      const pageHeight = container.clientHeight;
-      // 使用 Math.round 而不是 Math.ceil，避免多算一页空白页
-      const total = Math.max(1, Math.round(contentHeight / pageHeight));
+      const totalContentHeight = contentEl.scrollHeight;
+      const pageH = getPageContentHeight();
+      if (pageH <= 0) return;
+      
+      const total = Math.max(1, Math.ceil(totalContentHeight / pageH));
       
       setTotalPagesState(total);
       if (onTotalPagesChange) {
@@ -289,23 +297,21 @@ export const ReadingArea = forwardRef(function ReadingArea({
       }
     };
     
-    // 等待内容渲染
-    const timer = setTimeout(calculatePages, 150);
+    const timer = setTimeout(calculatePages, 200);
     
     const resizeObserver = new ResizeObserver(() => {
-      clearTimeout(timer);
       calculatePages();
     });
     
-    if (containerRef.current) {
-      resizeObserver.observe(containerRef.current);
+    if (contentRef.current) {
+      resizeObserver.observe(contentRef.current);
     }
     
     return () => {
       clearTimeout(timer);
       resizeObserver.disconnect();
     };
-  }, [processedContent, fontSize, lineHeight, onTotalPagesChange, containerHeight]);
+  }, [processedContent, fontSize, lineHeight, onTotalPagesChange, containerHeight, getPageContentHeight]);
 
   // 更新状态当 props 变化时
   useEffect(() => {
@@ -316,26 +322,14 @@ export const ReadingArea = forwardRef(function ReadingArea({
 
   const safeCurrentPage = Math.min(Math.max(1, currentPageState), totalPagesState);
 
-  // 翻到指定页
+  // 翻到指定页 - 使用 transform 方式，不再操作 scrollTop
   const goToPage = useCallback((page: number) => {
-    if (!containerRef.current) return;
-    
-    const container = containerRef.current;
-    const pageHeight = container.clientHeight;
-    // 计算内容区域高度（不含 padding）
-    const contentHeight = pageHeight;
-    // 滚动位置 = (页码 - 1) * 每页内容高度
-    // 不需要加 paddingTop，因为 scrollTop 是从内容区域开始计算的
-    const scrollTop = (page - 1) * contentHeight;
-    
-    // 直接赋值，不用 smooth，避免滚动不精确
-    container.scrollTop = scrollTop;
-    
-    setCurrentPageState(page);
+    const clamped = Math.max(1, Math.min(page, totalPagesState));
+    setCurrentPageState(clamped);
     if (onPageChange) {
-      onPageChange(page);
+      onPageChange(clamped);
     }
-  }, [onPageChange]);
+  }, [totalPagesState, onPageChange]);
 
   // 上一页
   const goToPrevPage = useCallback(() => {
@@ -353,19 +347,19 @@ export const ReadingArea = forwardRef(function ReadingArea({
 
   // 跳转到段落（目录跳转）
   const jumpToParagraph = useCallback((paragraphIndex: number) => {
-    if (!containerRef.current) return;
+    const contentEl = contentRef.current;
+    if (!contentEl) return;
     
-    const element = containerRef.current.querySelector(`[data-paragraph-index="${paragraphIndex}"]`);
+    const element = contentEl.querySelector(`[data-paragraph-index="${paragraphIndex}"]`);
     if (element) {
-      const container = containerRef.current;
-      const pageHeight = container.clientHeight;
       const elementTop = (element as HTMLElement).offsetTop;
-      // 使用 Math.round 替代 Math.floor，避免跳页不准
-      const targetPage = Math.max(1, Math.round(elementTop / pageHeight) + 1);
-      const clampedPage = Math.min(Math.max(1, targetPage), totalPagesState);
-      goToPage(clampedPage);
+      const pageH = getPageContentHeight();
+      if (pageH <= 0) return;
+      const targetPage = Math.max(1, Math.floor(elementTop / pageH) + 1);
+      const clamped = Math.min(targetPage, totalPagesState);
+      goToPage(clamped);
     }
-  }, [totalPagesState, goToPage]);
+  }, [totalPagesState, goToPage, getPageContentHeight]);
 
   // 暴露方法给父组件
   useImperativeHandle(ref, () => ({
@@ -449,14 +443,14 @@ export const ReadingArea = forwardRef(function ReadingArea({
           overflow: "hidden",
         }}
       >
-        {/* 阅读容器 - CSS column 分页 */}
+        {/* 阅读容器 - 使用 transform 方式翻页 */}
         <div 
           ref={containerRef}
           className="reading-container"
           style={{
             height: containerHeight,
-            overflowY: "auto",
-            overflowX: "hidden",
+            overflow: "hidden",
+            position: "relative",
             paddingLeft: `${currentHorizPadding}px`,
             paddingRight: `${currentHorizPadding}px`,
             paddingTop: `${MOBILE_TOP_GAP}px`,
@@ -466,7 +460,13 @@ export const ReadingArea = forwardRef(function ReadingArea({
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
-          <div className="reader-content">
+          <div 
+            ref={contentRef}
+            className="reader-content"
+            style={{
+              transform: `translateY(-${(safeCurrentPage - 1) * getPageContentHeight()}px)`,
+            }}
+          >
             {processedContent.map((paragraph, pIndex) => (
               <MemoizedParagraph
                 key={pIndex}
@@ -537,13 +537,6 @@ export const ReadingArea = forwardRef(function ReadingArea({
 
           .reading-container {
             flex: 1;
-            scroll-behavior: smooth;
-            scrollbar-width: none;
-            -ms-overflow-style: none;
-          }
-
-          .reading-container::-webkit-scrollbar {
-            display: none;
           }
 
           .reader-content {
@@ -552,6 +545,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
             color: ${textColor};
             font-family: Georgia, "Times New Roman", serif;
             text-align: justify;
+            will-change: transform;
           }
 
           .reader-content :global(.paragraph) {

@@ -106,41 +106,28 @@ function shortenTranslation(text: string): string {
 // Process text into structured segments with lemmas
 // Handles EPUB heading markers like [H2]Chapter 1[/H2]
 function processTextToSegments(text: string): ProcessedContent {
-  // Pattern to match heading markers: [H1]...[H1], [H2]...[/H2], etc.
-  const headingPattern = /\[H(\d)\]([\s\S]*?)\[\/H\1\]/g;
-  
-  // Replace heading markers with a placeholder that we'll split on
-  const placeholderPrefix = '__HEADING_';
-  let processedText = text;
-  const headings: Array<{ index: number; level: number; text: string }> = [];
-  
-  let match;
-  let placeholderIndex = 0;
-  while ((match = headingPattern.exec(text)) !== null) {
-    const level = parseInt(match[1], 10);
-    const headingText = match[2].trim();
-    const placeholder = `${placeholderPrefix}${placeholderIndex}__`;
-    headings.push({ index: placeholderIndex, level, text: headingText });
-    processedText = processedText.replace(match[0], `\n\n${placeholder}\n\n`);
-    placeholderIndex++;
-  }
-  
-  const paragraphs = processedText.split(/\n\n+/);
+  // Split by double newlines to get raw paragraphs
+  const rawParagraphs = text.split(/\n\n+/).filter(p => p.trim());
   const result: ProcessedParagraph[] = [];
   
-  for (const paragraph of paragraphs) {
-    // Check if this paragraph contains a heading placeholder
-    const headingMatch = paragraph.match(new RegExp(`${placeholderPrefix}(\\d+)__`));
+  for (const rawParagraph of rawParagraphs) {
+    const trimmed = rawParagraph.trim();
+    if (!trimmed) continue;
+    
+    // Check if this is a heading marker [H1]...[/H1] to [H6]...[/H6]
+    const headingMatch = trimmed.match(/^\[H(\d)\]([\s\S]*?)\[\/H\d\]$/);
+    
     if (headingMatch) {
-      const headingIdx = parseInt(headingMatch[1], 10);
-      const headingInfo = headings.find(h => h.index === headingIdx);
-      if (headingInfo) {
-        // Create segments for the heading text
+      const level = parseInt(headingMatch[1], 10);
+      const headingText = headingMatch[2].trim();
+      
+      if (headingText) {
+        // Process heading text with tokenization (so words in headings can be clicked)
         const segments: ProcessedSegment[] = [];
         const regex = /([a-zA-Z]+|[^a-zA-Z\s]+|\s+)/g;
         let segMatch;
         
-        while ((segMatch = regex.exec(headingInfo.text)) !== null) {
+        while ((segMatch = regex.exec(headingText)) !== null) {
           const token = segMatch[0];
           if (/^\s+$/.test(token)) {
             segments.push({ text: token, lemma: "", type: "space" });
@@ -151,15 +138,15 @@ function processTextToSegments(text: string): ProcessedContent {
           }
         }
         
-        result.push({ segments, headingLevel: headingInfo.level });
+        result.push({ segments, headingLevel: level });
       }
-    } else if (paragraph.trim()) {
+    } else {
       // Regular paragraph
       const segments: ProcessedSegment[] = [];
       const regex = /([a-zA-Z]+|[^a-zA-Z\s]+|\s+)/g;
       let segMatch;
       
-      while ((segMatch = regex.exec(paragraph)) !== null) {
+      while ((segMatch = regex.exec(trimmed)) !== null) {
         const token = segMatch[0];
         if (/^\s+$/.test(token)) {
           segments.push({ text: token, lemma: "", type: "space" });
