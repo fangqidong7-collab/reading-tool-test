@@ -18,6 +18,9 @@
 
 html {
   scroll-behavior: smooth;
+  /* Improve mobile viewport handling */
+  height: 100%;
+  overflow-x: hidden;
 }
 
 body {
@@ -28,6 +31,24 @@ body {
   color: var(--foreground);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Prevent pull-to-refresh on mobile */
+  overscroll-behavior-y: contain;
+  /* Handle mobile viewport height */
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* Responsive layout */
+@media (max-width: 768px) {
+  html {
+    font-size: 15px;
+  }
+  
+  body {
+    /* Ensure body doesn't overflow on mobile */
+    min-height: 100dvh;
+    overflow-x: hidden;
+  }
 }
 
 /* 自定义滚动条 */
@@ -117,13 +138,6 @@ rt {
   text-align: center;
 }
 
-/* 响应式布局 */
-@media (max-width: 768px) {
-  html {
-    font-size: 15px;
-  }
-}
-
 /* 打印样式 */
 @media print {
   .header,
@@ -167,13 +181,26 @@ rt {
 /* Bookshelf Page */
 .bookshelf-page {
   min-height: 100vh;
+  min-height: 100dvh;
   background: #fff8f0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
 }
 
 .bookshelf {
   max-width: 1400px;
   margin: 0 auto;
   padding: 40px 24px;
+}
+
+@media (max-width: 768px) {
+  .bookshelf {
+    padding: 16px 12px;
+  }
+  
+  .bookshelf-page {
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
 }
 
 .bookshelf-header {

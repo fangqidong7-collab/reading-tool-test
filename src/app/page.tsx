@@ -1252,7 +1252,11 @@ export default function Home() {
 
       <style jsx>{`
         .app-container {
-          min-height: 100vh;
+          min-height: 100dvh;
+          height: 100dvh;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
         }
 
         .app-header {
@@ -1264,6 +1268,7 @@ export default function Home() {
           justify-content: space-between;
           padding: 12px 24px;
           box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+          flex-shrink: 0;
         }
 
         .header-left {
@@ -1656,11 +1661,17 @@ export default function Home() {
         }
 
         .main-content {
-          /* Let ReadingArea manage its own layout */
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
         }
 
         .reading-container {
-          /* Let ReadingArea manage its own layout */
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
         }
 
         .loading-overlay {

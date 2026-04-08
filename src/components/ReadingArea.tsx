@@ -6,9 +6,13 @@ import { ProcessedContent } from "@/hooks/useBookshelf";
 
 // Layout constants
 const HEADER_HEIGHT = 56; // Fixed header height in px
+const MOBILE_HEADER_HEIGHT = 48; // Mobile header height in px
 const PAGINATION_HEIGHT = 56; // Fixed pagination bar height in px
+const MOBILE_PAGINATION_HEIGHT = 0; // Mobile has no pagination bar (uses indicator)
 const READING_PADDING_VERTICAL = 40; // Vertical padding in px
+const MOBILE_READING_PADDING_VERTICAL = 16; // Mobile vertical padding
 const READING_PADDING_HORIZONTAL = 32; // Horizontal padding in px
+const MOBILE_READING_PADDING_HORIZONTAL = 12; // Mobile horizontal padding
 const PARAGRAPH_GAP = 16; // Gap between paragraphs in px
 const MOBILE_BREAKPOINT = 768; // Mobile breakpoint in px
 const TOUCH_SWIPE_THRESHOLD = 50; // Minimum swipe distance in px
@@ -198,11 +202,17 @@ export const ReadingArea = forwardRef(function ReadingArea({
   const touchStartXRef = useRef<number>(0);
   const touchStartYRef = useRef<number>(0);
 
+  // Detect mobile
+  const isMobile = typeof window !== 'undefined' && window.innerWidth <= MOBILE_BREAKPOINT;
+  const currentHeaderHeight = isMobile ? MOBILE_HEADER_HEIGHT : HEADER_HEIGHT;
+  const currentPaginationHeight = isMobile ? MOBILE_PAGINATION_HEIGHT : PAGINATION_HEIGHT;
+  const currentVerticalPadding = isMobile ? MOBILE_READING_PADDING_VERTICAL : READING_PADDING_VERTICAL;
+
   // Calculate line-aligned page height
   const lineHeightPx = fontSize * lineHeight;
-  const rawViewHeight = window.innerHeight - HEADER_HEIGHT - PAGINATION_HEIGHT - (READING_PADDING_VERTICAL * 2);
+  const rawViewHeight = window.innerHeight - currentHeaderHeight - currentPaginationHeight - (currentVerticalPadding * 2);
   const pageHeight = Math.floor(rawViewHeight / lineHeightPx) * lineHeightPx;
-  const viewHeight = Math.max(400, pageHeight);
+  const viewHeight = Math.max(300, pageHeight);
 
   // Calculate view height (recalculated on resize)
   useEffect(() => {
@@ -217,7 +227,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
       const contentHeight = contentRef.current?.scrollHeight || 0;
       // Use pageHeight (line-aligned) for pagination
       const pageHeight = Math.floor(
-        (window.innerHeight - HEADER_HEIGHT - PAGINATION_HEIGHT - (READING_PADDING_VERTICAL * 2)) / lineHeightPx
+        (window.innerHeight - currentHeaderHeight - currentPaginationHeight - (currentVerticalPadding * 2)) / lineHeightPx
       ) * lineHeightPx;
       const total = Math.ceil(contentHeight / pageHeight) || 1;
       setTotalPagesState(total);
@@ -244,7 +254,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
       clearTimeout(timer);
       resizeObserver.disconnect();
     };
-  }, [processedContent, fontSize, lineHeight, lineHeightPx, onTotalPagesChange]);
+  }, [processedContent, fontSize, lineHeight, lineHeightPx, onTotalPagesChange, currentHeaderHeight, currentPaginationHeight, currentVerticalPadding]);
 
   // Update state when props change
   useEffect(() => {
@@ -259,7 +269,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
   // Calculate line-aligned page height for offset calculation
   const getPageHeight = () => {
     return Math.floor(
-      (window.innerHeight - HEADER_HEIGHT - PAGINATION_HEIGHT - (READING_PADDING_VERTICAL * 2)) / lineHeightPx
+      (window.innerHeight - currentHeaderHeight - currentPaginationHeight - (currentVerticalPadding * 2)) / lineHeightPx
     ) * lineHeightPx;
   };
 
@@ -388,16 +398,22 @@ export const ReadingArea = forwardRef(function ReadingArea({
 
   // Render content with all paragraphs
   if (processedContent && processedContent.length > 0) {
-    const containerHeight = headerVisible ? `calc(100vh - ${HEADER_HEIGHT}px - ${PAGINATION_HEIGHT}px)` : `calc(100vh - ${PAGINATION_HEIGHT}px)`;
+    // Use dynamic viewport height for better mobile support (handles address bar)
+    const currentHorizPadding = isMobile ? MOBILE_READING_PADDING_HORIZONTAL : READING_PADDING_HORIZONTAL;
+    const containerHeight = headerVisible 
+      ? `calc(100dvh - ${currentHeaderHeight}px - ${currentPaginationHeight}px - ${currentVerticalPadding * 2}px)` 
+      : `calc(100dvh - ${currentPaginationHeight}px - ${currentVerticalPadding * 2}px)`;
     
     return (
       <div 
         className="reading-wrapper" 
         style={{ 
           backgroundColor,
-          minHeight: '100vh',
+          minHeight: '100dvh',
+          height: '100dvh',
           display: 'flex',
           flexDirection: 'column',
+          overflow: 'hidden',
         }}
       >
         {/* Reading Content Area - CSS transform pagination */}
@@ -408,8 +424,9 @@ export const ReadingArea = forwardRef(function ReadingArea({
             height: containerHeight,
             maxHeight: containerHeight,
             overflow: 'hidden',
-            padding: `${READING_PADDING_VERTICAL}px ${READING_PADDING_HORIZONTAL}px`,
+            padding: `${currentVerticalPadding}px ${currentHorizPadding}px`,
             boxSizing: 'border-box',
+            flex: 1,
           }}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
@@ -587,9 +604,19 @@ export const ReadingArea = forwardRef(function ReadingArea({
             color: #999;
           }
 
-          @media (max-width: ${MOBILE_BREAKPOINT}px) {
+          @media (max-width: 768px) {
+            .reading-wrapper {
+              min-height: 100dvh !important;
+              height: 100dvh !important;
+            }
+
             .reading-area {
-              padding: 16px !important;
+              padding: 16px 12px !important;
+            }
+
+            .text-content {
+              max-width: 100% !important;
+              padding-bottom: 60px !important; /* Space for mobile page indicator */
             }
           }
 
@@ -597,19 +624,20 @@ export const ReadingArea = forwardRef(function ReadingArea({
           .mobile-page-indicator {
             display: none;
             position: fixed;
-            bottom: 12px;
+            bottom: 16px;
             right: 16px;
             font-size: 12px;
-            color: #999999;
-            background: rgba(255, 255, 255, 0.8);
+            color: #666666;
+            background: rgba(255, 255, 255, 0.9);
             border-radius: 12px;
-            padding: 4px 10px;
+            padding: 6px 12px;
             z-index: 50;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
           }
 
           .mobile-page-indicator.dark {
-            background: rgba(0, 0, 0, 0.5);
-            color: #888888;
+            background: rgba(30, 30, 46, 0.9);
+            color: #aaaaaa;
           }
 
           @media (max-width: 768px) {
