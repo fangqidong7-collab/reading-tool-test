@@ -476,8 +476,8 @@ export const ReadingArea = forwardRef(function ReadingArea({
               transform: `translateY(-${(safeCurrentPage - 1) * getPageContentHeight()}px)`,
               paddingLeft: `${currentHorizPadding}px`,
               paddingRight: `${currentHorizPadding}px`,
-              paddingTop: "10px",
-              paddingBottom: "20px",
+              paddingTop: "0px",
+              paddingBottom: "0px",
             }}
           >
             {processedContent.map((paragraph, pIndex) => (

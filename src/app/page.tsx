@@ -257,6 +257,41 @@ export default function Home() {
   // Cloud sync modal state
   const [cloudSyncOpen, setCloudSyncOpen] = useState(false);
 
+  // 清理可能残留的大数据（启动时一次性执行）
+  useEffect(() => {
+    try {
+      const keys: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (
+          key.includes('content_chunk') || 
+          key.includes('processedContent') || 
+          key.includes('cache_version')
+        )) {
+          keys.push(key);
+        }
+      }
+      keys.forEach(key => localStorage.removeItem(key));
+      
+      // 检查总使用量
+      let totalSize = 0;
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key) {
+          totalSize += (localStorage.getItem(key) || '').length;
+        }
+      }
+      const totalMB = (totalSize * 2 / 1024 / 1024).toFixed(2);
+      console.log('localStorage 使用量:', totalMB, 'MB');
+      
+      if (totalSize * 2 > 4 * 1024 * 1024) {
+        console.warn('localStorage 使用量接近上限，考虑删除部分书籍');
+      }
+    } catch (e) {
+      console.warn('清理 localStorage 失败:', e);
+    }
+  }, []);
+
   // Load external dictionary on mount (force reload to get latest dict.json)
   useEffect(() => {
     forceReloadDictionary().then((status) => {

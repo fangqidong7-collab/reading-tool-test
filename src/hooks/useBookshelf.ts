@@ -147,7 +147,11 @@ export function useBookshelf() {
           const { content: _content, processedContent: _pc, ...metadata } = book;
           return metadata;
         });
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(booksMetadata));
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(booksMetadata));
+        } catch (error) {
+          console.warn("Failed to save books metadata:", error);
+        }
         
         // Save each book's content separately
         for (const book of books) {

@@ -627,6 +627,11 @@ rt {
   border-color: #4a90d9;
 }
 
+/* 阅读器内容区域 - 第一个段落顶部间距 */
+.reader-content .paragraph:first-child {
+  margin-top: 10px;
+}
+
 /* Mode Tabs */
 .mode-tabs {
   display: flex;
