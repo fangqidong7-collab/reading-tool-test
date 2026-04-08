@@ -1,5 +1,7 @@
 "use client";
 
+import JSZip from 'jszip';
+
 // TOC Entry interface
 export interface TocEntry {
   title: string;
@@ -195,12 +197,6 @@ function extractParagraphsFromHtml(html: string): { paragraphs: string[]; headin
 async function parseEpub(file: File, onProgress: ProgressCallback): Promise<{ title: string; content: string; tableOfContents: TocEntry[] }> {
   console.log('开始解析EPUB:', file.name);
   onProgress({ stage: "reading", percent: 10, message: "正在读取文件..." });
-  
-  // @ts-expect-error - JSZip loaded via CDN
-  const JSZip = (window as unknown as { JSZip: typeof import("jszip") }).JSZip;
-  if (!JSZip) {
-    throw new Error("JSZip library not loaded");
-  }
 
   // Read file as array buffer
   const arrayBuffer = await file.arrayBuffer();
@@ -208,7 +204,7 @@ async function parseEpub(file: File, onProgress: ProgressCallback): Promise<{ ti
 
   onProgress({ stage: "parsing", percent: 30, message: "正在解析文本..." });
   
-  // Load the zip
+  // Load the zip using JSZip
   const zip = await JSZip.loadAsync(arrayBuffer);
   
   let title = file.name.replace(/\.(txt|epub|pdf)$/i, "").trim();
