@@ -59,38 +59,67 @@ interface ContentBlock {
   text: string;
 }
 
-function extractContentBlocksFromHtml(html: string, debugChapter: boolean = false): ContentBlock[] {
+function extractContentBlocksFromHtml(html: string): ContentBlock[] {
   const blocks: ContentBlock[] = [];
   
-  // Remove script and style tags first
   const cleanHtml = html
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "");
   
-  if (debugChapter) {
-    console.log('章节HTML前2000字符:', cleanHtml.substring(0, 2000));
-  }
-  
-  // Try to use DOMParser for better parsing
   try {
     const parser = new DOMParser();
     const doc = parser.parseFromString(cleanHtml, "text/html");
     
-    // Use querySelectorAll to get all headings and paragraphs in document order
-    const elements = doc.querySelectorAll('h1, h2, h3, h4, h5, h6, p');
-    
-    if (debugChapter) {
-      // Check for chapter elements
-      const allElements = doc.body ? doc.body.innerHTML : '';
-      if (allElements.toLowerCase().includes('chapter')) {
-        const chapterElements = doc.querySelectorAll('*');
-        chapterElements.forEach(el => {
-          if (el.textContent && el.textContent.trim().toLowerCase().includes('chapter') && el.textContent.trim().length < 30) {
-            console.log('包含chapter的元素:', el.tagName, el.className, '内容:', el.textContent.trim());
-          }
-        });
+    // 辅助函数：判断一个元素是否是章节标题
+    function isHeadingElement(el: Element): boolean {
+      const tagName = el.tagName.toLowerCase();
+      
+      // 1. 标准 h1-h6 标签
+      if (tagName.match(/^h[1-6]$/)) return true;
+      
+      // 2. 检查元素自身的 class
+      const className = (el.className || '').toLowerCase();
+      const headingClasses = [
+        'title', 'chapter-title', 'chaptertitle', 'chapter_title',
+        'heading', 'header', 'ct', 'title1', 'title2', 'title3',
+        'chapter-header', 'chapterheader', 'chapter-heading',
+        'book-title', 'section-title', 'part-title'
+      ];
+      for (const cls of headingClasses) {
+        if (className.includes(cls)) return true;
       }
+      
+      // 3. 检查父元素是否是 <div class="chapter"> 等
+      const parent = el.parentElement;
+      if (parent) {
+        const parentClass = (parent.className || '').toLowerCase();
+        const parentTag = parent.tagName.toLowerCase();
+        if (parentClass.includes('chapter') && tagName === 'p') {
+          // 检查是否是 chapter div 中的第一个 p（通常是标题）
+          const firstP = parent.querySelector('p');
+          if (firstP === el) return true;
+        }
+      }
+      
+      // 4. 检查文本内容是否匹配章节标题模式
+      const text = (el.textContent || '').trim();
+      if (text.length < 40) {
+        // 短文本，检查是否是章节标题格式
+        const chapterPattern = /^(chapter|part|book|section|prologue|epilogue|preface|introduction|conclusion|appendix)\s*[\dIVXLCDMivxlcdm\.\-:：]*$/i;
+        if (chapterPattern.test(text)) return true;
+        
+        // 纯数字章节号
+        if (/^\d{1,3}$/.test(text)) return true;
+        
+        // 中文章节
+        if (/^第[一二三四五六七八九十百千\d]+[章节回篇卷]/.test(text)) return true;
+      }
+      
+      return false;
     }
+    
+    // 获取 body 中的所有相关元素
+    const elements = doc.querySelectorAll('h1, h2, h3, h4, h5, h6, p, div.chapter > *, div.part > *');
     
     elements.forEach(el => {
       const tagName = el.tagName.toLowerCase();
@@ -98,32 +127,33 @@ function extractContentBlocksFromHtml(html: string, debugChapter: boolean = fals
       text = decodeHtmlEntities(text);
       text = cleanText(text);
       
-      if (debugChapter) {
-        console.log('标签:', tagName, '内容长度:', text.length, '前30字符:', text.substring(0, 30));
-      }
+      if (!text) return;
       
-      if (!text) return; // Skip empty content
-      
-      if (tagName.startsWith('h')) {
-        // This is a heading
-        const level = parseInt(tagName[1], 10);
+      if (isHeadingElement(el)) {
+        // 确定标题级别
+        let level = 2; // 默认 h2
+        if (tagName.match(/^h[1-6]$/)) {
+          level = parseInt(tagName[1], 10);
+        } else if ((el.className || '').toLowerCase().includes('title1') || text.toLowerCase().startsWith('chapter')) {
+          level = 2;
+        } else if ((el.className || '').toLowerCase().includes('title2')) {
+          level = 3;
+        }
+        
         blocks.push({ type: 'heading', level, text });
-      } else {
-        // This is a paragraph - only add if meaningful content (at least 10 chars)
+      } else if (tagName === 'p') {
         if (text.length >= 10) {
           blocks.push({ type: 'paragraph', text });
         }
       }
     });
     
-    // If no blocks found via querySelectorAll, fall back to simpler approach
     if (blocks.length === 0) {
       return extractContentBlocksFallback(html);
     }
     
     return blocks;
   } catch {
-    // Fallback to simpler regex-based extraction
     return extractContentBlocksFallback(html);
   }
 }
@@ -290,42 +320,9 @@ async function parseEpub(file: File, onProgress: ProgressCallback): Promise<{ ti
       const chapterPath = opfPrefix + href;
       const chapterHtml = await zip.file(chapterPath)?.async("string");
       
-      // DEBUG: 查看前5个章节的原始HTML内容
-      if (i >= 0 && i <= 4 && chapterHtml) {
-        console.log('===== 第' + (i+1) + '个章节文件 =====');
-        console.log('文件路径:', chapterPath);
-        console.log('HTML长度:', chapterHtml.length);
-        
-        // 在HTML中搜索所有标签名，看有哪些标签类型
-        const tagNames = new Set();
-        const tagRegex = /<([a-zA-Z][a-zA-Z0-9]*)\b/g;
-        let tagMatch;
-        while ((tagMatch = tagRegex.exec(chapterHtml)) !== null) {
-          tagNames.add(tagMatch[1].toLowerCase());
-        }
-        console.log('包含的HTML标签类型:', Array.from(tagNames).join(', '));
-        
-        // 搜索是否包含 chapter 文字
-        const chapterIdx = chapterHtml.toLowerCase().indexOf('chapter');
-        if (chapterIdx >= 0) {
-          // 打印 chapter 出现位置前后 200 个字符
-          const start = Math.max(0, chapterIdx - 100);
-          const end = Math.min(chapterHtml.length, chapterIdx + 100);
-          console.log('找到chapter文字，上下文:', chapterHtml.substring(start, end));
-        } else {
-          console.log('该章节不包含chapter文字');
-        }
-      }
-      
       if (chapterHtml) {
-        // DEBUG: 只在前两个章节打印详细日志
-        const debugChapter = i < 2;
-        if (debugChapter) {
-          console.log('=== 解析第', i+1, '个章节文件 ===');
-        }
-        
         // Extract content blocks (headings and paragraphs in order)
-        const blocks = extractContentBlocksFromHtml(chapterHtml, debugChapter);
+        const blocks = extractContentBlocksFromHtml(chapterHtml);
         
         // Process blocks and build content
         for (const block of blocks) {
