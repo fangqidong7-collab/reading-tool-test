@@ -304,7 +304,8 @@ export const ReadingArea = forwardRef(function ReadingArea({
     return () => el.removeEventListener('scroll', onScroll);
   }, [getScrollPercent, onProgressChange]);
 
-  // 保存滚动位置
+  // 滚动时通知父组件保存进度（通过 onProgressChange）
+  // 不再自行写 localStorage，由父组件写入 Book 对象随 IndexedDB 持久化
   useEffect(() => {
     const el = containerRef.current;
     if (!el || !bookId) return;
@@ -313,47 +314,20 @@ export const ReadingArea = forwardRef(function ReadingArea({
     const savePosition = () => {
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
-        const scrollRatio = el.scrollTop / Math.max(1, el.scrollHeight - el.clientHeight);
-        localStorage.setItem(`book_${bookId}_scrollRatio`, String(scrollRatio));
         const percent = getScrollPercent();
-        localStorage.setItem(`book_${bookId}_progress`, String(percent));
+        if (onProgressChange) {
+          onProgressChange(percent);
+        }
       }, 500);
     };
 
     el.addEventListener('scroll', savePosition, { passive: true });
-    
-    // 页面关闭/离开时也保存
-    const onBeforeUnload = () => {
-      const scrollRatio = el.scrollTop / Math.max(1, el.scrollHeight - el.clientHeight);
-      localStorage.setItem(`book_${bookId}_scrollRatio`, String(scrollRatio));
-      localStorage.setItem(`book_${bookId}_progress`, String(getScrollPercent()));
-    };
-    window.addEventListener('beforeunload', onBeforeUnload);
 
     return () => {
       el.removeEventListener('scroll', savePosition);
-      window.removeEventListener('beforeunload', onBeforeUnload);
       if (timer) clearTimeout(timer);
     };
-  }, [bookId, getScrollPercent]);
-
-  // 恢复滚动位置
-  useEffect(() => {
-    if (!containerRef.current || !bookId || processedContent?.length === 0) return;
-
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        const savedRatio = localStorage.getItem(`book_${bookId}_scrollRatio`);
-        if (savedRatio !== null) {
-          const ratio = parseFloat(savedRatio);
-          const el = containerRef.current;
-          if (el && !isNaN(ratio)) {
-            el.scrollTop = ratio * (el.scrollHeight - el.clientHeight);
-          }
-        }
-      });
-    });
-  }, [bookId, processedContent?.length]);
+  }, [bookId, getScrollPercent, onProgressChange]);
 
   // 跳转到段落（滚动方式）
   const jumpToParagraph = useCallback((paragraphIndex: number) => {

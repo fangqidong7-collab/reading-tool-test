@@ -339,10 +339,13 @@ export default function Home() {
         setProcessedContent(processed);
         setLoading(false);
         
-        // Restore last read scroll position (default to top)
+        // 恢复上次滚动位置
         const savedScrollPercent = currentBook.lastScrollPosition || 0;
         if (savedScrollPercent > 0 && readingAreaRef.current) {
-          readingAreaRef.current.restoreScrollPosition(savedScrollPercent);
+          // 需要等 DOM 渲染完成后再恢复
+          setTimeout(() => {
+            readingAreaRef.current?.restoreScrollPosition(savedScrollPercent);
+          }, 100);
         }
       }, 50);
       
