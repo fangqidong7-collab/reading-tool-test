@@ -13,7 +13,7 @@ interface BookshelfProps {
   onAddBook: (title: string, content: string, tableOfContents?: TocEntry[]) => Book;
   onDeleteBook: (id: string) => void;
   onOpenBook: (id: string) => void;
-  onCloudSyncClick: () => void;
+  onDataManageClick: () => void;
 }
 
 export function Bookshelf({
@@ -23,7 +23,7 @@ export function Bookshelf({
   onAddBook,
   onDeleteBook,
   onOpenBook,
-  onCloudSyncClick,
+  onDataManageClick,
 }: BookshelfProps) {
   const [showAddModal, setShowAddModal] = useState(false);
 
@@ -41,13 +41,15 @@ export function Bookshelf({
         </div>
         <button
           className="cloud-sync-btn"
-          onClick={onCloudSyncClick}
-          title="云同步"
+          onClick={onDataManageClick}
+          title="数据管理"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" />
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
           </svg>
-          <span>云同步</span>
+          <span>数据管理</span>
         </button>
       </div>
 

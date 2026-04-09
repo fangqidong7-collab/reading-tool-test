@@ -6,7 +6,7 @@ import { ReadingArea, type ReadingAreaRef } from "@/components/ReadingArea";
 import { WordTooltip } from "@/components/WordTooltip";
 import { VocabularySidebar } from "@/components/VocabularySidebar";
 import { SettingsPanel } from "@/components/SettingsPanel";
-import { CloudSyncModal } from "@/components/CloudSyncModal";
+import { ExportImportModal } from "@/components/ExportImportModal";
 import JSLibLoader from "@/components/JSLibLoader";
 import { useBookshelf, ProcessedContent, ProcessedSegment, ProcessedParagraph } from "@/hooks/useBookshelf";
 import { useReadingSettings } from "@/hooks/useReadingSettings";
@@ -258,8 +258,8 @@ export default function Home() {
   // Mobile more menu state
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
 
-  // Cloud sync modal state
-  const [cloudSyncOpen, setCloudSyncOpen] = useState(false);
+  // Data management modal state
+  const [dataManageOpen, setDataManageOpen] = useState(false);
 
   // 清理可能残留的大数据（启动时一次性执行）
   useEffect(() => {
@@ -752,11 +752,11 @@ export default function Home() {
           onAddBook={addBook}
           onDeleteBook={deleteBook}
           onOpenBook={openBook}
-          onCloudSyncClick={() => setCloudSyncOpen(true)}
+          onDataManageClick={() => setDataManageOpen(true)}
         />
-        <CloudSyncModal
-          open={cloudSyncOpen}
-          onOpenChange={setCloudSyncOpen}
+        <ExportImportModal
+          open={dataManageOpen}
+          onOpenChange={setDataManageOpen}
         />
         <style jsx>{`
           .bookshelf-page {
