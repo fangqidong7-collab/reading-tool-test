@@ -238,6 +238,9 @@ export default function Home() {
   // Ref to track if we're currently in a programmatic scroll
   const isProgrammaticScrollRef = useRef(false);
   
+  // Track last processed book ID to avoid duplicate processing
+  const lastProcessedBookIdRef = useRef<string | null>(null);
+  
   // Store current book data in refs to avoid dependency issues
   const currentBookIdRef = useRef<string | null>(null);
   const currentBookContentRef = useRef<string>("");
@@ -315,47 +318,51 @@ export default function Home() {
   useEffect(() => {
     if (currentBook) {
       currentBookIdRef.current = currentBook.id;
-      // Only update if content actually changed
+      
       if (currentBookContentRef.current !== currentBook.content) {
         currentBookContentRef.current = currentBook.content;
         setText(currentBook.content);
       }
-      // Only update if annotations actually changed
       if (JSON.stringify(currentBookAnnotationsRef.current) !== JSON.stringify(currentBook.annotations)) {
         currentBookAnnotationsRef.current = currentBook.annotations;
         setAnnotations(currentBook.annotations);
       }
       
-      // Process content - always re-process in real-time (processedContent not cached to localStorage)
-      // Show loading state while processing large books
-      setLoading(true);
-      
-      // DEBUG: 检查 content 是否正确包含 [H 标记
-      console.log('打开书籍时的content前500字符:', (currentBook.content || '').substring(0, 500));
-      console.log('content中是否包含[H标记:', (currentBook.content || '').includes('[H'));
-      
-      setTimeout(() => {
-        const processed = processTextToSegments(currentBook.content);
-        setProcessedContent(processed);
-        setLoading(false);
+      // 只在第一次打开这本书时处理内容和恢复位置
+      if (lastProcessedBookIdRef.current !== currentBook.id) {
+        lastProcessedBookIdRef.current = currentBook.id;
         
-        // 恢复上次滚动位置
+        setLoading(true);
+        
+        console.log('打开书籍 lastScrollPosition:', currentBook.lastScrollPosition);
+        
         const savedScrollPercent = currentBook.lastScrollPosition || 0;
-        if (savedScrollPercent > 0 && readingAreaRef.current) {
-          // 需要等 DOM 渲染完成后再恢复
-          setTimeout(() => {
-            readingAreaRef.current?.restoreScrollPosition(savedScrollPercent);
-          }, 100);
-        }
-      }, 50);
-      
-      // 始终默认关闭词汇表，不自动打开
-      setSidebarOpen(false);
+        
+        setTimeout(() => {
+          const processed = processTextToSegments(currentBook.content);
+          setProcessedContent(processed);
+          setLoading(false);
+          
+          if (savedScrollPercent > 0) {
+            requestAnimationFrame(() => {
+              requestAnimationFrame(() => {
+                setTimeout(() => {
+                  readingAreaRef.current?.restoreScrollPosition(savedScrollPercent);
+                  console.log('恢复滚动位置:', savedScrollPercent, '%');
+                }, 200);
+              });
+            });
+          }
+        }, 50);
+        
+        setSidebarOpen(false);
+      }
       
     } else {
       currentBookIdRef.current = null;
       currentBookContentRef.current = "";
       currentBookAnnotationsRef.current = {};
+      lastProcessedBookIdRef.current = null;
       setProcessedContent(null);
       setLoading(false);
       setSidebarOpen(false);
@@ -710,6 +717,7 @@ export default function Home() {
   // Handle return to bookshelf
   const handleReturnToBookshelf = useCallback(() => {
     isProgrammaticScrollRef.current = true;
+    lastProcessedBookIdRef.current = null;
     closeBook();
     setText("");
     setAnnotations({});
