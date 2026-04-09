@@ -1302,6 +1302,7 @@ export default function Home() {
             searchResults={searchResults}
             currentSearchIndex={currentSearchIndex}
             bookId={currentBook?.id || ""}
+            initialScrollPercent={currentBook?.lastScrollPosition || 0}
             onProgressChange={setCurrentScrollPercent}
           />
         </div>

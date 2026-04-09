@@ -234,6 +234,7 @@ interface ReadingAreaProps {
   bookId?: string;
   onProgressChange?: (percent: number) => void;
   onAddBookmark?: () => void;
+  initialScrollPercent?: number;
 }
 
 export const ReadingArea = forwardRef(function ReadingArea({
@@ -258,6 +259,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
   bookId = "",
   onProgressChange,
   onAddBookmark,
+  initialScrollPercent = 0,
 }: ReadingAreaProps, ref: React.Ref<ReadingAreaRef>) {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -376,6 +378,39 @@ export const ReadingArea = forwardRef(function ReadingArea({
       onAddBookmark();
     }
   }, [bookId, getScrollPercent, onAddBookmark]);
+
+  // 打开书籍时自动恢复上次滚动位置
+  const hasRestoredRef = useRef(false);
+  
+  useEffect(() => {
+    if (
+      hasRestoredRef.current ||
+      !initialScrollPercent ||
+      initialScrollPercent <= 0 ||
+      !containerRef.current ||
+      !processedContent ||
+      processedContent.length === 0
+    ) {
+      return;
+    }
+    
+    const timer = setTimeout(() => {
+      const el = containerRef.current;
+      if (!el) return;
+      const maxScroll = el.scrollHeight - el.clientHeight;
+      if (maxScroll <= 0) return;
+      
+      el.scrollTop = (initialScrollPercent / 100) * maxScroll;
+      hasRestoredRef.current = true;
+      console.log('恢复滚动位置:', initialScrollPercent, '%');
+    }, 300);
+    
+    return () => clearTimeout(timer);
+  }, [initialScrollPercent, processedContent]);
+  
+  useEffect(() => {
+    hasRestoredRef.current = false;
+  }, [bookId]);
 
   // 暴露方法给父组件
   useImperativeHandle(ref, () => ({
