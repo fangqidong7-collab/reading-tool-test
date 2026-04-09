@@ -18,6 +18,8 @@ interface SettingsPanelProps {
   headerTextColor: string;
   textColor: string;
   isDarkMode: boolean;
+  dictMode: 'zh' | 'en';
+  onDictModeChange: (mode: 'zh' | 'en') => void;
 }
 
 export function SettingsPanel({
@@ -34,6 +36,8 @@ export function SettingsPanel({
   headerTextColor,
   textColor,
   isDarkMode,
+  dictMode,
+  onDictModeChange,
 }: SettingsPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -126,6 +130,27 @@ export function SettingsPanel({
               <span className="setting-value" style={{ color: textColor }}>
                 {lineHeight.toFixed(1)}
               </span>
+            </div>
+          </div>
+
+          {/* Dictionary Mode (Chinese / English) */}
+          <div className="setting-item">
+            <div className="setting-label">
+              <span className="label-text">释义语言</span>
+            </div>
+            <div className="mode-options">
+              <button
+                className={`mode-btn ${dictMode === 'zh' ? 'active' : ''}`}
+                onClick={() => onDictModeChange('zh')}
+              >
+                中文
+              </button>
+              <button
+                className={`mode-btn ${dictMode === 'en' ? 'active' : ''}`}
+                onClick={() => onDictModeChange('en')}
+              >
+                English
+              </button>
             </div>
           </div>
 
@@ -348,6 +373,38 @@ export function SettingsPanel({
         .theme-btn.active {
           border-width: 3px;
           box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .mode-options {
+          display: flex;
+          gap: 8px;
+        }
+
+        .mode-btn {
+          flex: 1;
+          padding: 8px 16px;
+          border: 1px solid rgba(128, 128, 128, 0.3);
+          border-radius: 8px;
+          background: transparent;
+          color: inherit;
+          font-size: 14px;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+
+        .mode-btn:hover {
+          background: rgba(128, 128, 128, 0.1);
+        }
+
+        .mode-btn.active {
+          background: #4a90d9;
+          color: white;
+          border-color: #4a90d9;
+        }
+
+        :global(.dark) .mode-btn.active {
+          background: #6ba3e0;
+          border-color: #6ba3e0;
         }
 
         .reset-btn {

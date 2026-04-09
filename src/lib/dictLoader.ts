@@ -29,6 +29,11 @@ const CACHE_KEY = 'reading_assistant_ext_dict';
 const CACHE_VERSION_KEY = 'reading_assistant_dict_version';
 const CACHE_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
 
+// English-English dictionary state
+let externalDictEn: Record<string, string> = {};
+let loadStatusEn: DictLoadStatus = 'idle';
+const CACHE_KEY_EN = 'reading_assistant_ext_dict_en';
+
 /**
  * Load external dictionary from server or cache
  * Always fetches from server to check for updates
@@ -522,4 +527,111 @@ export async function reloadExternalDictionary(): Promise<DictLoadStatus> {
   resetDictState();
   clearCache();
   return loadExternalDictionary();
+}
+
+// ==================== English-English Dictionary ====================
+
+/**
+ * Load external English-English dictionary from server or cache
+ */
+export async function loadExternalDictionaryEn(): Promise<DictLoadStatus> {
+  console.log('loadExternalDictionaryEn 被调用, 当前状态:', { loadStatusEn, externalDictEnKeys: Object.keys(externalDictEn).length });
+  
+  if (loadStatusEn === 'loaded' || loadStatusEn === 'loading') {
+    console.log('loadExternalDictionaryEn 直接返回, 状态:', loadStatusEn);
+    return loadStatusEn;
+  }
+
+  loadStatusEn = 'loading';
+
+  try {
+    // Load from server
+    const fetchUrl = typeof window !== 'undefined' && window.location.hostname !== 'localhost' 
+      ? `${window.location.protocol}//${window.location.host}/dict_en.json` 
+      : '/dict_en.json';
+    
+    const response = await fetch(fetchUrl, {
+      headers: {
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache'
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to load English dictionary: ${response.status}`);
+    }
+
+    const data: DictData = await response.json();
+    externalDictEn = data as unknown as Record<string, string>;
+    
+    console.log('dict_en.json 加载成功, 词条数:', Object.keys(externalDictEn).length);
+    
+    // Save to cache
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(CACHE_KEY_EN, JSON.stringify(externalDictEn));
+      } catch (error) {
+        console.warn('Failed to cache English dictionary:', error);
+      }
+    }
+    
+    loadStatusEn = 'loaded';
+    return 'loaded';
+  } catch (error) {
+    console.error('Failed to load English dictionary:', error);
+    
+    // Try to load from cache
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem(CACHE_KEY_EN);
+        if (cached) {
+          externalDictEn = JSON.parse(cached);
+          loadStatusEn = 'loaded';
+          return 'loaded';
+        }
+      } catch {
+        // Ignore cache errors
+      }
+    }
+    
+    loadStatusEn = 'failed';
+    return 'failed';
+  }
+}
+
+/**
+ * Look up a word in the external English-English dictionary
+ */
+export function lookupExternalDictEn(word: string): string | null {
+  const lower = word.toLowerCase().trim();
+  
+  // Direct lookup
+  if (externalDictEn[lower]) {
+    return externalDictEn[lower];
+  }
+  
+  // Try common suffix variants
+  const variants = getStemVariantsExternal(lower);
+  for (const variant of variants) {
+    if (externalDictEn[variant]) {
+      return externalDictEn[variant];
+    }
+  }
+  
+  // Try prefix variants
+  const prefixVariants = getPrefixVariants(lower);
+  for (const variant of prefixVariants) {
+    if (externalDictEn[variant]) {
+      return externalDictEn[variant];
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Get English-English dictionary size
+ */
+export function getExternalDictEnSize(): number {
+  return Object.keys(externalDictEn).length;
 }

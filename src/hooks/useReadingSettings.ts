@@ -21,6 +21,7 @@ export interface ReadingSettingsStorage {
   lineHeight: number;
   backgroundTheme: string;
   sidebarOpenByBook: Record<string, boolean>;
+  dictMode: 'zh' | 'en';
 }
 
 const DEFAULT_SETTINGS: ReadingSettings = {
@@ -36,6 +37,8 @@ const DEFAULT_SETTINGS: ReadingSettings = {
   sidebarBg: "#FFFFFF",
   isDarkMode: false,
 };
+
+const DICT_MODE_KEY = "reading-dict-mode";
 
 export const BACKGROUND_THEMES = [
   { id: "white", bg: "#FFFFFF", text: "#333333", name: "白色" },
@@ -74,6 +77,7 @@ function loadSettingsFromStorage(): ReadingSettingsStorage {
       lineHeight: DEFAULT_SETTINGS.lineHeight,
       backgroundTheme: "cream",
       sidebarOpenByBook: {},
+      dictMode: "zh",
     };
   }
 
@@ -91,6 +95,7 @@ function loadSettingsFromStorage(): ReadingSettingsStorage {
     lineHeight: DEFAULT_SETTINGS.lineHeight,
     backgroundTheme: "cream",
     sidebarOpenByBook: {},
+    dictMode: "zh",
   };
 }
 
@@ -111,13 +116,16 @@ export function useReadingSettings() {
     lineHeight: DEFAULT_SETTINGS.lineHeight,
     backgroundTheme: "cream",
     sidebarOpenByBook: {},
+    dictMode: "zh",
   });
   const [isLoaded, setIsLoaded] = useState(false);
+  const [dictMode, setDictModeState] = useState<'zh' | 'en'>('zh');
 
   // Load settings on mount
   useEffect(() => {
     const loaded = loadSettingsFromStorage();
     setStorage(loaded);
+    setDictModeState(loaded.dictMode || 'zh');
     const colors = getThemeColors(loaded.backgroundTheme);
     setSettings({
       ...colors,
@@ -135,6 +143,7 @@ export function useReadingSettings() {
         lineHeight: settings.lineHeight,
         backgroundTheme: storage.backgroundTheme,
         sidebarOpenByBook: storage.sidebarOpenByBook,
+        dictMode: storage.dictMode,
       });
     }
   }, [settings, storage, isLoaded]);
@@ -190,12 +199,20 @@ export function useReadingSettings() {
       fontSize: 16,
       lineHeight: 1.4,
     });
-    setStorage({
+    setStorage((prev) => ({
+      ...prev,
       fontSize: 16,
       lineHeight: 1.4,
       backgroundTheme: defaultTheme,
       sidebarOpenByBook: {},
-    });
+    }));
+    setDictModeState('zh');
+  }, []);
+
+  // Set dictionary mode (zh for Chinese, en for English)
+  const setDictMode = useCallback((mode: 'zh' | 'en') => {
+    setDictModeState(mode);
+    setStorage((prev) => ({ ...prev, dictMode: mode }));
   }, []);
 
   // Calculate annotation font size (70% of body font size)
@@ -223,5 +240,7 @@ export function useReadingSettings() {
     getSidebarState,
     setSidebarState,
     resetToDefault,
+    dictMode,
+    setDictMode,
   };
 }
