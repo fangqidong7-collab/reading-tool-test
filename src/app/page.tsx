@@ -52,15 +52,6 @@ function cleanTranslation(text: string): string {
  */
 function shortenTranslation(text: string, mode: 'zh' | 'en' = 'zh'): string {
   if (!text) return mode === 'en' ? 'No definition' : '未知';
-    // 英文模式：直接返回英文释义，不要用中文过滤
-  if (mode === 'en') {
-    let cleaned = text.replace(/\*\*/g, '').replace(/\*/g, '').replace(/`/g, '').trim();
-    if (!cleaned) return 'unknown';
-    const parts = cleaned.split(/[;,]+/).map(s => s.trim()).filter(s => s.length > 0);
-    const result = parts[0] || cleaned;
-    return result.length > 50 ? result.substring(0, 47) + '...' : result;
-  }
-
   
   // First, clean the text (remove POS tags, brackets, etc.)
   let cleaned = text;
@@ -596,8 +587,7 @@ export default function Home() {
         }
 
         // 清洗并精简释义
-const meaning = shortenTranslation(rawMeaning, isEnglishMode ? 'en' : 'zh');
-
+        const meaning = shortenTranslation(rawMeaning, englishMode ? 'en' : 'zh');
         const family = findWordFamily(root, text);
 
         setAnnotations((prev) => ({
