@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
+import { idbGet, idbSet } from "@/lib/storage";
 
 // Processed content segment type
 export interface ProcessedSegment {
@@ -86,83 +87,71 @@ export function useBookshelf() {
   const [currentBookId, setCurrentBookId] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // Load books from localStorage
+  // Load books from IndexedDB (异步加载)
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      // Clean up old chunked processedContent cache data
-      const keysToRemove: string[] = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && (
-          key.includes('_content_chunk') ||
-          key.includes('_cache_version') ||
-          key.includes('_content_chunks') ||
-          key.includes('_processedContent')
-        )) {
-          keysToRemove.push(key);
-        }
-      }
-      if (keysToRemove.length > 0) {
-        console.log(`清理旧缓存数据 ${keysToRemove.length} 项`);
-        keysToRemove.forEach(key => localStorage.removeItem(key));
-      }
-      
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved) as Book[];
-          // Ensure sample book exists
-          const hasSample = parsed.some((b) => b.id === SAMPLE_BOOK.id);
-          // 确保每本书都有 content 默认值，防止 undefined
-          const booksWithContent = parsed.map((b) => ({
-            ...b,
-            content: b.content || "",
-            annotations: b.annotations || {},
-            bookmarks: b.bookmarks || [],
-          }));
-          if (hasSample) {
-            setBooks(booksWithContent);
-          } else {
-            setBooks([SAMPLE_BOOK, ...booksWithContent]);
+    if (typeof window === "undefined") return;
+    
+    // 异步加载
+    (async () => {
+      try {
+        const saved = await idbGet(STORAGE_KEY);
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved) as Book[];
+            const booksWithContent = parsed.map((b) => ({
+              ...b,
+              content: b.content || "",
+              annotations: b.annotations || {},
+              bookmarks: b.bookmarks || [],
+            }));
+            const hasSample = booksWithContent.some((b) => b.id === SAMPLE_BOOK.id);
+            if (hasSample) {
+              setBooks(booksWithContent);
+            } else {
+              setBooks([SAMPLE_BOOK, ...booksWithContent]);
+            }
+          } catch {
+            setBooks([SAMPLE_BOOK]);
           }
-        } catch {
+        } else {
           setBooks([SAMPLE_BOOK]);
         }
-      } else {
+      } catch {
         setBooks([SAMPLE_BOOK]);
       }
       setIsLoaded(true);
-    }
+    })();
   }, []);
 
-  // Save books to localStorage (包含 content，只去掉 processedContent)
+  // Save books to IndexedDB (包含 content，只去掉 processedContent)
   useEffect(() => {
     if (!isLoaded || typeof window === "undefined") return;
     
     const timeoutId = setTimeout(() => {
-      try {
-        // 直接保存完整 books（包含 content），但去掉 processedContent
-        const booksToSave = books.map((book) => {
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const { processedContent: _pc, ...rest } = book;
-          return rest;
-        });
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(booksToSave));
-      } catch (error) {
-        console.warn("保存失败，尝试压缩:", error);
-        // 如果存不下，尝试只保存元数据（至少保住书架列表）
+      (async () => {
         try {
-          const metadata = books.map((book) => {
+          const booksToSave = books.map((book) => {
             // eslint-disable-next-line @typescript-eslint/no-unused-vars
-            const { content: _c, processedContent: _pc, ...meta } = book;
-            return meta;
+            const { processedContent: _pc, ...rest } = book;
+            return rest;
           });
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(metadata));
-          console.warn("内容太大，仅保存了元数据");
-        } catch (e2) {
-          console.error("连元数据都存不下:", e2);
+          await idbSet(STORAGE_KEY, JSON.stringify(booksToSave));
+        } catch (error) {
+          console.warn("IndexedDB 保存失败:", error);
+          // fallback: 尝试不含 content 的精简版
+          try {
+            const metadata = books.map((book) => {
+              // eslint-disable-next-line @typescript-eslint/no-unused-vars
+              const { content: _c, processedContent: _pc, ...meta } = book;
+              return meta;
+            });
+            await idbSet(STORAGE_KEY, JSON.stringify(metadata));
+            console.warn("仅保存了元数据（无content）");
+          } catch (e2) {
+            console.error("连元数据都存不下:", e2);
+          }
         }
-      }
+      })();
     }, 500);
     
     return () => clearTimeout(timeoutId);
