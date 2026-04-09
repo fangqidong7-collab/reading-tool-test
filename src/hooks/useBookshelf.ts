@@ -100,7 +100,8 @@ export function useBookshelf() {
             const parsed = JSON.parse(saved) as Book[];
             const booksWithContent = parsed.map((b) => ({
               ...b,
-              content: b.content || "",
+              // 如果 content 为空，用 SAMPLE_BOOK 的内容填充（如果是示例书）
+              content: b.content || (b.isSample ? SAMPLE_BOOK.content : ""),
               annotations: b.annotations || {},
               bookmarks: b.bookmarks || [],
             }));
