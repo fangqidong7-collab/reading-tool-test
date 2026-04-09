@@ -587,7 +587,7 @@ export default function Home() {
         }
 
         // 清洗并精简释义
-        const meaning = shortenTranslation(rawMeaning, englishMode ? 'en' : 'zh');
+        const meaning = shortenTranslation(rawMeaning, isEnglishMode ? 'en' : 'zh');
         const family = findWordFamily(root, text);
 
         setAnnotations((prev) => ({
