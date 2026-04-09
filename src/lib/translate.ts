@@ -166,3 +166,28 @@ export async function translateWordEn(word: string): Promise<string> {
     return "Definition unavailable";
   }
 }
+
+// ========== 英文翻译 ==========
+const translationCacheEn: Record<string, string> = {};
+
+export async function translateWordEn(word: string): Promise<string> {
+  const lowerWord = word.toLowerCase().trim();
+  if (translationCacheEn[lowerWord]) {
+    return translationCacheEn[lowerWord];
+  }
+  try {
+    const response = await fetch("/api/translate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ word: lowerWord, lang: "en" }),
+    });
+    if (!response.ok) throw new Error("Translation API error");
+    const data = await response.json();
+    const translation = data.translation || "no definition found";
+    translationCacheEn[lowerWord] = translation;
+    return translation;
+  } catch (error) {
+    console.error("English translation error:", error);
+    return "definition not available";
+  }
+}
