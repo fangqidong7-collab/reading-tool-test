@@ -11,8 +11,10 @@ import JSLibLoader from "@/components/JSLibLoader";
 import { useBookshelf, ProcessedContent, ProcessedSegment, ProcessedParagraph } from "@/hooks/useBookshelf";
 import { useReadingSettings } from "@/hooks/useReadingSettings";
 import { lemmatize, getWordMeaning, getWordMeaningEn, findWordFamily } from "@/lib/dictionary";
+//import { translateWord, translateWordEn } from "@/lib/translate";
+//import { forceReloadDictionary, lookupExternalDict, lookupExternalDictEn, loadExternalDictionaryEn, type DictLoadStatus } from "@/lib/dictLoader";
 import { translateWord, translateWordEn } from "@/lib/translate";
-import { forceReloadDictionary, lookupExternalDict, lookupExternalDictEn, loadExternalDictionaryEn, type DictLoadStatus } from "@/lib/dictLoader";
+import { forceReloadDictionary, lookupExternalDict, type DictLoadStatus } from "@/lib/dictLoader";
 
 /**
  * Clean translation text - remove parts of speech and extra info
@@ -320,15 +322,10 @@ export default function Home() {
   // Load external dictionary on mount (force reload to get latest dict.json and dict_en.json)
   useEffect(() => {
     // 同时加载中英词典和英英词典
-    Promise.all([
-      forceReloadDictionary(),
-      loadExternalDictionaryEn(),
-    ]).then(([status, statusEn]) => {
-      console.log('词典加载完成:', { zh: status, en: statusEn });
-      
-      // 使用任一词典加载完成的状态
-      const finalStatus = status === 'loaded' || statusEn === 'loaded' ? 'loaded' : status;
-      setDictLoadStatus(finalStatus);
+forceReloadDictionary().then((status) => {
+  console.log("词典加载完成:", { zh: status });
+  setDictLoadStatus(status);
+
       
       // Auto-dismiss status after 3 seconds
       if (dictStatusTimeoutRef.current) {
@@ -535,32 +532,21 @@ export default function Home() {
         console.log('词根:', root);
         console.log('当前模式:', isEnglishMode ? '英文模式' : '中文模式');
 
-        if (isEnglishMode) {
-          // 英文模式查词流程
-          // 1. 先查英英内置词典
-          console.log('第一层（英文）：查 englishDictionaryEn');
-          const enEntry = getWordMeaningEn(root);
-          console.log('英英内置词典结果:', enEntry);
-          if (enEntry) {
-            rawMeaning = enEntry;
-          }
+if (isEnglishMode) {
+  console.log("第一层（英文）：查 englishDictionaryEn");
+  const enEntry = getWordMeaningEn(root);
+  console.log("英英内置词典结果:", enEntry);
 
-          // 2. 查英英外部词典
-          if (!rawMeaning) {
-            console.log('第二层（英文）：查 dict_en.json (externalDictEn)');
-            const extEnMeaning = lookupExternalDictEn(cleanWord);
-            console.log('英英外部词典结果:', extEnMeaning);
-            if (extEnMeaning) {
-              rawMeaning = extEnMeaning;
-            }
-          }
+  if (enEntry) {
+    rawMeaning = enEntry;
+  }
 
-          // 3. 最后调用AI翻译（英文模式）
-          if (!rawMeaning) {
-            console.log('第三层（英文）：调用AI翻译');
-            rawMeaning = await translateWordEn(root);
-          }
-        } else {
+  if (!rawMeaning) {
+    console.log("第二层（英文）：调用 AI 英英释义");
+    rawMeaning = await translateWordEn(root);
+  }
+}
+ else {
           // 中文模式查词流程（原有逻辑不变）
           console.log('第一层（中文）：查 englishDictionary');
           const entry = getWordMeaning(root);
@@ -587,7 +573,8 @@ export default function Home() {
         }
 
         // 清洗并精简释义
-        const meaning = shortenTranslation(rawMeaning, englishMode ? 'en' : 'zh');
+const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
+
         const family = findWordFamily(root, text);
 
         setAnnotations((prev) => ({
@@ -1395,18 +1382,20 @@ export default function Home() {
 
       {/* Word Tooltip */}
       {selectedWord && (
-        <WordTooltip
-          word={selectedWord.word}
-          position={selectedWord.position}
-          onAnnotateAll={annotateAll}
-          onRemoveAnnotation={removeAnnotation}
-          onClose={closeTooltip}
-          isAnnotated={!!annotations[selectedWord.word.toLowerCase()]}
-          annotation={annotations[selectedWord.word.toLowerCase()] || null}
-          isDarkMode={isDarkMode}
-          textColor={textColor}
-          accentColor={annotationColor}
-        />
+<WordTooltip
+  word={selectedWord.word}
+  position={selectedWord.position}
+  onAnnotateAll={annotateAll}
+  onRemoveAnnotation={removeAnnotation}
+  onClose={closeTooltip}
+  isAnnotated={!!annotations[lemmatize(selectedWord.word.toLowerCase())]}
+  annotation={annotations[lemmatize(selectedWord.word.toLowerCase())] || null}
+  dictMode={dictMode}
+  isDarkMode={isDarkMode}
+  textColor={textColor}
+  accentColor={annotationColor}
+/>
+
       )}
 
       {/* Loading Indicator */}

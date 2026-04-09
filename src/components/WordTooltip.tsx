@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { lemmatize, getWordMeaning } from "@/lib/dictionary";
+import { lemmatize, getWordMeaning, getWordMeaningEn } from "@/lib/dictionary";
 import { lookupExternalDict } from "@/lib/dictLoader";
+
 
 interface WordTooltipProps {
   word: string;
@@ -16,12 +17,14 @@ interface WordTooltipProps {
     meaning: string;
     pos: string;
   } | null;
+  dictMode?: "zh" | "en";
   // Dark mode
   isDarkMode?: boolean;
   bgColor?: string;
   textColor?: string;
   accentColor?: string;
 }
+
 
 /**
  * Shorten translation text - keep only 1-2 most concise meanings
@@ -77,22 +80,34 @@ export function WordTooltip({
   onClose,
   isAnnotated,
   annotation,
+  dictMode = "zh",
   isDarkMode = false,
   bgColor = "#FFFFFF",
   textColor = "#333333",
   accentColor = "#4a90d9",
 }: WordTooltipProps) {
+
   const [visible, setVisible] = useState(false);
   const root = lemmatize(word);
   
   // 智能查词：先查内置词典，再查外部词典，最后精简
-  const internalEntry = annotation || getWordMeaning(root);
-  const externalRaw = !annotation ? lookupExternalDict(word) : null;
-  const externalShortened = externalRaw ? shortenTranslation(externalRaw) : null;
-  const displayMeaning = internalEntry 
-    ? shortenTranslation(internalEntry.meaning)
-    : (externalShortened || null);
-  const displayEntry = displayMeaning ? { meaning: displayMeaning, pos: internalEntry?.pos || "" } : null;
+const internalZhEntry = annotation || getWordMeaning(root);
+const externalZhRaw = !annotation ? lookupExternalDict(word) : null;
+
+const displayMeaning =
+  dictMode === "en"
+    ? (annotation?.meaning || getWordMeaningEn(root) || null)
+    : (internalZhEntry
+        ? shortenTranslation(internalZhEntry.meaning)
+        : (externalZhRaw ? shortenTranslation(externalZhRaw) : null));
+
+const displayEntry = displayMeaning
+  ? {
+      meaning: displayMeaning,
+      pos: dictMode === "en" ? "" : (internalZhEntry?.pos || ""),
+    }
+  : null;
+
 
   useEffect(() => {
     // 延迟显示以实现淡入效果
@@ -159,9 +174,10 @@ export function WordTooltip({
             {displayEntry.meaning}
           </div>
         ) : (
-          <div className="tooltip-meaning tooltip-unknown" style={{ color: colors.secondaryText }}>
-            未找到释义
-          </div>
+<div className="tooltip-meaning tooltip-unknown" style={{ color: colors.secondaryText }}>
+  {dictMode === "en" ? "No definition found" : "未找到释义"}
+</div>
+
         )}
 
         {displayEntry && (
