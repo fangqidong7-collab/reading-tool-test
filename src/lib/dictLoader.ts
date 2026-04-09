@@ -2,13 +2,15 @@
 
 export interface DictEntry {
   meaning: string;
-  pos?: string;
+  pos?: string; // Optional since new dict.json uses simple string format
 }
 
 export interface DictData {
+  // New format: simple key-value
   [word: string]: string;
 }
 
+// Legacy format support
 export interface LegacyDictData {
   version: string;
   description: string;
@@ -22,10 +24,20 @@ let externalDict: Record<string, string> = {};
 let loadStatus: DictLoadStatus = 'idle';
 let loadError: string | null = null;
 
+// Cache key for localStorage
 const CACHE_KEY = 'reading_assistant_ext_dict';
 const CACHE_VERSION_KEY = 'reading_assistant_dict_version';
-const CACHE_EXPIRY_MS = 24 * 60 * 60 * 1000;
+const CACHE_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
 
+// English-English dictionary state
+let externalDictEn: Record<string, string> = {};
+let loadStatusEn: DictLoadStatus = 'idle';
+const CACHE_KEY_EN = 'reading_assistant_ext_dict_en';
+
+/**
+ * Load external dictionary from server or cache
+ * Always fetches from server to check for updates
+ */
 export async function loadExternalDictionary(): Promise<DictLoadStatus> {
   console.log('loadExternalDictionary 被调用, 当前状态:', { loadStatus, externalDictKeys: Object.keys(externalDict).length });
   
@@ -38,6 +50,7 @@ export async function loadExternalDictionary(): Promise<DictLoadStatus> {
   loadError = null;
 
   try {
+    // Always fetch from server to check if dict.json has been updated
     console.log('开始从 /dict.json 加载外部词典...');
     const fetchUrl = typeof window !== 'undefined' && window.location.hostname !== 'localhost' 
       ? `${window.location.protocol}//${window.location.host}/dict.json` 
@@ -58,19 +71,25 @@ export async function loadExternalDictionary(): Promise<DictLoadStatus> {
     console.log('dict.json 加载成功, fetch URL:', fetchUrl);
     console.log('响应状态:', response.status);
     console.log('数据键数量:', Object.keys(data).length);
+    console.log('数据是否包含 craft:', 'craft' in data, 'data["craft"] =', data['craft']);
     
+    // Handle new simple format (word -> meaning string)
+    // or legacy format (entries: { word -> { meaning, pos } })
     if ('entries' in data && data.entries) {
+      // Legacy format
       const entries = data.entries;
       externalDict = {};
       for (const [word, entry] of Object.entries(entries)) {
         externalDict[word] = typeof entry === 'string' ? entry : (entry as DictEntry).meaning;
       }
     } else {
+      // New simple format
       externalDict = data as unknown as Record<string, string>;
     }
     
-    console.log('externalDict 初始化完成, 词条数:', Object.keys(externalDict).length);
+    console.log('externalDict 初始化完成, 词条数:', Object.keys(externalDict).length, 'craft =', externalDict['craft']);
     
+    // Save to cache (this will overwrite any old cache)
     saveToCache(externalDict);
     
     loadStatus = 'loaded';
@@ -80,6 +99,7 @@ export async function loadExternalDictionary(): Promise<DictLoadStatus> {
     console.error('Failed to load external dictionary:', error);
     loadError = error instanceof Error ? error.message : 'Unknown error';
     
+    // If we have cache, use it even if fetch fails
     const cached = loadFromCache();
     if (cached) {
       console.log('从缓存恢复 externalDict, 词条数:', Object.keys(cached).length);
@@ -93,20 +113,32 @@ export async function loadExternalDictionary(): Promise<DictLoadStatus> {
   }
 }
 
+/**
+ * Clear old cache and reload dictionary
+ */
 export async function forceReloadDictionary(): Promise<DictLoadStatus> {
   resetDictState();
   clearCache();
   return loadExternalDictionary();
 }
 
+/**
+ * Get the current load status
+ */
 export function getDictLoadStatus(): DictLoadStatus {
   return loadStatus;
 }
 
+/**
+ * Get load error message
+ */
 export function getDictLoadError(): string | null {
   return loadError;
 }
 
+/**
+ * 智能去后缀 - 尝试多种可能的还原形式（外部词典用）
+ */
 function getStemVariantsExternal(word: string): string[] {
 	const variants: string[] = [];
 	const lower = word.toLowerCase();
@@ -115,17 +147,24 @@ function getStemVariantsExternal(word: string): string[] {
 	const vowelEnding = /[aeiou]$/;
 	const consonantYEnding = /[bcdfghjklmnpqrstvwxyz]y$/i;
 	
+	// ================== 后缀处理 ==================
+	
+	// 去-ness时
 	if (lower.endsWith('ness')) {
 		const base = lower.slice(0, -4);
 		variants.push(base);
+		// happiness -> happy, laziness -> lazy
 		if (lower.endsWith('iness')) {
 			variants.push(base + 'y');
 		}
+		// kindness -> kind
 	}
 	
+	// 去-ment时
 	if (lower.endsWith('ment')) {
 		const base = lower.slice(0, -4);
 		variants.push(base);
+		// excitement -> excite
 		if (base.endsWith('e')) {
 			variants.push(base);
 		} else {
@@ -133,65 +172,87 @@ function getStemVariantsExternal(word: string): string[] {
 		}
 	}
 	
+	// 去-tion时
 	if (lower.endsWith('tion')) {
 		const base = lower.slice(0, -4);
 		variants.push(base);
 		variants.push(base + 'e');
+		// education -> educate
 		if (!base.endsWith('e')) {
 			variants.push(base + 'e');
 		}
 	}
 	
+	// 去-able时
 	if (lower.endsWith('able')) {
 		const base = lower.slice(0, -4);
 		variants.push(base);
+		// comfortable -> comfort
 		if (!base.endsWith('e')) {
 			variants.push(base + 'e');
 		}
 	}
 	
+	// 去-ible时
 	if (lower.endsWith('ible')) {
 		const base = lower.slice(0, -4);
 		variants.push(base);
 	}
 	
+	// 去-ful时
 	if (lower.endsWith('ful')) {
 		const base = lower.slice(0, -3);
 		variants.push(base);
+		// careful -> care
+		if (base.endsWith(' ')) {
+			// shouldn't happen
+		}
+		// beautiful -> beauty (特殊处理)
 		if (lower.endsWith('iful') || lower.endsWith('tiful')) {
-			const base2 = base.slice(0, -1);
-			variants.push(base2 + 'y');
+			const base2 = base.slice(0, -1); // beauti
+			variants.push(base2 + 'y'); // beauty
 		}
 	}
 	
+	// 去-ous时
 	if (lower.endsWith('ous')) {
 		const base = lower.slice(0, -3);
 		variants.push(base);
+		// dangerous -> danger
 	}
 	
+	// 去-ive时
 	if (lower.endsWith('ive')) {
 		const base = lower.slice(0, -3);
 		variants.push(base);
+		// active -> act
 		variants.push(base + 'e');
+		// creative -> create
 		if (!base.endsWith('e')) {
 			variants.push(base + 'e');
 		}
 	}
 	
+	// 去-al时
 	if (lower.endsWith('al')) {
 		const base = lower.slice(0, -2);
 		variants.push(base);
+		// national -> nation
 		variants.push(base + 'ity');
+		// personal -> person
 		if (base.endsWith('al')) {
 			variants.push(base.slice(0, -2));
 		}
 	}
 	
+	// 去-en时
 	if (lower.endsWith('en')) {
 		const base = lower.slice(0, -2);
 		variants.push(base);
+		// wooden -> wood
 	}
 	
+	// 去-ed时
 	if (lower.endsWith('ed')) {
 		const base = lower.slice(0, -2);
 		variants.push(base);
@@ -208,6 +269,7 @@ function getStemVariantsExternal(word: string): string[] {
 		}
 	}
 	
+	// 去-ing时
 	if (lower.endsWith('ing')) {
 		const base = lower.slice(0, -3);
 		variants.push(base);
@@ -222,6 +284,7 @@ function getStemVariantsExternal(word: string): string[] {
 		}
 	}
 	
+	// 去-s时
 	if (lower.endsWith('s') && lower.length > 2) {
 		const base = lower.slice(0, -1);
 		if (lower.endsWith('es')) {
@@ -240,6 +303,7 @@ function getStemVariantsExternal(word: string): string[] {
 		}
 	}
 	
+	// 去-er时
 	if (lower.endsWith('er')) {
 		const base = lower.slice(0, -2);
 		variants.push(base);
@@ -252,6 +316,7 @@ function getStemVariantsExternal(word: string): string[] {
 		}
 	}
 	
+	// 去-est时
 	if (lower.endsWith('est')) {
 		const base = lower.slice(0, -3);
 		variants.push(base);
@@ -264,6 +329,7 @@ function getStemVariantsExternal(word: string): string[] {
 		}
 	}
 	
+	// 去-ly时
 	if (lower.endsWith('ly')) {
 		const base = lower.slice(0, -2);
 		variants.push(base);
@@ -274,12 +340,17 @@ function getStemVariantsExternal(word: string): string[] {
 		}
 	}
 	
+	// ================== 前缀处理 ==================
+	
+	// 去常见前缀
 	const prefixes = ['un', 're', 'dis', 'mis', 'pre', 'over', 'im', 'in', 'ir', 'il'];
 	
 	for (const prefix of prefixes) {
 		if (lower.startsWith(prefix) && lower.length > prefix.length + 2) {
 			const withoutPrefix = lower.slice(prefix.length);
 			variants.push(withoutPrefix);
+			
+			// 对去前缀后的词也尝试后缀处理
 			const subVariants = getStemVariantsExternal(withoutPrefix);
 			for (const sv of subVariants) {
 				variants.push(sv);
@@ -287,6 +358,7 @@ function getStemVariantsExternal(word: string): string[] {
 		}
 	}
 	
+	// 递归尝试更短的词根
 	if (variants.length > 0) {
 		const uniqueVariants = [...new Set(variants)];
 		for (const v of uniqueVariants) {
@@ -305,13 +377,26 @@ function getStemVariantsExternal(word: string): string[] {
 	return unique.filter(v => v.length >= 2 && v !== lower);
 }
 
+/**
+ * 智能词典查找 - 支持后缀智能去除
+ */
 export function smartLookupExternal(word: string): string | null {
 	const lower = word.toLowerCase().trim();
 	
+	// 调试日志
+	console.log('smartLookupExternal 被调用');
+	console.log('  传入的查询词:', lower);
+	console.log('  externalDict 是否已加载:', externalDict !== null && Object.keys(externalDict).length > 0);
+	console.log('  externalDict 词条数:', Object.keys(externalDict).length);
+	console.log('  直接查找 craft:', externalDict['craft']);
+	
+	// 1. 先查原始单词
 	if (externalDict[lower]) {
+		console.log('  找到匹配词条:', externalDict[lower]);
 		return externalDict[lower];
 	}
 	
+	// 2. 获取所有可能的词根变体并尝试
 	const variants = getStemVariantsExternal(lower);
 	for (const variant of variants) {
 		if (externalDict[variant]) {
@@ -319,6 +404,7 @@ export function smartLookupExternal(word: string): string | null {
 		}
 	}
 	
+	// 3. 去前缀处理
 	const prefixVariants = getPrefixVariants(lower);
 	for (const variant of prefixVariants) {
 		if (externalDict[variant]) {
@@ -326,13 +412,20 @@ export function smartLookupExternal(word: string): string | null {
 		}
 	}
 	
+	// Debug: log words not found
+	// console.log('词典未找到:', word, '尝试过的候选词:', [...new Set([lower, ...variants, ...prefixVariants])]);
+	
 	return null;
 }
 
+/**
+ * 获取去掉前缀后的变体
+ */
 function getPrefixVariants(word: string): string[] {
 	const variants: string[] = [];
 	const lower = word.toLowerCase();
 	
+	// 常见前缀
 	const prefixes = ['un', 're', 'dis', 'mis', 'pre', 'over', 'im', 'in', 'ir', 'il'];
 	
 	for (const prefix of prefixes) {
@@ -345,24 +438,44 @@ function getPrefixVariants(word: string): string[] {
 	return [...new Set(variants)];
 }
 
+/**
+ * Look up a word in the external dictionary
+ */
 export function lookupExternalDict(word: string): string | null {
+	console.log('lookupExternalDict 被调用, word =', word);
+	console.log('externalDict 当前状态:', {
+		keysCount: Object.keys(externalDict).length,
+		hasCraft: 'craft' in externalDict,
+		craftValue: externalDict['craft']
+	});
 	return smartLookupExternal(word);
 }
 
+/**
+ * Check if external dictionary has a word (with smart suffix stripping)
+ */
 export function hasInExternalDict(word: string): boolean {
 	return smartLookupExternal(word) !== null;
 }
 
+/**
+ * Get total entries count in external dictionary
+ */
 export function getExternalDictSize(): number {
   return Object.keys(externalDict).length;
 }
 
+/**
+ * Reset dictionary state (useful for testing)
+ */
 export function resetDictState(): void {
+  console.log('resetDictState 被调用, 清空 externalDict');
   externalDict = {};
   loadStatus = 'idle';
   loadError = null;
 }
 
+// Cache management functions
 function loadFromCache(): Record<string, string> | null {
   if (typeof window === 'undefined') return null;
   
@@ -372,6 +485,7 @@ function loadFromCache(): Record<string, string> | null {
     
     if (!cached || !cachedVersion) return null;
     
+    // Check if cache is expired
     const expiryTime = parseInt(cachedVersion.split('_')[1] || '0', 10);
     if (Date.now() > expiryTime + CACHE_EXPIRY_MS) {
       clearCache();
@@ -406,67 +520,118 @@ function clearCache(): void {
   }
 }
 
+/**
+ * Force reload external dictionary
+ */
 export async function reloadExternalDictionary(): Promise<DictLoadStatus> {
   resetDictState();
   clearCache();
   return loadExternalDictionary();
 }
 
-// ========== 英英外部词典加载 (dict_en.json) ==========
-let externalDictEn: Record<string, string> = {};
-let loadStatusEn: DictLoadStatus = 'idle';
-const CACHE_KEY_EN = 'reading_assistant_ext_dict_en';
-const CACHE_VERSION_KEY_EN = 'reading_assistant_dict_en_version';
+// ==================== English-English Dictionary ====================
 
+/**
+ * Load external English-English dictionary from server or cache
+ */
 export async function loadExternalDictionaryEn(): Promise<DictLoadStatus> {
+  console.log('loadExternalDictionaryEn 被调用, 当前状态:', { loadStatusEn, externalDictEnKeys: Object.keys(externalDictEn).length });
+  
   if (loadStatusEn === 'loaded' || loadStatusEn === 'loading') {
+    console.log('loadExternalDictionaryEn 直接返回, 状态:', loadStatusEn);
     return loadStatusEn;
   }
+
   loadStatusEn = 'loading';
+
   try {
-    const fetchUrl = typeof window !== 'undefined' && window.location.hostname !== 'localhost'
-      ? `${window.location.protocol}//${window.location.host}/dict_en.json`
+    // Load from server
+    const fetchUrl = typeof window !== 'undefined' && window.location.hostname !== 'localhost' 
+      ? `${window.location.protocol}//${window.location.host}/dict_en.json` 
       : '/dict_en.json';
-    const response = await fetch(fetchUrl, { headers: { 'Cache-Control': 'no-cache' } });
-    if (!response.ok) throw new Error(`Failed to load EN dict: ${response.status}`);
-    const data = await response.json();
-    externalDictEn = data as Record<string, string>;
-    console.log('dict_en.json loaded, entries:', Object.keys(externalDictEn).length);
-    try {
-      localStorage.setItem(CACHE_KEY_EN, JSON.stringify(externalDictEn));
-      localStorage.setItem(CACHE_VERSION_KEY_EN, `v1_${Date.now()}`);
-    } catch (e) { console.warn('Cache EN dict failed:', e); }
+    
+    const response = await fetch(fetchUrl, {
+      headers: {
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache'
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to load English dictionary: ${response.status}`);
+    }
+
+    const data: DictData = await response.json();
+    externalDictEn = data as unknown as Record<string, string>;
+    
+    console.log('dict_en.json 加载成功, 词条数:', Object.keys(externalDictEn).length);
+    
+    // Save to cache
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(CACHE_KEY_EN, JSON.stringify(externalDictEn));
+      } catch (error) {
+        console.warn('Failed to cache English dictionary:', error);
+      }
+    }
+    
     loadStatusEn = 'loaded';
     return 'loaded';
   } catch (error) {
-    console.error('Load EN dict failed:', error);
-    try {
-      const cached = localStorage.getItem(CACHE_KEY_EN);
-      if (cached) {
-        externalDictEn = JSON.parse(cached);
-        loadStatusEn = 'loaded';
-        return 'loaded';
+    console.error('Failed to load English dictionary:', error);
+    
+    // Try to load from cache
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem(CACHE_KEY_EN);
+        if (cached) {
+          externalDictEn = JSON.parse(cached);
+          loadStatusEn = 'loaded';
+          return 'loaded';
+        }
+      } catch {
+        // Ignore cache errors
       }
-    } catch (e) { /* ignore */ }
+    }
+    
     loadStatusEn = 'failed';
     return 'failed';
   }
 }
 
-function smartLookupExternalEn(word: string): string | null {
+/**
+ * Look up a word in the external English-English dictionary
+ */
+export function lookupExternalDictEn(word: string): string | null {
   const lower = word.toLowerCase().trim();
-  if (externalDictEn[lower]) return externalDictEn[lower];
+  
+  // Direct lookup
+  if (externalDictEn[lower]) {
+    return externalDictEn[lower];
+  }
+  
+  // Try common suffix variants
   const variants = getStemVariantsExternal(lower);
-  for (const v of variants) {
-    if (externalDictEn[v]) return externalDictEn[v];
+  for (const variant of variants) {
+    if (externalDictEn[variant]) {
+      return externalDictEn[variant];
+    }
   }
-  const pv = getPrefixVariants(lower);
-  for (const v of pv) {
-    if (externalDictEn[v]) return externalDictEn[v];
+  
+  // Try prefix variants
+  const prefixVariants = getPrefixVariants(lower);
+  for (const variant of prefixVariants) {
+    if (externalDictEn[variant]) {
+      return externalDictEn[variant];
+    }
   }
+  
   return null;
 }
 
-export function lookupExternalDictEn(word: string): string | null {
-  return smartLookupExternalEn(word);
+/**
+ * Get English-English dictionary size
+ */
+export function getExternalDictEnSize(): number {
+  return Object.keys(externalDictEn).length;
 }
