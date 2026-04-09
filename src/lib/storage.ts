@@ -1,6 +1,5 @@
-// IndexedDB 存储模块 - 替代 localStorage
 const DB_NAME = "english-reader-db";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = "keyval";
 
 function openDB(): Promise<IDBDatabase> {
@@ -28,8 +27,8 @@ export async function idbGet(key: string): Promise<string | null> {
       req.onerror = () => reject(req.error);
     });
   } catch (e) {
-    console.warn("idbGet failed, fallback to localStorage:", e);
-    return localStorage.getItem(key);
+    console.warn("idbGet failed:", e);
+    return null;
   }
 }
 
@@ -44,8 +43,7 @@ export async function idbSet(key: string, value: string): Promise<void> {
       req.onerror = () => reject(req.error);
     });
   } catch (e) {
-    console.warn("idbSet failed, fallback to localStorage:", e);
-    localStorage.setItem(key, value);
+    console.warn("idbSet failed:", e);
   }
 }
 
