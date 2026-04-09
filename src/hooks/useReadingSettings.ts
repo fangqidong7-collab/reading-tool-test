@@ -24,8 +24,8 @@ export interface ReadingSettingsStorage {
 }
 
 const DEFAULT_SETTINGS: ReadingSettings = {
-  fontSize: 18,
-  lineHeight: 1.8,
+  fontSize: 16,
+  lineHeight: 1.4,
   backgroundColor: "#FFF8F0",
   textColor: "#333333",
   headerBg: "#FFFFFF",
@@ -53,8 +53,8 @@ function getThemeColors(themeId: string): ReadingSettings {
   const isDark = theme.isDark || false;
 
   return {
-    fontSize: 18,
-    lineHeight: 1.8,
+    fontSize: 16,
+    lineHeight: 1.4,
     backgroundColor: theme.bg,
     textColor: theme.text,
     headerBg: isDark ? "#16213E" : "#FFFFFF",
@@ -187,12 +187,12 @@ export function useReadingSettings() {
     const colors = getThemeColors(defaultTheme);
     setSettings({
       ...colors,
-      fontSize: 18,
-      lineHeight: 1.8,
+      fontSize: 16,
+      lineHeight: 1.4,
     });
     setStorage({
-      fontSize: 18,
-      lineHeight: 1.8,
+      fontSize: 16,
+      lineHeight: 1.4,
       backgroundTheme: defaultTheme,
       sidebarOpenByBook: {},
     });
