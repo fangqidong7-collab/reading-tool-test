@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
 import { Upload, Download, Copy, Check, AlertCircle, X } from "lucide-react";
+import { idbGet, idbSet } from "@/lib/storage";
 
 interface CloudSyncModalProps {
   open: boolean;
@@ -30,26 +31,28 @@ export function CloudSyncModal({ open, onOpenChange }: CloudSyncModalProps) {
   const [inputCode, setInputCode] = useState("");
   const [copied, setCopied] = useState(false);
 
-  // 收集所有本地数据 - 使用正确的 localStorage 键名
-  const collectLocalData = (): string => {
+  // 收集所有本地数据 - 从 IndexedDB 读取书籍
+  const collectLocalData = async (): Promise<string> => {
     const data: Record<string, unknown> = {};
 
-    // 使用正确的 localStorage 键名
-    const storageKeys = [
-      { key: "english-reader-books", name: "books" },
-      { key: "english-reader-settings", name: "settings" },
-      { key: "reading-sidebar-states", name: "sidebarStates" },
-    ];
-
-    for (const item of storageKeys) {
-      const value = localStorage.getItem(item.key);
-      if (value) {
-        try {
-          data[item.name] = JSON.parse(value);
-        } catch {
-          data[item.name] = value;
-        }
+    // 从 IndexedDB 读取书籍数据（这是实际存储位置）
+    try {
+      const booksStr = await idbGet("english-reader-books");
+      if (booksStr) {
+        data.books = JSON.parse(booksStr);
       }
+    } catch (e) {
+      console.warn("从 IndexedDB 读取书籍失败:", e);
+    }
+
+    // settings 和 sidebarStates 仍然在 localStorage
+    const settingsStr = localStorage.getItem("english-reader-settings");
+    if (settingsStr) {
+      try { data.settings = JSON.parse(settingsStr); } catch {}
+    }
+    const sidebarStr = localStorage.getItem("reading-sidebar-states");
+    if (sidebarStr) {
+      try { data.sidebarStates = JSON.parse(sidebarStr); } catch {}
     }
 
     // 额外收集每个书籍的标注、书签、进度等
@@ -86,26 +89,24 @@ export function CloudSyncModal({ open, onOpenChange }: CloudSyncModalProps) {
   };
 
   // 检查是否有可同步的数据
-  const hasSyncableData = (): boolean => {
-    // 检查书架
-    const books = localStorage.getItem("english-reader-books");
-    if (books) {
-      try {
-        const parsed = JSON.parse(books);
+  const hasSyncableData = async (): Promise<boolean> => {
+    // 检查 IndexedDB 中的书架
+    try {
+      const booksStr = await idbGet("english-reader-books");
+      if (booksStr) {
+        const parsed = JSON.parse(booksStr);
         if (Array.isArray(parsed) && parsed.length > 0) {
           return true;
         }
-      } catch {}
-    }
+      }
+    } catch {}
 
-    // 检查设置
+    // 检查 localStorage 中的设置
     const settings = localStorage.getItem("english-reader-settings");
     if (settings) {
       try {
         const parsed = JSON.parse(settings);
-        if (Object.keys(parsed).length > 0) {
-          return true;
-        }
+        if (Object.keys(parsed).length > 0) return true;
       } catch {}
     }
 
@@ -137,13 +138,13 @@ export function CloudSyncModal({ open, onOpenChange }: CloudSyncModalProps) {
 
     try {
       // 先检查是否有数据
-      if (!hasSyncableData()) {
+      if (!(await hasSyncableData())) {
         setStatus("error");
         setResult({ error: "没有找到可同步的数据" });
         return;
       }
 
-      const localData = collectLocalData();
+      const localData = await collectLocalData();
       const dataSize = new Blob([localData]).size;
 
       // 检查数据大小
@@ -225,16 +226,18 @@ export function CloudSyncModal({ open, onOpenChange }: CloudSyncModalProps) {
   };
 
   // 确认恢复数据
-  const handleConfirmRestore = () => {
+  const handleConfirmRestore = async () => {
     if (!result?.data) return;
 
     try {
       const cloudData = parseCloudData(result.data as string);
 
-      // 写入 localStorage - 恢复 books 和 settings
+      // 写入 IndexedDB - 这是 useBookshelf 实际读取的位置
       if (cloudData.books) {
-        localStorage.setItem("english-reader-books", JSON.stringify(cloudData.books));
+        await idbSet("english-reader-books", JSON.stringify(cloudData.books));
       }
+
+      // settings 和 sidebarStates 仍然写 localStorage
       if (cloudData.settings) {
         localStorage.setItem("english-reader-settings", JSON.stringify(cloudData.settings));
       }
