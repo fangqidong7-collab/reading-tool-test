@@ -47,9 +47,11 @@ function cleanTranslation(text: string): string {
 /**
  * Shorten translation text - keep only 1-2 most concise meanings
  * This is used to prevent overly long annotations like "(会话说话交谈)"
+ * @param text - The translation text
+ * @param mode - 'zh' for Chinese mode, 'en' for English mode
  */
-function shortenTranslation(text: string): string {
-  if (!text) return '未知';
+function shortenTranslation(text: string, mode: 'zh' | 'en' = 'zh'): string {
+  if (!text) return mode === 'en' ? 'No definition' : '未知';
   
   // First, clean the text (remove POS tags, brackets, etc.)
   let cleaned = text;
@@ -61,8 +63,25 @@ function shortenTranslation(text: string): string {
   cleaned = cleaned.replace(/^[，。、；：.!?,]+/, '').replace(/[，。、；：.!?,]+$/, '');
   cleaned = cleaned.trim();
   
-  if (!cleaned) return '未知';
+  if (!cleaned) return mode === 'en' ? 'No definition' : '未知';
   
+  if (mode === 'en') {
+    // English mode: simpler processing, just truncate
+    // Split by semicolons or commas
+    let items = cleaned.split(/[;,]/).map(s => s.trim()).filter(s => s.length > 0);
+    
+    // Take first 2 items, max 40 chars each
+    items = items.slice(0, 2).map(s => {
+      if (s.length > 40) {
+        return s.substring(0, 40).trim() + '...';
+      }
+      return s;
+    });
+    
+    return items.length > 0 ? items.join('; ') : 'No definition';
+  }
+  
+  // Chinese mode (original logic)
   // Split by various separators first
   let items = cleaned.split(/[;；,，、/\n\\n]+/);
   
@@ -568,7 +587,7 @@ export default function Home() {
         }
 
         // 清洗并精简释义
-        const meaning = shortenTranslation(rawMeaning);
+        const meaning = shortenTranslation(rawMeaning, englishMode ? 'en' : 'zh');
         const family = findWordFamily(root, text);
 
         setAnnotations((prev) => ({
