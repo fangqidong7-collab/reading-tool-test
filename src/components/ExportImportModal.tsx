@@ -155,7 +155,7 @@ export function ExportImportModal({ open, onOpenChange }: ExportImportModalProps
       <div className="export-import-modal" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="modal-header">
-          <h2>数据管理</h2>
+          <h2>数据备份</h2>
           <button className="close-btn" onClick={() => onOpenChange(false)}>
             <X size={20} />
           </button>
