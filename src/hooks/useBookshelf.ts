@@ -113,10 +113,17 @@ export function useBookshelf() {
           const parsed = JSON.parse(saved) as Book[];
           // Ensure sample book exists
           const hasSample = parsed.some((b) => b.id === SAMPLE_BOOK.id);
+          // 确保每本书都有 content 默认值，防止 undefined
+          const booksWithContent = parsed.map((b) => ({
+            ...b,
+            content: b.content || "",
+            annotations: b.annotations || {},
+            bookmarks: b.bookmarks || [],
+          }));
           if (hasSample) {
-            setBooks(parsed);
+            setBooks(booksWithContent);
           } else {
-            setBooks([SAMPLE_BOOK, ...parsed]);
+            setBooks([SAMPLE_BOOK, ...booksWithContent]);
           }
         } catch {
           setBooks([SAMPLE_BOOK]);
@@ -177,26 +184,25 @@ export function useBookshelf() {
   // Calculate reading progress based on page number
   // Returns percentage (0-100), or -1 if unread
   const getProgress = useCallback((book: Book): number => {
-    // Safety check for content
-    if (!book.content) return -1;
-
-    // Priority 1: If book has scroll-based progress info (scroll mode), use it
+    // 最优先：滚动模式保存的进度，不需要 content
     if (book.lastScrollPosition !== undefined && book.lastScrollPosition > 0) {
       return Math.min(Math.round(book.lastScrollPosition), 100);
     }
-    
-    // Priority 2: If book has page-based progress info (page mode), use it
+
+    // 没有 content 时无法计算，返回未读
+    if (!book.content) return -1;
+
+    // page-based 进度
     if (book.lastReadPage !== undefined && book.lastReadPage > 0) {
-      // Use stored progress if available, otherwise calculate from page
       if (book.annotations && Object.keys(book.annotations).length > 0) {
-        // This is a simplified calculation - we'll update it when totalPages is tracked
-        const paragraphs = book.content.split(/\n\n+/).filter(p => p.trim().length > 0);
+        const paragraphs = book.content.split(/\n\n+/).filter((p) => p.trim().length > 0);
         const totalPages = Math.max(1, Math.ceil(paragraphs.length / 30));
         const progress = Math.min(Math.round((book.lastReadPage / totalPages) * 100), 100);
         return progress;
       }
     }
-    // If no page info but has annotations, calculate based on annotated words
+
+    // 有标注时根据标注估算
     if (book.annotations && Object.keys(book.annotations).length > 0) {
       const totalWords = book.content.split(/\s+/).filter(Boolean).length;
       if (totalWords === 0) return 0;
@@ -206,7 +212,7 @@ export function useBookshelf() {
       );
       return Math.min(Math.round((annotatedCount / totalWords) * 100), 100);
     }
-    // Unread
+
     return -1;
   }, []);
 
