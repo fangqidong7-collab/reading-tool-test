@@ -135,43 +135,33 @@ export function useBookshelf() {
     }
   }, []);
 
-  // Load a single book's content from localStorage
-  const loadBookContent = useCallback((bookId: string): string | null => {
-    if (typeof window === "undefined") return null;
-    return localStorage.getItem(`book_content_${bookId}`);
-  }, []);
-
-  // Save books to localStorage (separate content from metadata)
-  // Note: processedContent is not saved, content is stored separately
+  // Save books to localStorage (包含 content，只去掉 processedContent)
   useEffect(() => {
     if (!isLoaded || typeof window === "undefined") return;
     
     const timeoutId = setTimeout(() => {
       try {
-        // Save metadata without content
-        const booksMetadata = books.map((book) => {
+        // 直接保存完整 books（包含 content），但去掉 processedContent
+        const booksToSave = books.map((book) => {
           // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const { content: _content, processedContent: _pc, ...metadata } = book;
-          return metadata;
+          const { processedContent: _pc, ...rest } = book;
+          return rest;
         });
-        try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(booksMetadata));
-        } catch (error) {
-          console.warn("Failed to save books metadata:", error);
-        }
-        
-        // Save each book's content separately
-        for (const book of books) {
-          if (book.content) {
-            try {
-              localStorage.setItem(`book_content_${book.id}`, book.content);
-            } catch (e) {
-              console.warn(`书籍 "${book.title}" 内容存储失败:`, e);
-            }
-          }
-        }
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(booksToSave));
       } catch (error) {
-        console.warn("Failed to save books metadata:", error);
+        console.warn("保存失败，尝试压缩:", error);
+        // 如果存不下，尝试只保存元数据（至少保住书架列表）
+        try {
+          const metadata = books.map((book) => {
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const { content: _c, processedContent: _pc, ...meta } = book;
+            return meta;
+          });
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(metadata));
+          console.warn("内容太大，仅保存了元数据");
+        } catch (e2) {
+          console.error("连元数据都存不下:", e2);
+        }
       }
     }, 500);
     
@@ -343,17 +333,12 @@ export function useBookshelf() {
     );
   }, []);
 
-  // Open a book for reading - loads content from separate storage
+  // Open a book for reading
   const openBook = useCallback((id: string) => {
-    // Load content from separate storage
-    const content = typeof window !== "undefined" 
-      ? localStorage.getItem(`book_content_${id}`) 
-      : null;
-    
     setBooks((prev) =>
       prev.map((b) =>
         b.id === id
-          ? { ...b, lastReadAt: Date.now(), content: content || b.content }
+          ? { ...b, lastReadAt: Date.now() }
           : b
       )
     );
