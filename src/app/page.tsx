@@ -238,6 +238,9 @@ export default function Home() {
   // Ref to track if we're currently in a programmatic scroll
   const isProgrammaticScrollRef = useRef(false);
   
+  // Ref for debounced scroll save
+  const scrollSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
   // Track last processed book ID to avoid duplicate processing
   const lastProcessedBookIdRef = useRef<string | null>(null);
   
@@ -1303,7 +1306,14 @@ export default function Home() {
             currentSearchIndex={currentSearchIndex}
             bookId={currentBook?.id || ""}
             initialScrollPercent={currentBook?.lastScrollPosition || 0}
-            onProgressChange={setCurrentScrollPercent}
+            onProgressChange={(percent: number) => {
+              if (scrollSaveTimerRef.current) clearTimeout(scrollSaveTimerRef.current);
+              scrollSaveTimerRef.current = setTimeout(() => {
+                if (currentBook) {
+                  updateScrollPosition(currentBook.id, percent);
+                }
+              }, 1000);
+            }}
           />
         </div>
 

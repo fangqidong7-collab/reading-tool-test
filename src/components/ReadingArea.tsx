@@ -265,14 +265,21 @@ export const ReadingArea = forwardRef(function ReadingArea({
   const contentRef = useRef<HTMLDivElement>(null);
   
   const [readProgress, setReadProgress] = useState(0);
-  
-  const isMobile = typeof window !== 'undefined' && window.innerWidth <= MOBILE_BREAKPOINT;
-  const currentHeaderHeight = isMobile ? MOBILE_HEADER_HEIGHT : HEADER_HEIGHT;
+  const [containerHeight, setContainerHeight] = useState(600);
 
-  // 计算容器高度
-  const containerHeight = isMobile
-    ? window.innerHeight - currentHeaderHeight - MOBILE_TOP_GAP - MOBILE_BOTTOM_SAFE_ZONE
-    : window.innerHeight - currentHeaderHeight;
+  useEffect(() => {
+    const calcHeight = () => {
+      const mobile = window.innerWidth <= MOBILE_BREAKPOINT;
+      const headerH = mobile ? MOBILE_HEADER_HEIGHT : HEADER_HEIGHT;
+      const h = mobile
+        ? window.innerHeight - headerH - MOBILE_TOP_GAP - MOBILE_BOTTOM_SAFE_ZONE
+        : window.innerHeight - headerH;
+      setContainerHeight(Math.max(h, 200));
+    };
+    calcHeight();
+    window.addEventListener('resize', calcHeight);
+    return () => window.removeEventListener('resize', calcHeight);
+  }, []);
 
   // 计算滚动百分比
   const getScrollPercent = useCallback(() => {
@@ -305,31 +312,6 @@ export const ReadingArea = forwardRef(function ReadingArea({
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => el.removeEventListener('scroll', onScroll);
   }, [getScrollPercent, onProgressChange]);
-
-  // 滚动时通知父组件保存进度（通过 onProgressChange）
-  // 不再自行写 localStorage，由父组件写入 Book 对象随 IndexedDB 持久化
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el || !bookId) return;
-
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const savePosition = () => {
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(() => {
-        const percent = getScrollPercent();
-        if (onProgressChange) {
-          onProgressChange(percent);
-        }
-      }, 500);
-    };
-
-    el.addEventListener('scroll', savePosition, { passive: true });
-
-    return () => {
-      el.removeEventListener('scroll', savePosition);
-      if (timer) clearTimeout(timer);
-    };
-  }, [bookId, getScrollPercent, onProgressChange]);
 
   // 跳转到段落（滚动方式）
   const jumpToParagraph = useCallback((paragraphIndex: number) => {
@@ -394,18 +376,35 @@ export const ReadingArea = forwardRef(function ReadingArea({
       return;
     }
     
-    const timer = setTimeout(() => {
+    let attempts = 0;
+    const maxAttempts = 10;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const tryRestore = () => {
       const el = containerRef.current;
       if (!el) return;
       const maxScroll = el.scrollHeight - el.clientHeight;
-      if (maxScroll <= 0) return;
       
-      el.scrollTop = (initialScrollPercent / 100) * maxScroll;
-      hasRestoredRef.current = true;
-      console.log('恢复滚动位置:', initialScrollPercent, '%');
-    }, 300);
-    
-    return () => clearTimeout(timer);
+      if (maxScroll <= 0 && attempts < maxAttempts) {
+        attempts++;
+        timer = setTimeout(tryRestore, 200);
+        return;
+      }
+      
+      if (maxScroll > 0) {
+        el.scrollTop = (initialScrollPercent / 100) * maxScroll;
+        hasRestoredRef.current = true;
+        console.log('ReadingArea 恢复滚动位置:', initialScrollPercent, '%, maxScroll:', maxScroll, ', 尝试次数:', attempts + 1);
+      } else {
+        console.warn('ReadingArea 无法恢复滚动位置: maxScroll 仍为 0');
+      }
+    };
+
+    timer = setTimeout(tryRestore, 300);
+
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
   }, [initialScrollPercent, processedContent]);
   
   useEffect(() => {
@@ -430,6 +429,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
   }));
 
   if (processedContent && processedContent.length > 0) {
+    const isMobile = window.innerWidth <= MOBILE_BREAKPOINT;
     const currentHorizPadding = isMobile ? MOBILE_READING_PADDING_HORIZONTAL : READING_PADDING_HORIZONTAL;
 
     return (
