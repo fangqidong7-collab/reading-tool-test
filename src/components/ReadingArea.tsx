@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useCallback, useRef, useEffect, useState, forwardRef, useImperativeHandle } from "react";
+import React, { useCallback, useRef, useEffect, useState, forwardRef, useImperativeHandle, useMemo } from "react";
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { ProcessedContent } from "@/hooks/useBookshelf";
 
 // Layout constants
@@ -8,7 +9,6 @@ const HEADER_HEIGHT = 56;
 const MOBILE_HEADER_HEIGHT = 48;
 const READING_PADDING_HORIZONTAL = 32;
 const MOBILE_READING_PADDING_HORIZONTAL = 12;
-const PARAGRAPH_GAP = 16;
 const MOBILE_BREAKPOINT = 768;
 const MOBILE_TOP_GAP = 5;
 const MOBILE_BOTTOM_SAFE_ZONE = 60;
@@ -44,6 +44,9 @@ interface ParagraphProps {
   isCurrentSearchResult?: boolean;
   highlightBg?: string;
   isDarkMode?: boolean;
+  fontSize: number;
+  lineHeight: number;
+  textColor: string;
 }
 
 const Paragraph = React.memo(({
@@ -56,6 +59,9 @@ const Paragraph = React.memo(({
   isCurrentSearchResult = false,
   highlightBg = "#FFEB3B",
   isDarkMode = false,
+  fontSize,
+  lineHeight,
+  textColor,
 }: ParagraphProps) => {
   const handleClick = useCallback((e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
@@ -66,14 +72,9 @@ const Paragraph = React.memo(({
     }
   }, [onWordClick]);
 
-  // Check if this is a heading paragraph
   const isHeading = paragraph.headingLevel !== undefined;
   const headingLevel = paragraph.headingLevel || 2;
 
-  // Build text content for search matching
-  const fullText = paragraph.segments.map(s => s.text).join('');
-
-  // Get heading styles based on level
   const getHeadingStyles = (): React.CSSProperties => {
     const baseColor = isDarkMode ? "#E0E0E0" : "#333";
     switch (headingLevel) {
@@ -103,7 +104,7 @@ const Paragraph = React.memo(({
           marginBottom: '12px',
           color: baseColor,
         };
-      default: // h4-h6
+      default:
         return {
           fontSize: '1.1em',
           fontWeight: 'bold',
@@ -115,7 +116,7 @@ const Paragraph = React.memo(({
   };
 
   return (
-    <p 
+    <p
       className={`paragraph ${isHeading ? 'heading-paragraph' : ''} ${isCurrentSearchResult ? 'search-highlight' : ''}`}
       data-paragraph-index={pIndex}
       data-heading-level={isHeading ? headingLevel : undefined}
@@ -127,24 +128,24 @@ const Paragraph = React.memo(({
         if (segment.type === "space" || segment.type === "punctuation") {
           return <span key={key}>{segment.text}</span>;
         }
-        
+
         const lemma = segment.lemma;
         const annotation = annotations?.[lemma];
         const isAnnotated = !!annotation;
-        
+
         return (
           <React.Fragment key={key}>
-            <span 
-              className="word" 
+            <span
+              className="word"
               data-word={segment.text}
               data-lemma={lemma}
             >
               {segment.text}
             </span>
             {isAnnotated && (
-              <span 
+              <span
                 className="annotation"
-                style={{ 
+                style={{
                   color: annotationColor,
                   fontSize: '0.7em',
                   fontFamily: '"Microsoft YaHei", "微软雅黑", sans-serif',
@@ -162,50 +163,31 @@ const Paragraph = React.memo(({
 
 Paragraph.displayName = "Paragraph";
 
-// Custom comparison function
 function paragraphPropsAreEqual(
-  prev: {
-    paragraph: ProcessedContent[number];
-    pIndex: number;
-    onWordClick: (word: string, lemma: string, event: React.MouseEvent) => void;
-    annotations?: Annotations;
-    annotationColor?: string;
-    searchQuery?: string;
-    isCurrentSearchResult?: boolean;
-    highlightBg?: string;
-    isDarkMode?: boolean;
-  },
-  next: {
-    paragraph: ProcessedContent[number];
-    pIndex: number;
-    onWordClick: (word: string, lemma: string, event: React.MouseEvent) => void;
-    annotations?: Annotations;
-    annotationColor?: string;
-    searchQuery?: string;
-    isCurrentSearchResult?: boolean;
-    highlightBg?: string;
-    isDarkMode?: boolean;
-  }
+  prev: ParagraphProps,
+  next: ParagraphProps
 ) {
   if (prev.pIndex !== next.pIndex) return false;
   if (prev.onWordClick !== next.onWordClick) return false;
   if (prev.annotationColor !== next.annotationColor) return false;
-  if (prev.searchQuery !== next.searchQuery) return false;
   if (prev.isCurrentSearchResult !== next.isCurrentSearchResult) return false;
   if (prev.highlightBg !== next.highlightBg) return false;
   if (prev.isDarkMode !== next.isDarkMode) return false;
-  
+  if (prev.fontSize !== next.fontSize) return false;
+  if (prev.lineHeight !== next.lineHeight) return false;
+  if (prev.textColor !== next.textColor) return false;
+
   const prevKeys = prev.annotations ? Object.keys(prev.annotations) : [];
   const nextKeys = next.annotations ? Object.keys(next.annotations) : [];
-  
+
   if (prevKeys.length !== nextKeys.length) return false;
-  
+
   for (const key of nextKeys) {
     if (!prev.annotations?.[key] || prev.annotations[key] !== next.annotations?.[key]) {
       return false;
     }
   }
-  
+
   return true;
 }
 
@@ -263,9 +245,10 @@ export const ReadingArea = forwardRef(function ReadingArea({
 }: ReadingAreaProps, ref: React.Ref<ReadingAreaRef>) {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  
-  const [readProgress, setReadProgress] = useState(0);
+  const hasRestoredRef = useRef(false);
+
   const [containerHeight, setContainerHeight] = useState(600);
+  const [readProgress, setReadProgress] = useState(0);
 
   useEffect(() => {
     const calcHeight = () => {
@@ -313,24 +296,31 @@ export const ReadingArea = forwardRef(function ReadingArea({
     return () => el.removeEventListener('scroll', onScroll);
   }, [getScrollPercent, onProgressChange]);
 
-  // 跳转到段落（滚动方式）
+  // Virtual list setup
+  const virtualizer = useVirtualizer({
+    count: processedContent?.length || 0,
+    getScrollElement: () => containerRef.current,
+    estimateSize: () => 120,
+    overscan: 15,
+  });
+
+  const items = virtualizer.getVirtualItems();
+
+  // 跳转到段落（使用虚拟滚动）
   const jumpToParagraph = useCallback((paragraphIndex: number) => {
-    if (!contentRef.current || !containerRef.current) return;
-    const paragraphEls = contentRef.current.querySelectorAll('.paragraph');
-    if (paragraphIndex >= 0 && paragraphIndex < paragraphEls.length) {
-      const targetEl = paragraphEls[paragraphIndex] as HTMLElement;
-      containerRef.current.scrollTop = targetEl.offsetTop - 20;
+    if (processedContent && paragraphIndex >= 0 && paragraphIndex < processedContent.length) {
+      virtualizer.scrollToIndex(paragraphIndex, { align: 'start' });
     }
-  }, []);
+  }, [processedContent, virtualizer]);
 
   // 添加书签
   const addBookmarkFn = useCallback(() => {
     if (!containerRef.current || !contentRef.current || !bookId) return;
-    
+
     const el = containerRef.current;
     const scrollRatio = el.scrollTop / Math.max(1, el.scrollHeight - el.clientHeight);
     const percent = getScrollPercent();
-    
+
     // 获取当前可视区域第一个段落的文字作为预览
     const paragraphEls = contentRef.current.querySelectorAll('.paragraph');
     let preview = '';
@@ -342,7 +332,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
         break;
       }
     }
-    
+
     const bookmark: Bookmark = {
       id: `bm_${Date.now()}`,
       scrollRatio,
@@ -350,20 +340,18 @@ export const ReadingArea = forwardRef(function ReadingArea({
       preview,
       createdAt: Date.now(),
     };
-    
+
     const key = `book_${bookId}_bookmarks`;
     const existing = JSON.parse(localStorage.getItem(key) || '[]');
     existing.push(bookmark);
     localStorage.setItem(key, JSON.stringify(existing));
-    
+
     if (onAddBookmark) {
       onAddBookmark();
     }
   }, [bookId, getScrollPercent, onAddBookmark]);
 
   // 打开书籍时自动恢复上次滚动位置
-  const hasRestoredRef = useRef(false);
-  
   useEffect(() => {
     if (
       hasRestoredRef.current ||
@@ -375,7 +363,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
     ) {
       return;
     }
-    
+
     let attempts = 0;
     const maxAttempts = 10;
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -384,13 +372,13 @@ export const ReadingArea = forwardRef(function ReadingArea({
       const el = containerRef.current;
       if (!el) return;
       const maxScroll = el.scrollHeight - el.clientHeight;
-      
+
       if (maxScroll <= 0 && attempts < maxAttempts) {
         attempts++;
         timer = setTimeout(tryRestore, 200);
         return;
       }
-      
+
       if (maxScroll > 0) {
         el.scrollTop = (initialScrollPercent / 100) * maxScroll;
         hasRestoredRef.current = true;
@@ -406,7 +394,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
       if (timer) clearTimeout(timer);
     };
   }, [initialScrollPercent, processedContent]);
-  
+
   useEffect(() => {
     hasRestoredRef.current = false;
   }, [bookId]);
@@ -426,16 +414,21 @@ export const ReadingArea = forwardRef(function ReadingArea({
       const maxScroll = el.scrollHeight - el.clientHeight;
       el.scrollTop = maxScroll * ratio;
     },
-  }));
+  }), [jumpToParagraph, getScrollPercent, addBookmarkFn]);
+
+  // Get horizontal padding
+  const currentHorizPadding = useMemo(() => {
+    if (typeof window === 'undefined') return READING_PADDING_HORIZONTAL;
+    return window.innerWidth <= MOBILE_BREAKPOINT
+      ? MOBILE_READING_PADDING_HORIZONTAL
+      : READING_PADDING_HORIZONTAL;
+  }, []);
 
   if (processedContent && processedContent.length > 0) {
-    const isMobile = window.innerWidth <= MOBILE_BREAKPOINT;
-    const currentHorizPadding = isMobile ? MOBILE_READING_PADDING_HORIZONTAL : READING_PADDING_HORIZONTAL;
-
     return (
-      <div 
-        className="reading-wrapper" 
-        style={{ 
+      <div
+        className="reading-wrapper"
+        style={{
           backgroundColor,
           height: "100%",
           display: "flex",
@@ -443,8 +436,8 @@ export const ReadingArea = forwardRef(function ReadingArea({
           overflow: "hidden",
         }}
       >
-        {/* 阅读容器 - 滚动模式 */}
-        <div 
+        {/* 阅读容器 - 虚拟滚动模式 */}
+        <div
           ref={containerRef}
           className="reading-container"
           style={{
@@ -457,7 +450,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
             WebkitOverflowScrolling: "touch",
           }}
         >
-          <div 
+          <div
             ref={contentRef}
             className="reader-content"
             style={{
@@ -465,22 +458,42 @@ export const ReadingArea = forwardRef(function ReadingArea({
               paddingRight: `${currentHorizPadding}px`,
               paddingTop: "20px",
               paddingBottom: "40px",
+              height: `${virtualizer.getTotalSize()}px`,
+              position: "relative",
             }}
           >
-            {processedContent.map((paragraph, pIndex) => (
-              <MemoizedParagraph
-                key={pIndex}
-                paragraph={paragraph}
-                pIndex={pIndex}
-                onWordClick={onWordClick}
-                annotations={annotations}
-                annotationColor={annotationColor}
-                searchQuery={searchQuery}
-                isCurrentSearchResult={searchResults.length > 0 && searchResults[currentSearchIndex]?.paragraphIndex === pIndex}
-                highlightBg={highlightBg}
-                isDarkMode={isDarkMode}
-              />
-            ))}
+            {items.map((virtualItem) => {
+              const paragraph = processedContent[virtualItem.index];
+              return (
+                <div
+                  key={virtualItem.key}
+                  data-index={virtualItem.index}
+                  ref={virtualizer.measureElement}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    transform: `translateY(${virtualItem.start}px)`,
+                  }}
+                >
+                  <MemoizedParagraph
+                    paragraph={paragraph}
+                    pIndex={virtualItem.index}
+                    onWordClick={onWordClick}
+                    annotations={annotations}
+                    annotationColor={annotationColor}
+                    searchQuery={searchQuery}
+                    isCurrentSearchResult={searchResults.length > 0 && searchResults[currentSearchIndex]?.paragraphIndex === virtualItem.index}
+                    highlightBg={highlightBg}
+                    isDarkMode={isDarkMode}
+                    fontSize={fontSize}
+                    lineHeight={lineHeight}
+                    textColor={textColor}
+                  />
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -552,7 +565,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
   // 无内容时显示原文
   return (
     <div className="reading-wrapper" style={{ backgroundColor, minHeight: '100vh' }}>
-      <div 
+      <div
         className="reading-area"
         style={{
           padding: `40px ${READING_PADDING_HORIZONTAL}px`,
@@ -560,9 +573,9 @@ export const ReadingArea = forwardRef(function ReadingArea({
           margin: '0 auto',
         }}
       >
-        <div 
-          className="text-content" 
-          style={{ 
+        <div
+          className="text-content"
+          style={{
             whiteSpace: "pre-wrap",
             fontSize: `${fontSize}px`,
             lineHeight: lineHeight,
