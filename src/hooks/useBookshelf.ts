@@ -51,6 +51,7 @@ export interface Book {
 }
 
 const STORAGE_KEY = "english-reader-books";
+const GLOBAL_VOCAB_KEY = "english-reader-global-vocabulary";
 const SAMPLE_BOOK: Book = {
   id: "sample-book-1",
   title: "The Art of Learning",
@@ -86,6 +87,9 @@ export function useBookshelf() {
   const [books, setBooks] = useState<Book[]>([]);
   const [currentBookId, setCurrentBookId] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
+const [globalVocabulary, setGlobalVocabulary] = useState<
+  Record<string, { root: string; meaning: string; pos: string }>
+>({});
 
   // Load books from IndexedDB (异步加载)
   useEffect(() => {
@@ -120,7 +124,19 @@ export function useBookshelf() {
       } catch {
         setBooks([SAMPLE_BOOK]);
       }
+      // 加载全局词汇表
+      try {
+        const vocabStr = await idbGet(GLOBAL_VOCAB_KEY);
+        if (vocabStr) {
+          const parsed = JSON.parse(vocabStr);
+          setGlobalVocabulary(parsed);
+        }
+      } catch {
+        console.warn("加载全局词汇表失败");
+      }
+
       setIsLoaded(true);
+
     })();
   }, []);
 
@@ -157,6 +173,24 @@ export function useBookshelf() {
     
     return () => clearTimeout(timeoutId);
   }, [books, isLoaded]);
+
+    // 保存全局词汇表到 IndexedDB
+  useEffect(() => {
+    if (!isLoaded || typeof window === "undefined") return;
+
+    const timeoutId = setTimeout(() => {
+      (async () => {
+        try {
+          await idbSet(GLOBAL_VOCAB_KEY, JSON.stringify(globalVocabulary));
+        } catch (error) {
+          console.warn("保存全局词汇表失败:", error);
+        }
+      })();
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [globalVocabulary, isLoaded]);
+
 
   // Get current book
   const currentBook = books.find((b) => b.id === currentBookId) || null;
@@ -323,6 +357,32 @@ export function useBookshelf() {
     );
   }, []);
 
+    // 添加词到全局词汇表
+  const addToGlobalVocabulary = useCallback(
+    (root: string, meaning: string, pos: string) => {
+      setGlobalVocabulary((prev) => ({
+        ...prev,
+        [root]: { root, meaning, pos },
+      }));
+    },
+    []
+  );
+
+  // 从全局词汇表删除词
+  const removeFromGlobalVocabulary = useCallback((root: string) => {
+    setGlobalVocabulary((prev) => {
+      const next = { ...prev };
+      delete next[root];
+      return next;
+    });
+  }, []);
+
+  // 清空全局词汇表
+  const clearGlobalVocabulary = useCallback(() => {
+    setGlobalVocabulary({});
+  }, []);
+
+
   // Open a book for reading
   const openBook = useCallback((id: string) => {
     setBooks((prev) =>
@@ -369,5 +429,10 @@ export function useBookshelf() {
     reorderBooks,
     addBookmark,
     removeBookmark,
+    globalVocabulary,
+    addToGlobalVocabulary,
+    removeFromGlobalVocabulary,
+    clearGlobalVocabulary,
   };
+
 }

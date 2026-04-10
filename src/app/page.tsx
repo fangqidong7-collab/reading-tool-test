@@ -203,7 +203,12 @@ export default function Home() {
     closeBook,
     addBookmark,
     removeBookmark,
+    globalVocabulary,
+    addToGlobalVocabulary,
+    removeFromGlobalVocabulary,
+    clearGlobalVocabulary,
   } = useBookshelf();
+
 
   // Reading settings
   const {
@@ -363,8 +368,31 @@ forceReloadDictionary().then((status) => {
         lastProcessedBookIdRef.current = currentBook.id;
         
         setLoading(true);
-        
+
+        // 把全局词汇表的词合并到当前书的标注中
+        const mergedAnnotations = { ...currentBook.annotations };
+        let hasNewWords = false;
+        for (const [root, vocab] of Object.entries(globalVocabulary)) {
+          if (!mergedAnnotations[root]) {
+            const family = findWordFamily(root, currentBook.content);
+            if (family.length > 0) {
+              mergedAnnotations[root] = {
+                root: vocab.root,
+                meaning: vocab.meaning,
+                pos: vocab.pos,
+                count: family.length,
+              };
+              hasNewWords = true;
+            }
+          }
+        }
+        if (hasNewWords) {
+          setAnnotations(mergedAnnotations);
+          updateBookAnnotations(currentBook.id, mergedAnnotations);
+        }
+
         console.log('打开书籍 lastScrollPosition:', currentBook.lastScrollPosition);
+
         
         const savedScrollPercent = currentBook.lastScrollPosition || 0;
         
@@ -397,7 +425,8 @@ forceReloadDictionary().then((status) => {
       setLoading(false);
       setSidebarOpen(false);
     }
-  }, [currentBook, getSidebarState]);
+  }, [currentBook, getSidebarState, globalVocabulary, updateBookAnnotations]);
+
 
   // Handle sidebar toggle with localStorage memory
   const handleSidebarToggle = useCallback(() => {
@@ -589,6 +618,9 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
             count: family.length,
           },
         }));
+                // 同时写入全局词汇表
+        addToGlobalVocabulary(root, meaning, "");
+
       } catch (err) {
         console.error("Annotation error:", err);
       } finally {
@@ -597,7 +629,8 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
         setSelectedWord(null);
       }
     },
-    [annotations, text, dictMode]
+    [annotations, text, dictMode, addToGlobalVocabulary]
+
   );
 
   // Remove annotation
@@ -608,13 +641,19 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
       delete next[root];
       return next;
     });
+    // 同时从全局词汇表删除
+    removeFromGlobalVocabulary(root);
     setSelectedWord(null);
-  }, []);
+  }, [removeFromGlobalVocabulary]);
+
 
   // Clear all annotations
   const clearAllAnnotations = useCallback(() => {
     setAnnotations({});
-  }, []);
+    // 同时清空全局词汇表
+    clearGlobalVocabulary();
+  }, [clearGlobalVocabulary]);
+
 
   // Search functionality
   const performSearch = useCallback((query: string, content: string) => {
