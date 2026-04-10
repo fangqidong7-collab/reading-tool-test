@@ -271,10 +271,9 @@ export function ExportImportModal({ open, onOpenChange }: ExportImportModalProps
         <style jsx>{`
           .export-import-modal-overlay {
             position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
+            inset: 0;
+            width: 100%;
+            height: 100%;
             background: rgba(0, 0, 0, 0.5);
             display: flex;
             align-items: center;
@@ -283,6 +282,7 @@ export function ExportImportModal({ open, onOpenChange }: ExportImportModalProps
           }
 
           .export-import-modal {
+            position: relative;
             background: white;
             border-radius: 12px;
             width: 90%;
