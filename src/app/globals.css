@@ -280,7 +280,7 @@ rt {
 
 @media (max-width: 600px) {
   .bookshelf {
-    padding: 24px 16px;
+    padding: 16px 12px;
   }
 
   .bookshelf-header {
@@ -309,51 +309,115 @@ rt {
   .book-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 12px;
+    gap: 10px;
   }
-  
+
   .book-card {
-    width: 100%;
-    max-width: none;
-    padding: 10px;
+    width: 100% !important;
+    max-width: none !important;
+    padding: 6px !important;
+    border-radius: 10px;
+    display: flex !important;
+    flex-direction: column !important;
   }
 
-  .book-cover {
-    height: 100px;
+  .book-card.add-card {
+    width: 100% !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    padding: 6px !important;
   }
 
-  .book-info {
-    min-height: 50px;
-  }
-
-  .book-title {
-    font-size: 12px;
+  .add-icon {
     margin-bottom: 6px;
   }
 
+  .add-icon svg {
+    width: 32px;
+    height: 32px;
+  }
+
+  .add-text {
+    font-size: 12px;
+  }
+
+  /* 封面：书籍比例 3:4 */
+  .book-cover {
+    width: 100% !important;
+    height: auto !important;
+    aspect-ratio: 3 / 4 !important;
+    margin-bottom: 4px !important;
+    border-radius: 6px;
+    flex-shrink: 0 !important;
+  }
+
+  .book-cover .book-icon svg {
+    width: 28px;
+    height: 28px;
+  }
+
+  .book-info {
+    min-height: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 2px !important;
+    overflow: hidden !important;
+  }
+
+  /* 书名：2行省略 */
+  .book-title {
+    font-size: 11px !important;
+    margin: 0 !important;
+    line-height: 1.3 !important;
+    display: -webkit-box !important;
+    -webkit-line-clamp: 2 !important;
+    -webkit-box-orient: vertical !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: normal !important;
+  }
+
   .book-meta {
-    margin-bottom: 4px;
+    margin: 0 !important;
   }
 
   .progress-bar {
     height: 3px;
+    margin-bottom: 0;
   }
 
+  /* 隐藏进度百分比文字 */
   .progress-text {
-    font-size: 10px;
+    display: none !important;
   }
 
   .book-time {
-    font-size: 10px;
+    font-size: 9px;
+    gap: 2px;
   }
 
-  .book-card.add-card {
-    width: auto;
-    max-width: none;
-    min-height: 160px;
-    padding: 10px;
+  .book-time svg {
+    width: 10px;
+    height: 10px;
+  }
+
+  .delete-btn {
+    width: 22px;
+    height: 22px;
+    top: 3px;
+    right: 3px;
+  }
+
+  .delete-btn svg {
+    width: 12px;
+    height: 12px;
   }
 }
+
+
+
+
+
 
 /* Book Card */
 .book-card {
@@ -368,7 +432,11 @@ rt {
   transition: all 0.2s ease;
   animation: fadeIn 0.3s ease;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
+
+
 
 .book-card:hover {
   transform: translateY(-4px);
