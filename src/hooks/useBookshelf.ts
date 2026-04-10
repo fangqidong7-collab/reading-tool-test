@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
-import { idbGet, idbSet } from "@/lib/storage";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { idbGet, idbSet, idbRemove, idbGetAll, idbGetMulti, BOOK_INDEX_KEY, BOOK_DATA_PREFIX } from "@/lib/storage";
 
 // Processed content segment type
 export interface ProcessedSegment {
@@ -50,7 +50,10 @@ export interface Book {
   bookmarks?: BookmarkEntry[]; // User bookmarks
 }
 
-const STORAGE_KEY = "english-reader-books";
+// Book data for storage (without processedContent)
+type StoredBookData = Omit<Book, "processedContent">;
+
+const STORAGE_KEY = "english-reader-books"; // Legacy key for migration
 const GLOBAL_VOCAB_KEY = "english-reader-global-vocabulary";
 const SAMPLE_BOOK: Book = {
   id: "sample-book-1",
@@ -83,47 +86,176 @@ So whether you are a student in a classroom or an adult pursuing a hobby, rememb
   bookmarks: [],
 };
 
+// Debounce helper
+function debounce<T extends (...args: unknown[]) => void>(fn: T, ms: number): T {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  return ((...args: unknown[]) => {
+    if (timeoutId) clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => fn(...args), ms);
+  }) as T;
+}
+
 export function useBookshelf() {
   const [books, setBooks] = useState<Book[]>([]);
   const [currentBookId, setCurrentBookId] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
-const [globalVocabulary, setGlobalVocabulary] = useState<
-  Record<string, { root: string; meaning: string; pos: string }>
->({});
+  const [globalVocabulary, setGlobalVocabulary] = useState<
+    Record<string, { root: string; meaning: string; pos: string }>
+  >({});
+
+  // Track if we've migrated from legacy storage
+  const hasMigratedRef = useRef(false);
+
+  // Refs for debounced saves
+  const scrollSaveTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const pendingScrollSavesRef = useRef<Record<string, number>>({});
+
+  // Save a single book to IndexedDB (without processedContent)
+  const saveBook = useCallback(async (book: Book) => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { processedContent: _pc, ...bookData } = book;
+      await idbSet(`${BOOK_DATA_PREFIX}${book.id}`, JSON.stringify(bookData));
+    } catch (error) {
+      console.warn("Failed to save book:", book.id, error);
+    }
+  }, []);
+
+  // Save book index to IndexedDB
+  const saveBookIndex = useCallback(async (bookIds: string[]) => {
+    try {
+      await idbSet(BOOK_INDEX_KEY, JSON.stringify(bookIds));
+    } catch (error) {
+      console.warn("Failed to save book index:", error);
+    }
+  }, []);
+
+  // Migrate from legacy storage to new per-book storage
+  const migrateFromLegacy = useCallback(async (): Promise<Book[]> => {
+    try {
+      const saved = await idbGet(STORAGE_KEY);
+      if (!saved) return [SAMPLE_BOOK];
+
+      const parsed = JSON.parse(saved) as Book[];
+      const migratedBooks: Book[] = [];
+
+      for (const book of parsed) {
+        const bookData: StoredBookData = {
+          id: book.id,
+          title: book.title,
+          content: book.content || (book.isSample ? SAMPLE_BOOK.content : ""),
+          annotations: book.annotations || {},
+          createdAt: book.createdAt,
+          lastReadAt: book.lastReadAt,
+          isSample: book.isSample,
+          lastScrollPosition: book.lastScrollPosition,
+          lastReadPage: book.lastReadPage,
+          tableOfContents: book.tableOfContents || [],
+          bookmarks: book.bookmarks || [],
+        };
+
+        // Save each book individually
+        await idbSet(`${BOOK_DATA_PREFIX}${book.id}`, JSON.stringify(bookData));
+        migratedBooks.push({ ...bookData, processedContent: undefined });
+      }
+
+      // Save the book index
+      const bookIds = migratedBooks.map((b) => b.id);
+      await idbSet(BOOK_INDEX_KEY, JSON.stringify(bookIds));
+
+      // Delete legacy key
+      await idbRemove(STORAGE_KEY);
+
+      console.log("Migration complete:", migratedBooks.length, "books migrated");
+      return migratedBooks;
+    } catch (error) {
+      console.error("Migration failed:", error);
+      return [SAMPLE_BOOK];
+    }
+  }, []);
+
+  // Load books from IndexedDB (new per-book storage)
+  const loadBooks = useCallback(async (): Promise<Book[]> => {
+    try {
+      // Check for legacy storage first
+      const legacyData = await idbGet(STORAGE_KEY);
+      if (legacyData && !hasMigratedRef.current) {
+        hasMigratedRef.current = true;
+        return migrateFromLegacy();
+      }
+
+      // Load book index
+      const indexStr = await idbGet(BOOK_INDEX_KEY);
+      if (!indexStr) {
+        // No books yet, return sample
+        return [SAMPLE_BOOK];
+      }
+
+      const bookIds: string[] = JSON.parse(indexStr);
+      if (bookIds.length === 0) {
+        return [SAMPLE_BOOK];
+      }
+
+      // Load each book
+      const bookKeys = bookIds.map((id) => `${BOOK_DATA_PREFIX}${id}`);
+      const bookDataMap = await idbGetMulti(bookKeys);
+
+      const loadedBooks: Book[] = [];
+      for (const id of bookIds) {
+        const dataStr = bookDataMap[`${BOOK_DATA_PREFIX}${id}`];
+        if (dataStr) {
+          try {
+            const bookData = JSON.parse(dataStr) as StoredBookData;
+            // Fill in default content for sample book if missing
+            if (bookData.isSample && !bookData.content) {
+              bookData.content = SAMPLE_BOOK.content;
+            }
+            loadedBooks.push({ ...bookData, processedContent: undefined });
+          } catch (e) {
+            console.warn("Failed to parse book:", id, e);
+          }
+        }
+      }
+
+      if (loadedBooks.length === 0) {
+        return [SAMPLE_BOOK];
+      }
+
+      // Ensure sample book exists
+      const hasSample = loadedBooks.some((b) => b.id === SAMPLE_BOOK.id);
+      if (!hasSample) {
+        loadedBooks.push(SAMPLE_BOOK);
+      }
+
+      return loadedBooks;
+    } catch (error) {
+      console.error("Failed to load books:", error);
+      return [SAMPLE_BOOK];
+    }
+  }, [migrateFromLegacy]);
 
   // Load books from IndexedDB (异步加载)
   useEffect(() => {
     if (typeof window === "undefined") return;
-    
-    // 异步加载
+
     (async () => {
       try {
-        const saved = await idbGet(STORAGE_KEY);
-        if (saved) {
-          try {
-            const parsed = JSON.parse(saved) as Book[];
-            const booksWithContent = parsed.map((b) => ({
-              ...b,
-              // 如果 content 为空，用 SAMPLE_BOOK 的内容填充（如果是示例书）
-              content: b.content || (b.isSample ? SAMPLE_BOOK.content : ""),
-              annotations: b.annotations || {},
-              bookmarks: b.bookmarks || [],
-            }));
-            const hasSample = booksWithContent.some((b) => b.id === SAMPLE_BOOK.id);
-            if (hasSample) {
-              setBooks(booksWithContent);
-            } else {
-              setBooks([SAMPLE_BOOK, ...booksWithContent]);
-            }
-          } catch {
-            setBooks([SAMPLE_BOOK]);
-          }
-        } else {
-          setBooks([SAMPLE_BOOK]);
+        const loadedBooks = await loadBooks();
+        setBooks(loadedBooks);
+
+        // Ensure sample book is in the index
+        const sampleBookIds = loadedBooks.map((b) => b.id);
+        if (!sampleBookIds.includes(SAMPLE_BOOK.id)) {
+          await saveBook(SAMPLE_BOOK);
+          await saveBookIndex([...sampleBookIds, SAMPLE_BOOK.id]);
+        } else if (loadedBooks[0]?.id !== SAMPLE_BOOK.id) {
+          // Sample book exists but not first, ensure it's indexed
+          await saveBookIndex(sampleBookIds);
         }
       } catch {
         setBooks([SAMPLE_BOOK]);
       }
+
       // 加载全局词汇表
       try {
         const vocabStr = await idbGet(GLOBAL_VOCAB_KEY);
@@ -136,61 +268,19 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
       }
 
       setIsLoaded(true);
-
     })();
-  }, []);
+  }, [loadBooks, saveBook, saveBookIndex]);
 
-  // Save books to IndexedDB (包含 content，只去掉 processedContent)
-  useEffect(() => {
-    if (!isLoaded || typeof window === "undefined") return;
-    
-    const timeoutId = setTimeout(() => {
-      (async () => {
-        try {
-          const booksToSave = books.map((book) => {
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
-            const { processedContent: _pc, ...rest } = book;
-            return rest;
-          });
-          await idbSet(STORAGE_KEY, JSON.stringify(booksToSave));
-        } catch (error) {
-          console.warn("IndexedDB 保存失败:", error);
-          // fallback: 尝试不含 content 的精简版
-          try {
-            const metadata = books.map((book) => {
-              // eslint-disable-next-line @typescript-eslint/no-unused-vars
-              const { content: _c, processedContent: _pc, ...meta } = book;
-              return meta;
-            });
-            await idbSet(STORAGE_KEY, JSON.stringify(metadata));
-            console.warn("仅保存了元数据（无content）");
-          } catch (e2) {
-            console.error("连元数据都存不下:", e2);
-          }
-        }
-      })();
-    }, 500);
-    
-    return () => clearTimeout(timeoutId);
-  }, [books, isLoaded]);
-
-    // 保存全局词汇表到 IndexedDB
-  useEffect(() => {
-    if (!isLoaded || typeof window === "undefined") return;
-
-    const timeoutId = setTimeout(() => {
-      (async () => {
-        try {
-          await idbSet(GLOBAL_VOCAB_KEY, JSON.stringify(globalVocabulary));
-        } catch (error) {
-          console.warn("保存全局词汇表失败:", error);
-        }
-      })();
-    }, 500);
-
-    return () => clearTimeout(timeoutId);
-  }, [globalVocabulary, isLoaded]);
-
+  // Debounced save for scroll position (at least 1 second)
+  const debouncedSaveScroll = useCallback(
+    debounce((bookId: string, position: number) => {
+      saveBook({
+        ...books.find((b) => b.id === bookId)!,
+        lastScrollPosition: position,
+      });
+    }, 1000),
+    [books, saveBook]
+  );
 
   // Get current book
   const currentBook = books.find((b) => b.id === currentBookId) || null;
@@ -247,7 +337,7 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
 
   // Add a new book
   const addBook = useCallback(
-    (title: string, content: string, tableOfContents?: TocEntry[]): Book => {
+    async (title: string, content: string, tableOfContents?: TocEntry[]): Promise<Book> => {
       const newBook: Book = {
         id: `book-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         title: title.trim() || "未命名书籍",
@@ -259,26 +349,49 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
         bookmarks: [],
         tableOfContents: tableOfContents || [],
       };
-      setBooks((prev) => [newBook, ...prev]);
+
+      // Save to state
+      setBooks((prev) => {
+        const newBooks = [newBook, ...prev];
+        // Update index
+        saveBookIndex(newBooks.map((b) => b.id));
+        return newBooks;
+      });
+
+      // Save individual book
+      await saveBook(newBook);
+
       return newBook;
     },
-    []
+    [saveBook, saveBookIndex]
   );
 
   // Delete a book (cannot delete sample books)
-  const deleteBook = useCallback((id: string) => {
-    setBooks((prev) => {
-      const book = prev.find((b) => b.id === id);
-      if (book?.isSample) return prev; // Cannot delete sample books
-      return prev.filter((b) => b.id !== id);
-    });
-    // If current book is deleted, go back to bookshelf
-    if (currentBookId === id) {
-      setCurrentBookId(null);
-    }
-  }, [currentBookId]);
+  const deleteBook = useCallback(
+    async (id: string) => {
+      const book = books.find((b) => b.id === id);
+      if (book?.isSample) return; // Cannot delete sample books
 
-  // Update book annotations
+      // Remove from state
+      setBooks((prev) => {
+        const newBooks = prev.filter((b) => b.id !== id);
+        // Update index
+        saveBookIndex(newBooks.map((b) => b.id));
+        return newBooks;
+      });
+
+      // Remove from storage
+      await idbRemove(`${BOOK_DATA_PREFIX}${id}`);
+
+      // If current book is deleted, go back to bookshelf
+      if (currentBookId === id) {
+        setCurrentBookId(null);
+      }
+    },
+    [books, currentBookId, saveBookIndex]
+  );
+
+  // Update book annotations - save only this book
   const updateBookAnnotations = useCallback(
     (id: string, annotations: Record<string, { root: string; meaning: string; pos: string; count: number }>) => {
       setBooks((prev) =>
@@ -288,76 +401,132 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
             : b
         )
       );
+      // Save only this book
+      const book = books.find((b) => b.id === id);
+      if (book) {
+        saveBook({ ...book, annotations, lastReadAt: Date.now() });
+      }
     },
-    []
+    [books, saveBook]
   );
 
-  // Update book content
-  const updateBookContent = useCallback((id: string, content: string) => {
-    setBooks((prev) =>
-      prev.map((b) =>
-        b.id === id
-          ? { ...b, content, lastReadAt: Date.now() }
-          : b
-      )
-    );
-  }, []);
+  // Update book content - save only this book
+  const updateBookContent = useCallback(
+    (id: string, content: string) => {
+      setBooks((prev) =>
+        prev.map((b) =>
+          b.id === id
+            ? { ...b, content, lastReadAt: Date.now() }
+            : b
+        )
+      );
+      // Save only this book
+      const book = books.find((b) => b.id === id);
+      if (book) {
+        saveBook({ ...book, content, lastReadAt: Date.now() });
+      }
+    },
+    [books, saveBook]
+  );
 
-  // Update book scroll position
-  const updateScrollPosition = useCallback((id: string, position: number) => {
-    setBooks((prev) =>
-      prev.map((b) =>
-        b.id === id
-          ? { ...b, lastScrollPosition: position }
-          : b
-      )
-    );
-  }, []);
+  // Update book scroll position - debounced save (1 second)
+  const updateScrollPosition = useCallback(
+    (id: string, position: number) => {
+      setBooks((prev) =>
+        prev.map((b) =>
+          b.id === id
+            ? { ...b, lastScrollPosition: position }
+            : b
+        )
+      );
 
-  // Update book read page (for pagination progress tracking)
-  const updateReadPage = useCallback((id: string, page: number) => {
-    setBooks((prev) =>
-      prev.map((b) =>
-        b.id === id
-          ? { ...b, lastReadPage: page, lastReadAt: Date.now() }
-          : b
-      )
-    );
-  }, []);
+      // Debounced save
+      pendingScrollSavesRef.current[id] = position;
+      
+      // Clear existing timer for this book
+      if (scrollSaveTimersRef.current[id]) {
+        clearTimeout(scrollSaveTimersRef.current[id]);
+      }
 
-  // Add a bookmark
-  const addBookmark = useCallback((id: string, page: number, previewText: string) => {
-    setBooks((prev) =>
-      prev.map((b) => {
-        if (b.id !== id) return b;
-        const bookmarks = b.bookmarks || [];
-        // Check if bookmark already exists for this page
-        if (bookmarks.some((bm) => bm.page === page)) {
-          return b; // Already bookmarked
+      scrollSaveTimersRef.current[id] = setTimeout(() => {
+        const pos = pendingScrollSavesRef.current[id];
+        if (pos !== undefined) {
+          const book = books.find((b) => b.id === id);
+          if (book) {
+            saveBook({ ...book, lastScrollPosition: pos });
+          }
+          delete pendingScrollSavesRef.current[id];
         }
-        const newBookmark: BookmarkEntry = {
-          id: `bm-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-          page,
-          previewText: previewText.substring(0, 50),
-          createdAt: Date.now(),
-        };
-        return { ...b, bookmarks: [...bookmarks, newBookmark] };
-      })
-    );
-  }, []);
+        delete scrollSaveTimersRef.current[id];
+      }, 1000);
+    },
+    [books, saveBook]
+  );
 
-  // Remove a bookmark
-  const removeBookmark = useCallback((id: string, bookmarkId: string) => {
-    setBooks((prev) =>
-      prev.map((b) => {
-        if (b.id !== id) return b;
-        const bookmarks = (b.bookmarks || []).filter((bm) => bm.id !== bookmarkId);
-        return { ...b, bookmarks };
-      })
-    );
-  }, []);
+  // Update book read page - save only this book
+  const updateReadPage = useCallback(
+    (id: string, page: number) => {
+      setBooks((prev) =>
+        prev.map((b) =>
+          b.id === id
+            ? { ...b, lastReadPage: page, lastReadAt: Date.now() }
+            : b
+        )
+      );
+      // Save only this book
+      const book = books.find((b) => b.id === id);
+      if (book) {
+        saveBook({ ...book, lastReadPage: page, lastReadAt: Date.now() });
+      }
+    },
+    [books, saveBook]
+  );
 
-    // 添加词到全局词汇表
+  // Add a bookmark - save only this book
+  const addBookmark = useCallback(
+    (id: string, page: number, previewText: string) => {
+      setBooks((prev) =>
+        prev.map((b) => {
+          if (b.id !== id) return b;
+          const bookmarks = b.bookmarks || [];
+          // Check if bookmark already exists for this page
+          if (bookmarks.some((bm) => bm.page === page)) {
+            return b; // Already bookmarked
+          }
+          const newBookmark: BookmarkEntry = {
+            id: `bm-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+            page,
+            previewText: previewText.substring(0, 50),
+            createdAt: Date.now(),
+          };
+          const updatedBook = { ...b, bookmarks: [...bookmarks, newBookmark] };
+          // Save only this book
+          saveBook(updatedBook);
+          return updatedBook;
+        })
+      );
+    },
+    [saveBook]
+  );
+
+  // Remove a bookmark - save only this book
+  const removeBookmark = useCallback(
+    (id: string, bookmarkId: string) => {
+      setBooks((prev) =>
+        prev.map((b) => {
+          if (b.id !== id) return b;
+          const bookmarks = (b.bookmarks || []).filter((bm) => bm.id !== bookmarkId);
+          const updatedBook = { ...b, bookmarks };
+          // Save only this book
+          saveBook(updatedBook);
+          return updatedBook;
+        })
+      );
+    },
+    [saveBook]
+  );
+
+  // 添加词到全局词汇表
   const addToGlobalVocabulary = useCallback(
     (root: string, meaning: string, pos: string) => {
       setGlobalVocabulary((prev) => ({
@@ -382,18 +551,25 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
     setGlobalVocabulary({});
   }, []);
 
-
-  // Open a book for reading
-  const openBook = useCallback((id: string) => {
-    setBooks((prev) =>
-      prev.map((b) =>
-        b.id === id
-          ? { ...b, lastReadAt: Date.now() }
-          : b
-      )
-    );
-    setCurrentBookId(id);
-  }, []);
+  // Open a book for reading - save only this book
+  const openBook = useCallback(
+    (id: string) => {
+      setBooks((prev) =>
+        prev.map((b) =>
+          b.id === id
+            ? { ...b, lastReadAt: Date.now() }
+            : b
+        )
+      );
+      // Save only this book
+      const book = books.find((b) => b.id === id);
+      if (book) {
+        saveBook({ ...book, lastReadAt: Date.now() });
+      }
+      setCurrentBookId(id);
+    },
+    [books, saveBook]
+  );
 
   // Close the current book and return to bookshelf
   const closeBook = useCallback(() => {
@@ -409,6 +585,13 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
       const others = sorted.filter((b) => !b.isSample);
       return sample ? [...others, sample] : sorted;
     });
+  }, []);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      Object.values(scrollSaveTimersRef.current).forEach(clearTimeout);
+    };
   }, []);
 
   return {
@@ -434,5 +617,4 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
     removeFromGlobalVocabulary,
     clearGlobalVocabulary,
   };
-
 }
