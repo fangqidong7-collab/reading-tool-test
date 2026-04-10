@@ -37,7 +37,7 @@ export function Bookshelf({
       <div className="bookshelf-header">
         <div className="header-left-area">
           <h1 className="bookshelf-title">我的书架</h1>
-          <span className="book-count">{books.filter((b) => !b.isSample).length} 本书</span>
+
         </div>
         <button
           className="cloud-sync-btn"

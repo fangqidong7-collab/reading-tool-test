@@ -3,6 +3,27 @@
 import React from "react";
 import type { Book } from "@/hooks/useBookshelf";
 
+function getCoverColor(title: string): string {
+  const colors = [
+    "linear-gradient(135deg, #9BC6ED 0%, #86B5DC 100%)",  // Jordy蓝 浅
+    "linear-gradient(135deg, #4E90F5 0%, #3A7DE0 100%)",  // Chefchaouen蓝
+    "linear-gradient(135deg, #94C000 0%, #7EA800 100%)",  // 苹果绿
+    "linear-gradient(135deg, #4B6B03 0%, #3D5902 100%)",  // 苔藓绿
+    "linear-gradient(135deg, #6FA8DC 0%, #5B93C7 100%)",  // 天空蓝
+    "linear-gradient(135deg, #7CB342 0%, #689F38 100%)",  // 草地绿
+    "linear-gradient(135deg, #5C9BE6 0%, #4888D3 100%)",  // 矢车菊蓝
+    "linear-gradient(135deg, #8DB600 0%, #769A00 100%)",  // 黄绿
+    "linear-gradient(135deg, #4A7FC4 0%, #3B6DAF 100%)",  // 钴蓝
+    "linear-gradient(135deg, #66A355 0%, #558B45 100%)",  // 森林绿
+    "linear-gradient(135deg, #87BFEA 0%, #72ABD8 100%)",  // 粉蓝
+    "linear-gradient(135deg, #5E8C31 0%, #4D7528 100%)",  // 橄榄绿
+  ];
+
+  const firstChar = title.trim().charAt(0).toUpperCase();
+  const code = firstChar.charCodeAt(0) || 0;
+  return colors[code % colors.length];
+}
+
 interface BookCardProps {
   book: Book;
   progress: number;
@@ -48,9 +69,11 @@ export function BookCard({
     }
   };
 
+  const coverBg = getCoverColor(book.title);
+
   return (
     <div className="book-card" onClick={onOpen}>
-      <div className="book-cover">
+      <div className="book-cover" style={{ background: coverBg }}>
         <div className="book-icon">
           <svg
             width="48"
