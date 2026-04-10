@@ -210,6 +210,9 @@ rt {
   }
   
   .bookshelf-page {
+    height: 100dvh;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
     padding-bottom: env(safe-area-inset-bottom, 0);
   }
 }
