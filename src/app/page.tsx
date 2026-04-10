@@ -271,6 +271,9 @@ export default function Home() {
   // Ref for debounced scroll save
   const scrollSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   
+  // Ref for text processing worker
+  const textWorkerRef = useRef<Worker | null>(null);
+  
   // Track last processed book ID to avoid duplicate processing
   const lastProcessedBookIdRef = useRef<string | null>(null);
   
@@ -398,9 +401,19 @@ forceReloadDictionary().then((status) => {
         
         const savedScrollPercent = currentBook.lastScrollPosition || 0;
         
-        setTimeout(() => {
-          const processed = processTextToSegments(currentBook.content);
-          setProcessedContent(processed);
+        // Terminate any existing worker
+        if (textWorkerRef.current) {
+          textWorkerRef.current.terminate();
+        }
+        
+        // Create new worker for text processing
+        const worker = new Worker(
+          new URL('../workers/textProcessor.worker.ts', import.meta.url)
+        );
+        textWorkerRef.current = worker;
+        
+        worker.onmessage = (e: MessageEvent<{ result: ProcessedContent }>) => {
+          setProcessedContent(e.data.result);
           setLoading(false);
           
           if (savedScrollPercent > 0) {
@@ -413,7 +426,18 @@ forceReloadDictionary().then((status) => {
               });
             });
           }
-        }, 50);
+        };
+        
+        worker.onerror = (error) => {
+          console.error('Text processing worker error:', error);
+          // Fallback to synchronous processing
+          const processed = processTextToSegments(currentBook.content);
+          setProcessedContent(processed);
+          setLoading(false);
+        };
+        
+        // Send text to worker for processing
+        worker.postMessage({ text: currentBook.content });
         
         setSidebarOpen(false);
       }
@@ -523,6 +547,16 @@ forceReloadDictionary().then((status) => {
       }
     };
   }, [currentBook, updateScrollPosition]);
+
+  // Cleanup worker on unmount
+  useEffect(() => {
+    return () => {
+      if (textWorkerRef.current) {
+        textWorkerRef.current.terminate();
+        textWorkerRef.current = null;
+      }
+    };
+  }, []);
 
   // Handle word click
   const handleWordClick = useCallback(
