@@ -242,6 +242,7 @@ export default function Home() {
     position: { x: number; y: number };
   } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [annotating, setAnnotating] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
   const [leftDrawerOpen, setLeftDrawerOpen] = useState(false);
@@ -520,8 +521,10 @@ forceReloadDictionary().then((status) => {
         return;
       }
 
-      setLoading(true);
+//      setLoading(true);
+      setSelectedWord(null);
 
+      setAnnotating(true);  
       try {
         let rawMeaning = "";
         const isEnglishMode = dictMode === 'en';
@@ -589,7 +592,8 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
       } catch (err) {
         console.error("Annotation error:", err);
       } finally {
-        setLoading(false);
+//        setLoading(false);
+                setAnnotating(false); 
         setSelectedWord(null);
       }
     },
@@ -983,6 +987,27 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
           )}
         </div>
       </div>
+      {/* 标注进度条 - 顶部加载条 */}
+      {annotating && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: '3px',
+          background: 'rgba(0,0,0,0.05)',
+          zIndex: 9999,
+          overflow: 'hidden',
+        }}>
+          <div style={{
+            height: '100%',
+            width: '30%',
+            background: 'linear-gradient(90deg, #4a90d9, #6ba3e0, #4a90d9)',
+            borderRadius: '0 2px 2px 0',
+            animation: 'topBarSlide 1.2s ease-in-out infinite',
+          }} />
+        </div>
+      )}
 
       {/* Reading Header */}
       <header className="app-header" style={{ backgroundColor: headerBg, color: headerTextColor }}>

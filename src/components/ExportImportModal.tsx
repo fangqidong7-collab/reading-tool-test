@@ -269,28 +269,35 @@ export function ExportImportModal({ open, onOpenChange }: ExportImportModalProps
         </div>
 
         <style jsx>{`
-          .export-import-modal-overlay {
-            position: fixed;
-            inset: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.5);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-          }
+.export-import-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 20px;
+}
 
-          .export-import-modal {
-            position: relative;
-            background: white;
-            border-radius: 12px;
-            width: 90%;
-            max-width: 400px;
-            max-height: 90vh;
-            overflow: hidden;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-          }
+
+.export-import-modal {
+    background: white;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 400px;
+    max-height: 90vh;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    margin: auto;
+    position: relative;
+}
+
 
           :global(.dark) .export-import-modal {
             background: #1e1e2e;

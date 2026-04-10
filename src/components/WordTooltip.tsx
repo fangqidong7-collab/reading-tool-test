@@ -198,7 +198,9 @@ const displayEntry = displayMeaning
             <button
               className="tooltip-btn tooltip-btn-annotate"
               style={{ backgroundColor: colors.accent }}
-              onClick={() => onAnnotateAll(word)}
+onClick={() => { onClose(); setTimeout(() => onAnnotateAll(word), 50); }}
+
+
             >
               标注全文
             </button>
