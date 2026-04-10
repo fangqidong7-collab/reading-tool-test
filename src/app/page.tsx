@@ -12,10 +12,11 @@ import JSLibLoader from "@/components/JSLibLoader";
 import { useBookshelf, ProcessedContent, ProcessedSegment, ProcessedParagraph } from "@/hooks/useBookshelf";
 import { useReadingSettings } from "@/hooks/useReadingSettings";
 import { lemmatize, getWordMeaning, getWordMeaningEn, findWordFamily, loadBuiltinDictionary, loadBuiltinDictionaryEn } from "@/lib/dictionary";
-//import { translateWord, translateWordEn } from "@/lib/translate";
-//import { forceReloadDictionary, lookupExternalDict, lookupExternalDictEn, loadExternalDictionaryEn, type DictLoadStatus } from "@/lib/dictLoader";
 import { translateWord, translateWordEn } from "@/lib/translate";
 import { forceReloadDictionary, lookupExternalDict, type DictLoadStatus } from "@/lib/dictLoader";
+import { ReadingHeader } from "@/components/ReadingHeader";
+import { LeftDrawer } from "@/components/LeftDrawer";
+import { SearchBar } from "@/components/SearchBar";
 
 /**
  * Clean translation text - remove parts of speech and extra info
@@ -1045,135 +1046,21 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
       />
 
       {/* Left Drawer - TOC and Bookmarks */}
-      <div className={`left-drawer-overlay ${leftDrawerOpen ? 'open' : ''}`} onClick={() => setLeftDrawerOpen(false)} />
-      <div className={`left-drawer ${leftDrawerOpen ? 'open' : ''}`} style={{ backgroundColor: isDarkMode ? "#1e1e2e" : "#ffffff" }}>
-        <div className="left-drawer-header" style={{ borderBottomColor: isDarkMode ? "#333" : "#e0e0e0" }}>
-          <div className="left-drawer-tabs">
-            <button
-              className={`drawer-tab ${leftDrawerTab === 'toc' ? 'active' : ''}`}
-              onClick={() => setLeftDrawerTab('toc')}
-              style={{ 
-                color: leftDrawerTab === 'toc' ? (isDarkMode ? "#6ba3e0" : "#4a90d9") : (isDarkMode ? "#888" : "#666"),
-                borderBottomColor: leftDrawerTab === 'toc' ? (isDarkMode ? "#6ba3e0" : "#4a90d9") : "transparent",
-              }}
-            >
-              目录
-            </button>
-            <button
-              className={`drawer-tab ${leftDrawerTab === 'bookmarks' ? 'active' : ''}`}
-              onClick={() => setLeftDrawerTab('bookmarks')}
-              style={{ 
-                color: leftDrawerTab === 'bookmarks' ? (isDarkMode ? "#6ba3e0" : "#4a90d9") : (isDarkMode ? "#888" : "#666"),
-                borderBottomColor: leftDrawerTab === 'bookmarks' ? (isDarkMode ? "#6ba3e0" : "#4a90d9") : "transparent",
-              }}
-            >
-              书签 ({currentBook?.bookmarks?.length || 0})
-            </button>
-          </div>
-          <button 
-            className="drawer-close" 
-            onClick={() => setLeftDrawerOpen(false)}
-            style={{ color: isDarkMode ? "#888" : "#666" }}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </div>
-        
-        <div className="left-drawer-content">
-          {/* TOC Tab */}
-          {leftDrawerTab === 'toc' && (
-            <div className="toc-list">
-              {currentBook?.tableOfContents && currentBook.tableOfContents.length > 0 ? (
-                currentBook.tableOfContents.map((entry, index) => (
-                  <button
-                    key={index}
-                    className="toc-item"
-                    onClick={() => {
-                      if (entry.paragraphIndex !== undefined) {
-                        goToParagraph(entry.paragraphIndex);
-                      } else {
-                        readingAreaRef.current?.restoreScrollPosition(entry.page);
-                      }
-                    }}
-                    style={{ color: isDarkMode ? "#ccc" : "#333" }}
-                  >
-                    {entry.title}
-                  </button>
-                ))
-              ) : (
-                <div className="empty-message" style={{ color: isDarkMode ? "#666" : "#999" }}>
-                  {currentBook?.isSample ? "示例书籍暂无目录" : "暂无目录信息"}
-                </div>
-              )}
-            </div>
-          )}
-          
-          {/* Bookmarks Tab */}
-          {leftDrawerTab === 'bookmarks' && (
-            <div className="bookmark-list">
-              {currentBook?.bookmarks && currentBook.bookmarks.length > 0 ? (
-                <>
-                  <button
-                    className="add-bookmark-btn"
-                    onClick={toggleCurrentBookmark}
-                    style={{ 
-                      backgroundColor: isDarkMode ? "#3a3a4e" : "#f0f0f0",
-                      color: isDarkMode ? "#6ba3e0" : "#4a90d9",
-                    }}
-                  >
-                    {currentBook.bookmarks.some(bm => bm.page === currentScrollPercent) ? "移除当前位置书签" : "添加当前位置书签"}
-                  </button>
-                  {currentBook.bookmarks
-                    .sort((a, b) => a.page - b.page)
-                    .map((bookmark) => (
-                      <div
-                        key={bookmark.id}
-                        className="bookmark-item"
-                        style={{ backgroundColor: isDarkMode ? "#2a2a3e" : "#f8f9fa" }}
-                      >
-                        <button
-                          className="bookmark-page"
-                          onClick={() => readingAreaRef.current?.restoreScrollPosition(bookmark.page)}
-                          style={{ color: isDarkMode ? "#ccc" : "#333" }}
-                        >
-                          {bookmark.previewText || `位置 ${Math.round(bookmark.page)}%`}
-                        </button>
-                        <button
-                          className="bookmark-delete"
-                          onClick={() => removeBookmark(currentBook!.id, bookmark.id)}
-                          style={{ color: isDarkMode ? "#888" : "#999" }}
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <polyline points="3 6 5 6 21 6" />
-                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                          </svg>
-                        </button>
-                      </div>
-                    ))
-                  }
-                </>
-              ) : (
-                <div className="empty-message" style={{ color: isDarkMode ? "#666" : "#999" }}>
-                  <p>暂无书签</p>
-                  <button
-                    className="add-bookmark-btn"
-                    onClick={toggleCurrentBookmark}
-                    style={{ 
-                      backgroundColor: isDarkMode ? "#3a3a4e" : "#f0f0f0",
-                      color: isDarkMode ? "#6ba3e0" : "#4a90d9",
-                    }}
-                  >
-                    添加当前页书签
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
+      <LeftDrawer
+        isOpen={leftDrawerOpen}
+        activeTab={leftDrawerTab}
+        isDarkMode={isDarkMode}
+        tableOfContents={currentBook?.tableOfContents || []}
+        bookmarks={currentBook?.bookmarks || []}
+        currentScrollPercent={currentScrollPercent}
+        isSample={currentBook?.isSample || false}
+        onClose={() => setLeftDrawerOpen(false)}
+        onTabChange={setLeftDrawerTab}
+        onGoToParagraph={goToParagraph}
+        onGoToPage={(page) => readingAreaRef.current?.restoreScrollPosition(page)}
+        onToggleBookmark={toggleCurrentBookmark}
+        onRemoveBookmark={(id) => removeBookmark(currentBook!.id, id)}
+      />
       {/* 标注进度条 - 顶部加载条 */}
       {annotating && (
         <div style={{
@@ -1197,341 +1084,45 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
       )}
 
       {/* Reading Header */}
-      <header className="app-header" style={{ backgroundColor: headerBg, color: headerTextColor }}>
-        <div className="header-left">
-          <button 
-            className="back-btn" 
-            onClick={handleReturnToBookshelf}
-            style={{ 
-              backgroundColor: isDarkMode ? "#2a2a3e" : "#f5f5f5",
-              color: isDarkMode ? "#ccc" : "#666",
-            }}
-          >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
-          </button>
-          
-          {/* TOC Button - Hidden on mobile */}
-          <button 
-            className={`toc-btn nav-btn-catalog ${isDarkMode ? 'dark' : ''}`}
-            onClick={handleTocClick}
-            style={{ 
-              backgroundColor: leftDrawerOpen && leftDrawerTab === 'toc' ? (isDarkMode ? "#3a3a4e" : "#e0e0e0") : "transparent",
-              borderColor: isDarkMode ? "#444" : "#ddd",
-              color: headerTextColor,
-            }}
-            title="目录"
-          >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <line x1="8" y1="6" x2="21" y2="6" />
-              <line x1="8" y1="12" x2="21" y2="12" />
-              <line x1="8" y1="18" x2="21" y2="18" />
-              <line x1="3" y1="6" x2="3.01" y2="6" />
-              <line x1="3" y1="12" x2="3.01" y2="12" />
-              <line x1="3" y1="18" x2="3.01" y2="18" />
-            </svg>
-          </button>
-          
-          <h1 className="app-title" title={currentBook.title} style={{ color: headerTextColor }}>
-            {currentBook.title.length > 15 ? currentBook.title.substring(0, 15) + '...' : currentBook.title}
-          </h1>
-        </div>
-        
-        <div className="header-right">
-          {/* Search Button */}
-          <button
-            className={`search-btn ${isDarkMode ? "dark" : ""}`}
-            onClick={() => {
-              setSearchOpen(!searchOpen);
-              if (!searchOpen) {
-                setTimeout(() => searchInputRef.current?.focus(), 50);
-              }
-            }}
-            title="搜索全文 (Ctrl+F)"
-            style={{ 
-              backgroundColor: searchOpen ? (isDarkMode ? "#3a3a4e" : "#e0e0e0") : "transparent",
-              borderColor: isDarkMode ? "#444" : "#ddd",
-              color: headerTextColor,
-            }}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
-          </button>
-
-          {/* More Menu Button - Only visible on mobile */}
-          <button
-            className={`more-menu-btn nav-btn-more ${isDarkMode ? "dark" : ""}`}
-            onClick={() => setMoreMenuOpen(!moreMenuOpen)}
-            title="更多"
-            style={{ 
-              backgroundColor: moreMenuOpen ? (isDarkMode ? "#3a3a4e" : "#e0e0e0") : "transparent",
-              borderColor: isDarkMode ? "#444" : "#ddd",
-              color: headerTextColor,
-            }}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="1" />
-              <circle cx="19" cy="12" r="1" />
-              <circle cx="5" cy="12" r="1" />
-            </svg>
-          </button>
-
-          {/* Settings Button - Hidden on mobile */}
-          <button
-            className="settings-btn nav-btn-font"
-            onClick={() => setSettingsPanelOpen(!settingsPanelOpen)}
-            title="阅读设置"
-            style={{ 
-              backgroundColor: settingsPanelOpen ? (isDarkMode ? "#3a3a4e" : "#e0e0e0") : "transparent",
-              borderColor: isDarkMode ? "#444" : "#ddd",
-              color: headerTextColor,
-            }}
-          >
-            <span style={{ fontSize: "14px", fontWeight: "bold" }}>Aa</span>
-          </button>
-
-          {/* Bookmark Button - Hidden on mobile */}
-          <button
-            className={`bookmark-btn nav-btn-bookmark ${isDarkMode ? 'dark' : ''}`}
-            onClick={handleBookmarkClick}
-            title="书签"
-            style={{ 
-              backgroundColor: leftDrawerOpen && leftDrawerTab === 'bookmarks' ? (isDarkMode ? "#3a3a4e" : "#e0e0e0") : "transparent",
-              borderColor: isDarkMode ? "#444" : "#ddd",
-              color: headerTextColor,
-            }}
-          >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill={currentBook?.bookmarks?.some(bm => bm.page === currentScrollPercent) ? "currentColor" : "none"}
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-            </svg>
-          </button>
-
-          {/* Dictionary Loading Status */}
-          {dictLoadStatus !== 'idle' && (
-            <div className={`dict-status dict-status-${dictLoadStatus}`}>
-              {dictLoadStatus === 'loading' && (
-                <>
-                  <span className="dict-status-spinner"></span>
-                  <span>词典加载中...</span>
-                </>
-              )}
-              {dictLoadStatus === 'loaded' && (
-                <>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                  <span>词典已就绪</span>
-                </>
-              )}
-              {dictLoadStatus === 'failed' && (
-                <>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="12" cy="12" r="10" />
-                    <line x1="15" y1="9" x2="9" y2="15" />
-                    <line x1="9" y1="9" x2="15" y2="15" />
-                  </svg>
-                  <span>词典加载失败</span>
-                </>
-              )}
-            </div>
-          )}
-
-          <div className="header-stats" style={{ color: isDarkMode ? "#999" : "#666" }}>
-            <span className="stat">
-              词汇: <strong style={{ color: isDarkMode ? "#6ba3e0" : "#4a90d9" }}>
-                {Object.keys(annotations).length}
-              </strong>
-            </span>
-          </div>
-          <button
-            className={`sidebar-toggle nav-btn-vocab ${isDarkMode ? "dark" : ""}`}
-            onClick={handleSidebarToggle}
-            title={sidebarOpen ? "收起词汇表" : "展开词汇表"}
-            style={{ 
-              backgroundColor: sidebarOpen ? (isDarkMode ? "#3a3a4e" : "#e0e0e0") : "transparent",
-              borderColor: isDarkMode ? "#444" : "#ddd",
-              color: headerTextColor,
-            }}
-          >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-              <line x1="15" y1="3" x2="15" y2="21" />
-            </svg>
-          </button>
-        </div>
-      </header>
-
-      {/* Mobile More Menu Dropdown */}
-      {moreMenuOpen && (
-        <>
-          <div className="more-menu-overlay" onClick={() => setMoreMenuOpen(false)} />
-          <div className={`more-menu-dropdown ${isDarkMode ? 'dark' : ''}`} style={{ backgroundColor: isDarkMode ? "#2a2a3e" : "#ffffff" }}>
-            <button
-              className="more-menu-item"
-              onClick={() => {
-                handleTocClick();
-                setMoreMenuOpen(false);
-              }}
-              style={{ color: isDarkMode ? "#ccc" : "#333" }}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="8" y1="6" x2="21" y2="6" />
-                <line x1="8" y1="12" x2="21" y2="12" />
-                <line x1="8" y1="18" x2="21" y2="18" />
-                <line x1="3" y1="6" x2="3.01" y2="6" />
-                <line x1="3" y1="12" x2="3.01" y2="12" />
-                <line x1="3" y1="18" x2="3.01" y2="18" />
-              </svg>
-              <span>目录</span>
-            </button>
-            <button
-              className="more-menu-item"
-              onClick={() => {
-                setSettingsPanelOpen(!settingsPanelOpen);
-                setMoreMenuOpen(false);
-              }}
-              style={{ color: isDarkMode ? "#ccc" : "#333" }}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 20h9" />
-                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-              </svg>
-              <span>字体设置</span>
-            </button>
-            <button
-              className="more-menu-item"
-              onClick={() => {
-                handleBookmarkClick();
-                setMoreMenuOpen(false);
-              }}
-              style={{ color: isDarkMode ? "#ccc" : "#333" }}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill={currentBook?.bookmarks?.some(bm => bm.page === currentScrollPercent) ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2">
-                <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-              </svg>
-              <span>书签</span>
-            </button>
-            <button
-              className="more-menu-item"
-              onClick={() => {
-                handleSidebarToggle();
-                setMoreMenuOpen(false);
-              }}
-              style={{ color: isDarkMode ? "#ccc" : "#333" }}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                <line x1="15" y1="3" x2="15" y2="21" />
-              </svg>
-              <span>词汇表</span>
-            </button>
-          </div>
-        </>
-      )}
+      <ReadingHeader
+        bookTitle={currentBook.title}
+        isDarkMode={isDarkMode}
+        headerBg={headerBg}
+        headerTextColor={headerTextColor}
+        searchOpen={searchOpen}
+        sidebarOpen={sidebarOpen}
+        settingsPanelOpen={settingsPanelOpen}
+        leftDrawerOpen={leftDrawerOpen}
+        leftDrawerTab={leftDrawerTab}
+        moreMenuOpen={moreMenuOpen}
+        dictLoadStatus={dictLoadStatus}
+        annotationsCount={Object.keys(annotations).length}
+        currentScrollPercent={currentScrollPercent}
+        bookmarks={currentBook?.bookmarks || []}
+        onBack={handleReturnToBookshelf}
+        onTocClick={handleTocClick}
+        onSearchToggle={() => setSearchOpen(!searchOpen)}
+        onSearchFocus={() => setTimeout(() => searchInputRef.current?.focus(), 50)}
+        onMoreMenuToggle={() => setMoreMenuOpen(!moreMenuOpen)}
+        onSettingsToggle={() => setSettingsPanelOpen(!settingsPanelOpen)}
+        onBookmarkClick={handleBookmarkClick}
+        onSidebarToggle={handleSidebarToggle}
+      />
 
       {/* Search Bar */}
-      {searchOpen && (
-        <div 
-          className={`search-bar ${isDarkMode ? "dark" : ""}`}
-          style={{ 
-            backgroundColor: isDarkMode ? "#1e1e2e" : "#f8f9fa",
-            borderBottomColor: isDarkMode ? "#333" : "#e0e0e0",
-          }}
-        >
-          <div className="search-container">
-            <input
-              ref={searchInputRef}
-              type="text"
-              value={searchQuery}
-              onChange={handleSearchInput}
-              placeholder="搜索全文..."
-              className={`search-input ${isDarkMode ? "dark" : ""}`}
-              style={{
-                backgroundColor: isDarkMode ? "#2a2a3e" : "#fff",
-                color: isDarkMode ? "#ccc" : "#333",
-                borderColor: isDarkMode ? "#444" : "#ddd",
-              }}
-            />
-            <div className="search-results-count" style={{ color: isDarkMode ? "#999" : "#666" }}>
-              {searchResults.length > 0 ? (
-                <>第 {currentSearchIndex + 1} / {searchResults.length} 个匹配</>
-              ) : (
-                searchQuery ? "无匹配" : ""
-              )}
-            </div>
-            <button
-              className={`search-nav-btn ${isDarkMode ? "dark" : ""}`}
-              onClick={goToPrevSearchResult}
-              disabled={searchResults.length === 0}
-              title="上一个 (Shift+Enter)"
-              style={{
-                color: headerTextColor,
-              }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <polyline points="18 15 12 9 6 15" />
-              </svg>
-            </button>
-            <button
-              className={`search-nav-btn ${isDarkMode ? "dark" : ""}`}
-              onClick={goToNextSearchResult}
-              disabled={searchResults.length === 0}
-              title="下一个 (Enter)"
-              style={{
-                color: headerTextColor,
-              }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </button>
-            <button
-              className={`search-close-btn ${isDarkMode ? "dark" : ""}`}
-              onClick={closeSearch}
-              title="关闭 (ESC)"
-              style={{
-                color: headerTextColor,
-              }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      )}
+      <SearchBar
+        isOpen={searchOpen}
+        isDarkMode={isDarkMode}
+        headerTextColor={headerTextColor}
+        searchQuery={searchQuery}
+        searchResults={searchResults}
+        currentSearchIndex={currentSearchIndex}
+        searchInputRef={searchInputRef}
+        onQueryChange={handleSearchInput}
+        onPrev={goToPrevSearchResult}
+        onNext={goToNextSearchResult}
+        onClose={closeSearch}
+      />
 
       {/* Main Content */}
       <main className="main-content" style={{ backgroundColor }}>
