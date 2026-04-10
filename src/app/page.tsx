@@ -5,6 +5,7 @@ import { Bookshelf } from "@/components/Bookshelf";
 import { ReadingArea, type ReadingAreaRef } from "@/components/ReadingArea";
 import { WordTooltip } from "@/components/WordTooltip";
 import { VocabularySidebar } from "@/components/VocabularySidebar";
+import { GlobalVocabularyPage } from "@/components/GlobalVocabularyPage";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { ExportImportModal } from "@/components/ExportImportModal";
 import JSLibLoader from "@/components/JSLibLoader";
@@ -289,6 +290,7 @@ export default function Home() {
 
   // Data management modal state
   const [dataManageOpen, setDataManageOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'bookshelf' | 'vocabulary'>('bookshelf');
 
   // 清理可能残留的大数据（启动时一次性执行）
   useEffect(() => {
@@ -833,22 +835,64 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
   if (!currentBook) {
     return (
       <div className="bookshelf-page" style={{ backgroundColor }}>
-        <Bookshelf
-          books={books}
-          getProgress={getProgress}
-          formatLastRead={formatLastRead}
-          onAddBook={addBook}
-          onDeleteBook={deleteBook}
-          onOpenBook={openBook}
-          onDataManageClick={() => setDataManageOpen(true)}
-        />
-        <ExportImportModal
-          open={dataManageOpen}
-          onOpenChange={setDataManageOpen}
-        />
+        {/* 主内容区域 */}
+        {activeTab === 'bookshelf' ? (
+          <>
+            <Bookshelf
+              books={books}
+              getProgress={getProgress}
+              formatLastRead={formatLastRead}
+              onAddBook={addBook}
+              onDeleteBook={deleteBook}
+              onOpenBook={openBook}
+              onDataManageClick={() => setDataManageOpen(true)}
+            />
+            <ExportImportModal
+              open={dataManageOpen}
+              onOpenChange={setDataManageOpen}
+            />
+          </>
+        ) : (
+          <GlobalVocabularyPage
+            vocabulary={globalVocabulary}
+            onRemoveWord={removeFromGlobalVocabulary}
+            onClearAll={clearGlobalVocabulary}
+            backgroundColor={backgroundColor}
+          />
+        )}
+
+        {/* 底部工具栏 */}
+        <div className="bottom-tab-bar">
+          <button
+            className={`tab-bar-item ${activeTab === 'bookshelf' ? 'active' : ''}`}
+            onClick={() => setActiveTab('bookshelf')}
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+            </svg>
+            <span>书架</span>
+          </button>
+          <button
+            className={`tab-bar-item ${activeTab === 'vocabulary' ? 'active' : ''}`}
+            onClick={() => setActiveTab('vocabulary')}
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+            </svg>
+            <span>词汇表</span>
+            {Object.keys(globalVocabulary).length > 0 && (
+              <span className="tab-bar-badge">{Object.keys(globalVocabulary).length}</span>
+            )}
+          </button>
+        </div>
+
         <style jsx>{`
           .bookshelf-page {
             min-height: 100vh;
+            min-height: 100dvh;
+            padding-bottom: 70px;
           }
           .loading-screen {
             min-height: 100vh;
@@ -869,10 +913,76 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
               transform: rotate(360deg);
             }
           }
+
+          .bottom-tab-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 60px;
+            background: white;
+            border-top: 1px solid #e8e8e8;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0;
+            z-index: 500;
+            padding-bottom: env(safe-area-inset-bottom, 0);
+            box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
+          }
+
+          .tab-bar-item {
+            flex: 1;
+            max-width: 160px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 3px;
+            padding: 8px 0;
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: #999;
+            font-size: 11px;
+            font-weight: 500;
+            transition: color 0.15s ease;
+            position: relative;
+          }
+
+          .tab-bar-item:hover {
+            color: #666;
+          }
+
+          .tab-bar-item.active {
+            color: #4a90d9;
+          }
+
+          .tab-bar-item.active svg {
+            stroke: #4a90d9;
+          }
+
+          .tab-bar-badge {
+            position: absolute;
+            top: 4px;
+            right: calc(50% - 26px);
+            background: #e74c3c;
+            color: white;
+            font-size: 10px;
+            font-weight: 600;
+            min-width: 18px;
+            height: 18px;
+            border-radius: 9px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 5px;
+          }
         `}</style>
       </div>
     );
   }
+
 
   // Reading view
   return (
