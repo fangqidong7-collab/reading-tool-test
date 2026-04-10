@@ -194,7 +194,6 @@ rt {
   min-height: 100vh;
   min-height: 100dvh;
   background: #fff8f0;
-  overflow-y: auto;
   overscroll-behavior-y: contain;
 }
 
