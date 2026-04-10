@@ -2,8 +2,6 @@
 
 import React, { useCallback, useRef, useEffect, useState, forwardRef, useImperativeHandle } from "react";
 import { ProcessedContent } from "@/hooks/useBookshelf";
-import { VirtualizedReading } from "./VirtualizedReading";
-
 
 // Layout constants
 const HEADER_HEIGHT = 56;
@@ -431,30 +429,123 @@ export const ReadingArea = forwardRef(function ReadingArea({
   }));
 
   if (processedContent && processedContent.length > 0) {
-    const isMobile = typeof window !== 'undefined' && window.innerWidth <= MOBILE_BREAKPOINT;
+    const isMobile = window.innerWidth <= MOBILE_BREAKPOINT;
     const currentHorizPadding = isMobile ? MOBILE_READING_PADDING_HORIZONTAL : READING_PADDING_HORIZONTAL;
 
     return (
-      <VirtualizedReading
-        containerRef={containerRef}
-        contentRef={contentRef}
-        containerHeight={containerHeight}
-        backgroundColor={backgroundColor}
-        currentHorizPadding={currentHorizPadding}
-        processedContent={processedContent}
-        onWordClick={onWordClick}
-        annotations={annotations}
-        annotationColor={annotationColor}
-        searchQuery={searchQuery}
-        searchResults={searchResults}
-        currentSearchIndex={currentSearchIndex}
-        highlightBg={highlightBg}
-        isDarkMode={isDarkMode}
-        fontSize={fontSize}
-        lineHeight={lineHeight}
-        textColor={textColor}
-        readProgress={readProgress}
-      />
+      <div 
+        className="reading-wrapper" 
+        style={{ 
+          backgroundColor,
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        }}
+      >
+        {/* 阅读容器 - 滚动模式 */}
+        <div 
+          ref={containerRef}
+          className="reading-container"
+          style={{
+            height: containerHeight,
+            overflowY: "auto",
+            overflowX: "hidden",
+            position: "relative",
+            padding: "0px",
+            boxSizing: "border-box",
+            WebkitOverflowScrolling: "touch",
+          }}
+        >
+          <div 
+            ref={contentRef}
+            className="reader-content"
+            style={{
+              paddingLeft: `${currentHorizPadding}px`,
+              paddingRight: `${currentHorizPadding}px`,
+              paddingTop: "20px",
+              paddingBottom: "40px",
+            }}
+          >
+            {processedContent.map((paragraph, pIndex) => (
+              <MemoizedParagraph
+                key={pIndex}
+                paragraph={paragraph}
+                pIndex={pIndex}
+                onWordClick={onWordClick}
+                annotations={annotations}
+                annotationColor={annotationColor}
+                searchQuery={searchQuery}
+                isCurrentSearchResult={searchResults.length > 0 && searchResults[currentSearchIndex]?.paragraphIndex === pIndex}
+                highlightBg={highlightBg}
+                isDarkMode={isDarkMode}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* 滚动进度指示器 */}
+        <div style={{
+          position: "fixed",
+          bottom: 12,
+          right: 16,
+          fontSize: "12px",
+          color: isDarkMode ? "#888" : "#999",
+          background: isDarkMode ? "rgba(0,0,0,0.5)" : "rgba(255,255,255,0.85)",
+          padding: "4px 10px",
+          borderRadius: "12px",
+          zIndex: 100,
+          pointerEvents: "none",
+        }}>
+          {readProgress}%
+        </div>
+
+        <style jsx>{`
+          .reading-wrapper {
+            min-height: 100vh;
+            position: relative;
+          }
+
+          .reading-container {
+            flex: 1;
+          }
+
+          .reader-content {
+            font-size: ${fontSize}px;
+            line-height: ${lineHeight};
+            color: ${textColor};
+            font-family: Georgia, "Times New Roman", serif;
+            text-align: justify;
+          }
+
+          .reader-content :global(.paragraph) {
+            margin-bottom: 16px;
+            margin-top: 0px;
+          }
+
+          .reader-content :global(.word) {
+            cursor: pointer;
+            transition: color 0.15s;
+          }
+
+          .reader-content :global(.word:hover) {
+            color: #4A90D9;
+          }
+
+          .reader-content :global(.annotation) {
+            color: ${annotationColor};
+            font-size: 0.7em;
+            font-family: "Microsoft YaHei", "微软雅黑", sans-serif;
+          }
+
+          @media (max-width: 768px) {
+            .reading-wrapper {
+              min-height: 100dvh !important;
+              height: 100dvh !important;
+            }
+          }
+        `}</style>
+      </div>
     );
   }
 
