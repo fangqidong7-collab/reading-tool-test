@@ -305,13 +305,50 @@ rt {
 
   .book-grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 16px;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
   }
   
   .book-card {
     width: 100%;
     max-width: none;
+    padding: 10px;
+  }
+
+  .book-cover {
+    height: 100px;
+  }
+
+  .book-info {
+    min-height: 50px;
+  }
+
+  .book-title {
+    font-size: 12px;
+    margin-bottom: 6px;
+  }
+
+  .book-meta {
+    margin-bottom: 4px;
+  }
+
+  .progress-bar {
+    height: 3px;
+  }
+
+  .progress-text {
+    font-size: 10px;
+  }
+
+  .book-time {
+    font-size: 10px;
+  }
+
+  .book-card.add-card {
+    width: auto;
+    max-width: none;
+    min-height: 160px;
+    padding: 10px;
   }
 }
 
