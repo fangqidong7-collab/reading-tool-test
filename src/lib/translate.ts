@@ -1,5 +1,16 @@
-// Translation cache
-const translationCache: Record<string, string> = {};
+// Translation cache (with sessionStorage persistence)
+let translationCache: Record<string, string> = {};
+
+try {
+  const saved = sessionStorage.getItem('translation_cache');
+  if (saved) translationCache = JSON.parse(saved);
+} catch {}
+
+function saveCacheToSession() {
+  try {
+    sessionStorage.setItem('translation_cache', JSON.stringify(translationCache));
+  } catch {}
+}
 
 /**
  * Post-process Chinese translation
@@ -91,13 +102,20 @@ async function requestTranslation(
   }
 
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
     const response = await fetch("/api/translate", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ word: lowerWord, lang }),
+      signal: controller.signal,
     });
+
+    clearTimeout(timeoutId);
+
 
     if (!response.ok) {
       throw new Error("Translation API error");
@@ -114,6 +132,7 @@ async function requestTranslation(
         : postProcessTranslation(translation);
 
     translationCache[cacheKey] = translation;
+        saveCacheToSession();
     return translation;
   } catch (error) {
     console.error("Translation error:", error);

@@ -2,6 +2,7 @@
 
 import React, { useCallback, useRef, useEffect, useState, forwardRef, useImperativeHandle } from "react";
 import { ProcessedContent } from "@/hooks/useBookshelf";
+import { useVirtualizer } from '@tanstack/react-virtual';
 
 // Layout constants
 const HEADER_HEIGHT = 56;
@@ -267,6 +268,14 @@ export const ReadingArea = forwardRef(function ReadingArea({
   const [readProgress, setReadProgress] = useState(0);
   const [containerHeight, setContainerHeight] = useState(600);
 
+  const virtualizer = useVirtualizer({
+    count: processedContent ? processedContent.length : 0,
+    getScrollElement: () => containerRef.current,
+    estimateSize: () => 80,
+    overscan: 20,
+  });
+
+
   useEffect(() => {
     const calcHeight = () => {
       const mobile = window.innerWidth <= MOBILE_BREAKPOINT;
@@ -315,13 +324,12 @@ export const ReadingArea = forwardRef(function ReadingArea({
 
   // 跳转到段落（滚动方式）
   const jumpToParagraph = useCallback((paragraphIndex: number) => {
-    if (!contentRef.current || !containerRef.current) return;
-    const paragraphEls = contentRef.current.querySelectorAll('.paragraph');
-    if (paragraphIndex >= 0 && paragraphIndex < paragraphEls.length) {
-      const targetEl = paragraphEls[paragraphIndex] as HTMLElement;
-      containerRef.current.scrollTop = targetEl.offsetTop - 20;
+    if (!containerRef.current) return;
+    if (paragraphIndex >= 0 && processedContent && paragraphIndex < processedContent.length) {
+      virtualizer.scrollToIndex(paragraphIndex, { align: 'start' });
     }
-  }, []);
+  }, [processedContent, virtualizer]);
+
 
   // 添加书签
   const addBookmarkFn = useCallback(() => {
@@ -428,6 +436,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
     },
   }));
 
+
   if (processedContent && processedContent.length > 0) {
     const isMobile = window.innerWidth <= MOBILE_BREAKPOINT;
     const currentHorizPadding = isMobile ? MOBILE_READING_PADDING_HORIZONTAL : READING_PADDING_HORIZONTAL;
@@ -461,27 +470,48 @@ export const ReadingArea = forwardRef(function ReadingArea({
             ref={contentRef}
             className="reader-content"
             style={{
-              paddingLeft: `${currentHorizPadding}px`,
-              paddingRight: `${currentHorizPadding}px`,
-              paddingTop: "20px",
-              paddingBottom: "40px",
+              height: `${virtualizer.getTotalSize()}px`,
+              width: "100%",
+              position: "relative",
             }}
           >
-            {processedContent.map((paragraph, pIndex) => (
-              <MemoizedParagraph
-                key={pIndex}
-                paragraph={paragraph}
-                pIndex={pIndex}
-                onWordClick={onWordClick}
-                annotations={annotations}
-                annotationColor={annotationColor}
-                searchQuery={searchQuery}
-                isCurrentSearchResult={searchResults.length > 0 && searchResults[currentSearchIndex]?.paragraphIndex === pIndex}
-                highlightBg={highlightBg}
-                isDarkMode={isDarkMode}
-              />
-            ))}
+            {virtualizer.getVirtualItems().map((virtualRow) => {
+              const pIndex = virtualRow.index;
+              const paragraph = processedContent[pIndex];
+              return (
+                <div
+                  key={pIndex}
+                  data-index={pIndex}
+                  ref={virtualizer.measureElement}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    transform: `translateY(${virtualRow.start}px)`,
+                    paddingLeft: `${currentHorizPadding}px`,
+                    paddingRight: `${currentHorizPadding}px`,
+                  }}
+                >
+                  <MemoizedParagraph
+                    paragraph={paragraph}
+                    pIndex={pIndex}
+                    onWordClick={onWordClick}
+                    annotations={annotations}
+                    annotationColor={annotationColor}
+                    searchQuery={searchQuery}
+                    isCurrentSearchResult={
+                      searchResults.length > 0 &&
+                      searchResults[currentSearchIndex]?.paragraphIndex === pIndex
+                    }
+                    highlightBg={highlightBg}
+                    isDarkMode={isDarkMode}
+                  />
+                </div>
+              );
+            })}
           </div>
+
         </div>
 
         {/* 滚动进度指示器 */}
