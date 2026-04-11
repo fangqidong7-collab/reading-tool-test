@@ -239,26 +239,23 @@ export const irregularNouns: Record<string, string> = {
 
 // 常见词缀规则
 const suffixRules: Array<{ suffix: string; remove: number; add?: string }> = [
+  // 复数
   { suffix: "ies", remove: 3, add: "y" },
   { suffix: "es", remove: 2 },
   { suffix: "s", remove: 1 },
+  // 进行时
   { suffix: "ing", remove: 3 },
+  // 过去式：先试去d（适用于 amazed→amaze, used→use, closed→close）
+  { suffix: "d", remove: 1 },
+  // 再试去ed（适用于 played→play, walked→walk）
   { suffix: "ed", remove: 2 },
+  // 比较级/最高级
   { suffix: "er", remove: 2 },
   { suffix: "est", remove: 3 },
+  // 副词（保留，因为 quickly 查 quick 是合理的）
   { suffix: "ly", remove: 2 },
-  { suffix: "tion", remove: 4 },
-  { suffix: "sion", remove: 4 },
-  { suffix: "ment", remove: 4 },
-  { suffix: "ness", remove: 4 },
-  { suffix: "able", remove: 4 },
-  { suffix: "ible", remove: 4 },
-  { suffix: "al", remove: 2 },
-  { suffix: "ful", remove: 3 },
-  { suffix: "less", remove: 4 },
-  { suffix: "ous", remove: 3 },
-  { suffix: "ive", remove: 3 },
 ];
+
 
 // 常见动词词形映射
 const verbForms: Record<string, string> = {
@@ -930,12 +927,19 @@ export function lemmatize(word: string): string {
     if (lowerWord.endsWith(rule.suffix)) {
       const base = lowerWord.slice(0, -rule.remove);
       const result = rule.add ? base + rule.add : base;
+      
+      // 对于去-d规则：只在去掉d后以e结尾时才生效（amazed→amaze, used→use）
+      if (rule.suffix === "d" && !result.endsWith("e")) {
+        continue;
+      }
+      
       // 确保还原后的单词至少有两个字母
       if (result.length >= 2) {
         return result;
       }
     }
   }
+
   
   // 5. 返回原单词（小写）
   return lowerWord;

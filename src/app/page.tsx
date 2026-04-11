@@ -580,7 +580,8 @@ if (isEnglishMode) {
 
   if (!rawMeaning) {
     console.log("第二层（英文）：调用 AI 英英释义");
-    rawMeaning = await translateWordEn(root);
+    rawMeaning = await translateWordEn(cleanWord);
+
   }
 }
  else {
@@ -605,7 +606,8 @@ if (isEnglishMode) {
           // 3. 最后才调用AI翻译
           if (!rawMeaning) {
             console.log('第三层（中文）：调用AI翻译');
-            rawMeaning = await translateWord(root);
+            rawMeaning = await translateWord(cleanWord);
+
           }
         }
 
