@@ -127,18 +127,17 @@ function shortenTranslation(text: string, mode: 'zh' | 'en' = 'zh'): string {
 
 // Process text into structured segments with lemmas
 // Handles EPUB heading markers like [H2]Chapter 1[/H2]
-function processTextToSegments(text: string | undefined | null): ProcessedContent {
+async function processTextToSegmentsAsync(text: string | undefined | null): Promise<ProcessedContent> {
   if (!text) return [];
   
-  // Split by double newlines to get raw paragraphs
   const rawParagraphs = text.split(/\n\n+/).filter(p => p.trim());
   const result: ProcessedParagraph[] = [];
+  const CHUNK_SIZE = 100;
   
-  for (const rawParagraph of rawParagraphs) {
-    const trimmed = rawParagraph.trim();
+  for (let i = 0; i < rawParagraphs.length; i++) {
+    const trimmed = rawParagraphs[i].trim();
     if (!trimmed) continue;
     
-    // Check if this is a heading marker [H1]...[/H1] to [H6]...[/H6]
     const headingMatch = trimmed.match(/^\[H(\d)\]([\s\S]*?)\[\/H\d\]$/);
     
     if (headingMatch) {
@@ -146,7 +145,6 @@ function processTextToSegments(text: string | undefined | null): ProcessedConten
       const headingText = headingMatch[2].trim();
       
       if (headingText) {
-        // Process heading text with tokenization (so words in headings can be clicked)
         const segments: ProcessedSegment[] = [];
         const regex = /([a-zA-Z]+|[^a-zA-Z\s]+|\s+)/g;
         let segMatch;
@@ -165,7 +163,6 @@ function processTextToSegments(text: string | undefined | null): ProcessedConten
         result.push({ segments, headingLevel: level });
       }
     } else {
-      // Regular paragraph
       const segments: ProcessedSegment[] = [];
       const regex = /([a-zA-Z]+|[^a-zA-Z\s]+|\s+)/g;
       let segMatch;
@@ -183,10 +180,15 @@ function processTextToSegments(text: string | undefined | null): ProcessedConten
       
       result.push({ segments });
     }
+    
+    if (i > 0 && i % CHUNK_SIZE === 0) {
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
   }
   
   return result;
 }
+
 
 export default function Home() {
   const {
@@ -398,8 +400,7 @@ forceReloadDictionary().then((status) => {
         
         const savedScrollPercent = currentBook.lastScrollPosition || 0;
         
-        setTimeout(() => {
-          const processed = processTextToSegments(currentBook.content);
+        processTextToSegmentsAsync(currentBook.content).then((processed) => {
           setProcessedContent(processed);
           setLoading(false);
           
@@ -413,7 +414,8 @@ forceReloadDictionary().then((status) => {
               });
             });
           }
-        }, 50);
+        });
+
         
         setSidebarOpen(false);
       }
