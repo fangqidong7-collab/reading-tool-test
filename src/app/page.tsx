@@ -11,11 +11,12 @@ import { ExportImportModal } from "@/components/ExportImportModal";
 import JSLibLoader from "@/components/JSLibLoader";
 import { useBookshelf, ProcessedContent, ProcessedSegment, ProcessedParagraph } from "@/hooks/useBookshelf";
 import { useReadingSettings } from "@/hooks/useReadingSettings";
-import { lemmatize, getWordMeaning, getWordMeaningEn, findWordFamily, loadBuiltinDictionary } from "@/lib/dictionary";
+import { lemmatize, getWordMeaning, getWordMeaningEn, findWordFamily, loadBuiltinDictionary, loadBuiltinDictionaryEn } from "@/lib/dictionary";
 //import { translateWord, translateWordEn } from "@/lib/translate";
 //import { forceReloadDictionary, lookupExternalDict, lookupExternalDictEn, loadExternalDictionaryEn, type DictLoadStatus } from "@/lib/dictLoader";
 import { translateWord, translateWordEn } from "@/lib/translate";
-import { forceReloadDictionary, lookupExternalDict, type DictLoadStatus } from "@/lib/dictLoader";
+import { forceReloadDictionary, lookupExternalDict, lookupExternalDictEn, loadExternalDictionaryEn, type DictLoadStatus } from "@/lib/dictLoader";
+
 
 /**
  * Clean translation text - remove parts of speech and extra info
@@ -333,11 +334,15 @@ export default function Home() {
   useEffect(() => {
     // 同时加载中英词典和英英词典
     loadBuiltinDictionary();
-    forceReloadDictionary().then((status) => {
-      console.log("词典加载完成:", { zh: status });
-      setDictLoadStatus(status);
+    loadBuiltinDictionaryEn();
+    
+    Promise.all([
+      forceReloadDictionary(),
+      loadExternalDictionaryEn()
+    ]).then(([zhStatus, enStatus]) => {
+      console.log("词典加载完成:", { zh: zhStatus, en: enStatus });
+      setDictLoadStatus(zhStatus);
 
-      
       // Auto-dismiss status after 3 seconds
       if (dictStatusTimeoutRef.current) {
         clearTimeout(dictStatusTimeoutRef.current);
@@ -353,6 +358,7 @@ export default function Home() {
       }
     };
   }, []);
+
 
   // Sync refs when currentBook changes
   useEffect(() => {
@@ -579,11 +585,20 @@ if (isEnglishMode) {
   }
 
   if (!rawMeaning) {
-    console.log("第二层（英文）：调用 AI 英英释义");
-    rawMeaning = await translateWordEn(cleanWord);
+    console.log("第二层（英文）：查 dict_en.json (externalDictEn)");
+    const extEnMeaning = lookupExternalDictEn(cleanWord);
+    console.log("外部英英词典结果:", extEnMeaning);
+    if (extEnMeaning) {
+      rawMeaning = extEnMeaning;
+    }
+  }
 
+  if (!rawMeaning) {
+    console.log("第三层（英文）：调用 AI 英英释义");
+    rawMeaning = await translateWordEn(cleanWord);
   }
 }
+
  else {
           // 中文模式查词流程（原有逻辑不变）
           console.log('第一层（中文）：查 englishDictionary');
