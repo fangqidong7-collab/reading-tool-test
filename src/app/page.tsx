@@ -406,24 +406,22 @@ export default function Home() {
 
         
         const savedScrollPercent = currentBook.lastScrollPosition || 0;
+        const savedParagraphIndex = currentBook.lastParagraphIndex ?? -1;
         
         processTextToSegmentsAsync(currentBook.content).then((processed) => {
           setProcessedContent(processed);
           setLoading(false);
           
-          if (savedScrollPercent > 0) {
-            requestAnimationFrame(() => {
-              requestAnimationFrame(() => {
-                setTimeout(() => {
-                  readingAreaRef.current?.restoreScrollPosition(savedScrollPercent);
-                  console.log('恢复滚动位置:', savedScrollPercent, '%');
-                }, 200);
-              });
-            });
+          // 提取保存索引处的段落文字作为锚点
+          let savedParagraphText = "";
+          if (savedParagraphIndex >= 0 && savedParagraphIndex < processed.length) {
+            savedParagraphText = processed[savedParagraphIndex].segments.map(s => s.text).join('').substring(0, 80);
           }
+          setCurrentParagraphText(savedParagraphText);
+          
+          console.log('恢复位置数据: paragraphIndex=', savedParagraphIndex, ', scrollPercent=', savedScrollPercent, '%, text=', savedParagraphText.substring(0, 30));
         });
 
-        
         setSidebarOpen(false);
       }
       
@@ -437,6 +435,7 @@ export default function Home() {
       setSidebarOpen(false);
     }
   }, [currentBook, getSidebarState, globalVocabulary, updateBookAnnotations]);
+
 
 
   // Handle sidebar toggle with localStorage memory
@@ -463,19 +462,47 @@ export default function Home() {
 
   // Current scroll percent for bookmarks
   const [currentScrollPercent, setCurrentScrollPercent] = useState(0);
+  const [currentParagraphIndex, setCurrentParagraphIndex] = useState(-1);
+  const [currentParagraphText, setCurrentParagraphText] = useState("");  // 新增这一行
+
+
   
   // Save scroll percent to Book object when it changes
+  // 延迟保存，避免恢复跳转过程中的中间值覆盖真实位置
+  const hasInitializedRef = useRef(false);
+  const initTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    if (currentBook?.id) {
+      hasInitializedRef.current = false;
+      if (initTimerRef.current) clearTimeout(initTimerRef.current);
+      initTimerRef.current = setTimeout(() => {
+        hasInitializedRef.current = true;
+        console.log('保存保护期结束');
+      }, 3000);
+    }
+    return () => {
+      if (initTimerRef.current) clearTimeout(initTimerRef.current);
+    };
+  }, [currentBook?.id]);
+
   useEffect(() => {
     const bookId = currentBookIdRef.current;
-    if (!bookId || currentScrollPercent === 0) return;
-    
-    // Debounce save to avoid frequent updates
+    if (!bookId) return;
+    if (!hasInitializedRef.current) return;
+    if (currentScrollPercent === 0 && currentParagraphIndex <= 0) return;
+
     const timeout = setTimeout(() => {
-      updateScrollPosition(bookId, currentScrollPercent);
+      updateScrollPosition(bookId, currentScrollPercent, currentParagraphIndex);
+      console.log('已保存: percent=', currentScrollPercent, ', idx=', currentParagraphIndex, ', text=', currentParagraphText.substring(0, 30));
     }, 1000);
-    
+
     return () => clearTimeout(timeout);
-  }, [currentScrollPercent, updateScrollPosition]);
+  }, [currentScrollPercent, currentParagraphIndex, updateScrollPosition]);
+
+
+
+
 
   // Toggle bookmark for current position
   const toggleCurrentBookmark = useCallback(() => {
@@ -505,33 +532,9 @@ export default function Home() {
     }
   }, [annotations, updateBookAnnotations]);
 
-  // Handle scroll - save position with debounce, only for user scrolls
-  useEffect(() => {
-    if (!currentBook) return;
+  // Handle scroll - 已通过 ReadingArea 的 onProgressChange 回调保存进度百分比
+  // window scroll 事件不再需要，因为 ReadingArea 使用内部容器滚动
 
-    const handleScroll = () => {
-      // Skip if this is a programmatic scroll
-      if (isProgrammaticScrollRef.current) return;
-      
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-      }
-      scrollTimeoutRef.current = setTimeout(() => {
-        const bookId = currentBookIdRef.current;
-        if (bookId) {
-          updateScrollPosition(bookId, window.scrollY);
-        }
-      }, 500);
-    };
-
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => {
-      window.removeEventListener("scroll", handleScroll);
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-      }
-    };
-  }, [currentBook, updateScrollPosition]);
 
   // Handle word click
   const handleWordClick = useCallback(
@@ -1537,37 +1540,45 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
               <div style={{ color: '#666', fontSize: '14px' }}>正在处理文本...</div>
             </div>
           )}
-          <ReadingArea
-            ref={readingAreaRef}
-            text={text}
-            processedContent={processedContent}
-            annotations={annotations}
-            onWordClick={handleWordClick}
-            getWordAnnotation={getWordAnnotation}
-            isClickable={isClickable}
-            fontSize={fontSize}
-            lineHeight={lineHeight}
-            textColor={textColor}
-            backgroundColor={backgroundColor}
-            annotationColor={annotationColor}
-            annotationFontSize={annotationFontSize}
-            highlightBg={highlightBg}
-            highlightBgHover={highlightBgHover}
-            isDarkMode={isDarkMode}
-            searchQuery={searchQuery}
-            searchResults={searchResults}
-            currentSearchIndex={currentSearchIndex}
-            bookId={currentBook?.id || ""}
-            initialScrollPercent={currentBook?.lastScrollPosition || 0}
-            onProgressChange={(percent: number) => {
-              if (scrollSaveTimerRef.current) clearTimeout(scrollSaveTimerRef.current);
-              scrollSaveTimerRef.current = setTimeout(() => {
-                if (currentBook) {
-                  updateScrollPosition(currentBook.id, percent);
-                }
-              }, 1000);
-            }}
-          />
+<ReadingArea
+  ref={readingAreaRef}
+  text={text}
+  processedContent={processedContent}
+  annotations={annotations}
+  onWordClick={handleWordClick}
+  getWordAnnotation={getWordAnnotation}
+  isClickable={isClickable}
+  fontSize={fontSize}
+  lineHeight={lineHeight}
+  textColor={textColor}
+  backgroundColor={backgroundColor}
+  annotationColor={annotationColor}
+  highlightBg={highlightBg}
+  highlightBgHover={highlightBgHover}
+  isDarkMode={isDarkMode}
+  headerVisible={true}
+  searchQuery={searchQuery}
+  searchResults={searchResults}
+  currentSearchIndex={currentSearchIndex}
+  bookId={currentBook?.id || ""}
+  onProgressChange={(percent) => {
+    setCurrentScrollPercent(percent);
+  }}
+onParagraphIndexChange={(index) => {
+  setCurrentParagraphIndex(index);
+  // 同时保存该段落的前80个字符作为锚点
+  if (processedContent && index >= 0 && index < processedContent.length) {
+    const paraText = processedContent[index].segments.map(s => s.text).join('').substring(0, 80);
+    setCurrentParagraphText(paraText);
+  }
+}}
+
+
+  initialParagraphIndex={currentBook?.lastParagraphIndex ?? -1}
+  initialParagraphText={currentParagraphText}
+  initialScrollPercent={currentBook?.lastScrollPosition || 0}
+/>
+
         </div>
 
         {/* Sidebar */}

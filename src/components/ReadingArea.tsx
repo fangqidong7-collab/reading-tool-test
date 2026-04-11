@@ -19,9 +19,13 @@ export interface ReadingAreaRef {
   jumpToParagraph: (paragraphIndex: number) => void;
   jumpToSearchResult: (result: { paragraphIndex: number; charIndex: number }) => void;
   getScrollPercent: () => number;
+  getFirstVisibleIndex: () => number;
   addBookmark: () => void;
   restoreScrollPosition: (percent: number) => void;
+  restoreByParagraphIndex: (index: number) => void;
 }
+
+
 
 // Bookmark interface
 export interface Bookmark {
@@ -234,8 +238,13 @@ interface ReadingAreaProps {
   currentSearchIndex?: number;
   bookId?: string;
   onProgressChange?: (percent: number) => void;
+  onParagraphIndexChange?: (index: number) => void;
   onAddBookmark?: () => void;
   initialScrollPercent?: number;
+  initialParagraphIndex?: number;
+  initialParagraphText?: string;  // 新增这一行
+
+
 }
 
 export const ReadingArea = forwardRef(function ReadingArea({
@@ -259,8 +268,13 @@ export const ReadingArea = forwardRef(function ReadingArea({
   currentSearchIndex = 0,
   bookId = "",
   onProgressChange,
+  onParagraphIndexChange,
   onAddBookmark,
   initialScrollPercent = 0,
+  initialParagraphIndex = -1,
+  initialParagraphText = "",  // 新增这一行
+
+
 }: ReadingAreaProps, ref: React.Ref<ReadingAreaRef>) {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -295,8 +309,26 @@ export const ReadingArea = forwardRef(function ReadingArea({
     if (!containerRef.current) return 0;
     const el = containerRef.current;
     if (el.scrollHeight <= el.clientHeight) return 100;
-    return Math.round((el.scrollTop / (el.scrollHeight - el.clientHeight)) * 100);
+    // 保留4位小数，避免长文档精度丢失
+    return parseFloat(((el.scrollTop / (el.scrollHeight - el.clientHeight)) * 100).toFixed(4));
   }, []);
+  // 获取当前第一个可见段落的索引
+const getFirstVisibleIndex = useCallback(() => {
+    if (!containerRef.current) return 0;
+    const scrollTop = containerRef.current.scrollTop;
+    const items = virtualizer.getVirtualItems();
+    if (items.length === 0) return 0;
+    
+    // 找到第一个 start 位置 >= scrollTop 的段落，才是真正可见的
+    for (const item of items) {
+      if (item.start + item.size > scrollTop) {
+        return item.index;
+      }
+    }
+    return items[0].index;
+}, [virtualizer]);
+
+
 
   // 监听滚动，更新进度
   useEffect(() => {
@@ -312,15 +344,20 @@ export const ReadingArea = forwardRef(function ReadingArea({
           if (onProgressChange) {
             onProgressChange(percent);
           }
+          if (onParagraphIndexChange) {
+            onParagraphIndexChange(getFirstVisibleIndex());
+          }
           ticking = false;
         });
         ticking = true;
       }
     };
 
+
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => el.removeEventListener('scroll', onScroll);
-  }, [getScrollPercent, onProgressChange]);
+  }, [getScrollPercent, onProgressChange, onParagraphIndexChange, getFirstVisibleIndex]);
+
 
   // 跳转到段落（滚动方式）
   const jumpToParagraph = useCallback((paragraphIndex: number) => {
@@ -370,54 +407,101 @@ export const ReadingArea = forwardRef(function ReadingArea({
   }, [bookId, getScrollPercent, onAddBookmark]);
 
   // 打开书籍时自动恢复上次滚动位置
+  // 恢复滚动位置
+  // 恢复滚动位置
   const hasRestoredRef = useRef(false);
   
   useEffect(() => {
     if (
       hasRestoredRef.current ||
-      !initialScrollPercent ||
-      initialScrollPercent <= 0 ||
       !containerRef.current ||
       !processedContent ||
       processedContent.length === 0
     ) {
       return;
     }
-    
-    let attempts = 0;
-    const maxAttempts = 10;
-    let timer: ReturnType<typeof setTimeout> | null = null;
 
-    const tryRestore = () => {
-      const el = containerRef.current;
-      if (!el) return;
-      const maxScroll = el.scrollHeight - el.clientHeight;
-      
-      if (maxScroll <= 0 && attempts < maxAttempts) {
-        attempts++;
-        timer = setTimeout(tryRestore, 200);
-        return;
+    if (initialParagraphIndex < 0 && initialScrollPercent <= 0) {
+      return;
+    }
+
+    hasRestoredRef.current = true;
+
+    const doRestore = () => {
+      // 核心策略：用保存的段落文字在 processedContent 中搜索，找到真实索引
+      let targetIndex = initialParagraphIndex;
+
+      if (initialParagraphText && processedContent) {
+        // 在 processedContent 中查找匹配的段落
+        const savedText = initialParagraphText;
+        
+        // 先在保存索引附近搜索（前后200段范围）
+        const searchRadius = 200;
+        const startSearch = Math.max(0, initialParagraphIndex - searchRadius);
+        const endSearch = Math.min(processedContent.length, initialParagraphIndex + searchRadius);
+        
+        let foundIndex = -1;
+        for (let i = startSearch; i < endSearch; i++) {
+          const paraText = processedContent[i].segments.map(s => s.text).join('').substring(0, 80);
+          if (paraText === savedText) {
+            foundIndex = i;
+            break;
+          }
+        }
+
+        // 如果附近没找到，全文搜索
+        if (foundIndex === -1) {
+          for (let i = 0; i < processedContent.length; i++) {
+            const paraText = processedContent[i].segments.map(s => s.text).join('').substring(0, 80);
+            if (paraText === savedText) {
+              foundIndex = i;
+              break;
+            }
+          }
+        }
+
+        if (foundIndex >= 0) {
+          targetIndex = foundIndex;
+          console.log('ReadingArea 文字匹配成功: 保存索引=', initialParagraphIndex, ', 实际索引=', foundIndex);
+        } else {
+          console.log('ReadingArea 文字匹配失败，使用原始索引:', initialParagraphIndex);
+        }
       }
-      
-      if (maxScroll > 0) {
-        el.scrollTop = (initialScrollPercent / 100) * maxScroll;
-        hasRestoredRef.current = true;
-        console.log('ReadingArea 恢复滚动位置:', initialScrollPercent, '%, maxScroll:', maxScroll, ', 尝试次数:', attempts + 1);
-      } else {
-        console.warn('ReadingArea 无法恢复滚动位置: maxScroll 仍为 0');
+
+      // 用 scrollToIndex 跳转到目标段落，多次修正
+      if (targetIndex >= 0) {
+        virtualizer.scrollToIndex(targetIndex, { align: 'start' });
+        console.log('ReadingArea 段落恢复 第1次:', targetIndex);
+
+        const corrections = [300, 700, 1500];
+        corrections.forEach((delay) => {
+          setTimeout(() => {
+            virtualizer.scrollToIndex(targetIndex, { align: 'start' });
+            console.log(`ReadingArea 段落修正(${delay}ms):`, targetIndex);
+          }, delay);
+        });
+      } else if (initialScrollPercent > 0) {
+        // 回退到百分比
+        const el = containerRef.current;
+        if (el) {
+          const maxScroll = el.scrollHeight - el.clientHeight;
+          if (maxScroll > 0) {
+            el.scrollTop = (initialScrollPercent / 100) * maxScroll;
+          }
+        }
       }
     };
 
-    timer = setTimeout(tryRestore, 300);
+    setTimeout(doRestore, 200);
 
-    return () => {
-      if (timer) clearTimeout(timer);
-    };
-  }, [initialScrollPercent, processedContent]);
-  
+  }, [initialParagraphIndex, initialParagraphText, initialScrollPercent, processedContent, virtualizer]);
+
   useEffect(() => {
     hasRestoredRef.current = false;
   }, [bookId]);
+
+
+
 
   // 暴露方法给父组件
   useImperativeHandle(ref, () => ({
@@ -426,6 +510,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
       jumpToParagraph(result.paragraphIndex);
     },
     getScrollPercent,
+    getFirstVisibleIndex,
     addBookmark: addBookmarkFn,
     restoreScrollPosition: (percent: number) => {
       const el = containerRef.current;
@@ -434,7 +519,11 @@ export const ReadingArea = forwardRef(function ReadingArea({
       const maxScroll = el.scrollHeight - el.clientHeight;
       el.scrollTop = maxScroll * ratio;
     },
+    restoreByParagraphIndex: (index: number) => {
+      virtualizer.scrollToIndex(index, { align: 'start' });
+    },
   }));
+
 
 
   if (processedContent && processedContent.length > 0) {

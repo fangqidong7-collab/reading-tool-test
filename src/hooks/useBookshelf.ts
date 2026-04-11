@@ -44,6 +44,7 @@ export interface Book {
   lastReadAt: number;
   isSample: boolean;
   lastScrollPosition?: number;
+    lastParagraphIndex?: number; 
   lastReadPage?: number; // Track current page for progress calculation
   processedContent?: ProcessedContent;
   tableOfContents?: TocEntry[]; // Extracted TOC from EPUB
@@ -304,15 +305,20 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
   }, []);
 
   // Update book scroll position
-  const updateScrollPosition = useCallback((id: string, position: number) => {
+  const updateScrollPosition = useCallback((id: string, position: number, paragraphIndex?: number) => {
     setBooks((prev) =>
       prev.map((b) =>
         b.id === id
-          ? { ...b, lastScrollPosition: position }
+          ? { 
+              ...b, 
+              lastScrollPosition: position,
+              ...(paragraphIndex !== undefined && paragraphIndex >= 0 ? { lastParagraphIndex: paragraphIndex } : {}),
+            }
           : b
       )
     );
   }, []);
+
 
   // Update book read page (for pagination progress tracking)
   const updateReadPage = useCallback((id: string, page: number) => {
