@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect } from "react";
 import { lemmatize, getWordMeaning, getWordMeaningEn } from "@/lib/dictionary";
-import { lookupExternalDict } from "@/lib/dictLoader";
+import { lookupExternalDict, lookupExternalDictEn } from "@/lib/dictLoader";
+
 
 
 interface WordTooltipProps {
@@ -92,14 +93,21 @@ export function WordTooltip({
   
   // 智能查词：先查内置词典，再查外部词典，最后精简
 const internalZhEntry = annotation || getWordMeaning(root);
-const externalZhRaw = !annotation ? lookupExternalDict(word) : null;
+const externalZhRaw = !annotation
+  ? (lookupExternalDict(root) || lookupExternalDict(word))
+  : null;
+
+const externalEnRaw = !annotation
+  ? (lookupExternalDictEn(root) || lookupExternalDictEn(word))
+  : null;
 
 const displayMeaning =
   dictMode === "en"
-    ? (annotation?.meaning || getWordMeaningEn(root) || null)
+    ? (annotation?.meaning || getWordMeaningEn(root) || externalEnRaw || null)
     : (internalZhEntry
         ? shortenTranslation(internalZhEntry.meaning)
         : (externalZhRaw ? shortenTranslation(externalZhRaw) : null));
+
 
 const displayEntry = displayMeaning
   ? {

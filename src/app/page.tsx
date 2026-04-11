@@ -557,9 +557,19 @@ export default function Home() {
       const cleanWord = word.toLowerCase().trim();
       const root = lemmatize(cleanWord);
 
-      if (annotations[root]) {
-        return;
-      }
+const existing = annotations[root];
+const existingMatchesMode =
+  existing &&
+  (
+    dictMode === "en"
+      ? !/[\u4e00-\u9fff]/.test(existing.meaning)
+      : /[\u4e00-\u9fff]/.test(existing.meaning)
+  );
+
+if (existingMatchesMode) {
+  return;
+}
+
 
 //      setLoading(true);
       setSelectedWord(null);
@@ -586,7 +596,8 @@ if (isEnglishMode) {
 
   if (!rawMeaning) {
     console.log("第二层（英文）：查 dict_en.json (externalDictEn)");
-    const extEnMeaning = lookupExternalDictEn(cleanWord);
+  const extEnMeaning = lookupExternalDictEn(root) || lookupExternalDictEn(cleanWord);
+
     console.log("外部英英词典结果:", extEnMeaning);
     if (extEnMeaning) {
       rawMeaning = extEnMeaning;
@@ -595,7 +606,8 @@ if (isEnglishMode) {
 
   if (!rawMeaning) {
     console.log("第三层（英文）：调用 AI 英英释义");
-    rawMeaning = await translateWordEn(cleanWord);
+rawMeaning = await translateWordEn(root || cleanWord);
+
   }
 }
 
