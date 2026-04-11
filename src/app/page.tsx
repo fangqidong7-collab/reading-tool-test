@@ -11,7 +11,7 @@ import { ExportImportModal } from "@/components/ExportImportModal";
 import JSLibLoader from "@/components/JSLibLoader";
 import { useBookshelf, ProcessedContent, ProcessedSegment, ProcessedParagraph } from "@/hooks/useBookshelf";
 import { useReadingSettings } from "@/hooks/useReadingSettings";
-import { lemmatize, getWordMeaning, getWordMeaningEn, findWordFamily } from "@/lib/dictionary";
+import { lemmatize, getWordMeaning, getWordMeaningEn, findWordFamily, loadBuiltinDictionary } from "@/lib/dictionary";
 //import { translateWord, translateWordEn } from "@/lib/translate";
 //import { forceReloadDictionary, lookupExternalDict, lookupExternalDictEn, loadExternalDictionaryEn, type DictLoadStatus } from "@/lib/dictLoader";
 import { translateWord, translateWordEn } from "@/lib/translate";
@@ -332,9 +332,10 @@ export default function Home() {
   // Load external dictionary on mount (force reload to get latest dict.json and dict_en.json)
   useEffect(() => {
     // 同时加载中英词典和英英词典
-forceReloadDictionary().then((status) => {
-  console.log("词典加载完成:", { zh: status });
-  setDictLoadStatus(status);
+    loadBuiltinDictionary();
+    forceReloadDictionary().then((status) => {
+      console.log("词典加载完成:", { zh: status });
+      setDictLoadStatus(status);
 
       
       // Auto-dismiss status after 3 seconds
