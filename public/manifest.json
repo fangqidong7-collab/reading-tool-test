@@ -1,6 +1,6 @@
 {
-  "name": "英语阅读助手",
-  "short_name": "阅读助手",
+  "name": "Q Reading",
+  "short_name": "Q Reading",
   "description": "英语阅读标注工具",
   "start_url": "/",
   "display": "standalone",
