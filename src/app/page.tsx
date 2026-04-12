@@ -384,27 +384,7 @@ export default function Home() {
         
         setLoading(true);
 
-        // 把全局词汇表的词合并到当前书的标注中
-        const mergedAnnotations = { ...currentBook.annotations };
-        let hasNewWords = false;
-        for (const [root, vocab] of Object.entries(globalVocabulary)) {
-          if (!mergedAnnotations[root]) {
-            const family = findWordFamily(root, currentBook.content);
-            if (family.length > 0) {
-              mergedAnnotations[root] = {
-                root: vocab.root,
-                meaning: vocab.meaning,
-                pos: vocab.pos,
-                count: family.length,
-              };
-              hasNewWords = true;
-            }
-          }
-        }
-        if (hasNewWords) {
-          setAnnotations(mergedAnnotations);
-          updateBookAnnotations(currentBook.id, mergedAnnotations);
-        }
+        // 全局词汇不再在此处合并到书本标注，改为渲染时实时查询
 
         console.log('打开书籍 lastScrollPosition:', currentBook.lastScrollPosition);
 
@@ -1120,6 +1100,18 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
 
 
   // Reading view
+  // 全局词汇作为底层，书本标注覆盖在上面
+  const mergedAnnotationsForRender = React.useMemo(() => {
+    const merged: Record<string, { root: string; meaning: string; pos: string; count: number }> = {};
+    for (const [root, vocab] of Object.entries(globalVocabulary)) {
+      merged[root] = { root: vocab.root, meaning: vocab.meaning, pos: vocab.pos, count: 0 };
+    }
+    for (const [root, ann] of Object.entries(annotations)) {
+      merged[root] = ann; // 书本标注优先
+    }
+    return merged;
+  }, [annotations, globalVocabulary]);
+
   return (
     <div className="app-container" style={{ backgroundColor }}>
       {/* Settings Panel */}
@@ -1718,7 +1710,7 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
   ref={readingAreaRef}
   text={text}
   processedContent={processedContent}
-  annotations={annotations}
+  annotations={mergedAnnotationsForRender}
   onWordClick={handleWordClick}
   onWordDoubleClick={handleWordDoubleClick}
   getWordAnnotation={getWordAnnotation}
@@ -1771,7 +1763,7 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
 
         {/* Sidebar */}
         <VocabularySidebar
-          annotations={annotations}
+          annotations={mergedAnnotationsForRender}
           isOpen={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
           onClearAll={clearAllAnnotations}
