@@ -554,62 +554,6 @@ export default function Home() {
     []
   );
 
-  // Handle word double click - auto annotate without popup
-  const handleWordDoubleClick = useCallback(
-    async (word: string, lemma: string, event: React.MouseEvent) => {
-      const cleanWord = word.toLowerCase().trim();
-      if (!cleanWord) return;
-
-      const root = lemmatize(cleanWord);
-
-      // Skip if already annotated with same mode
-      const existing = annotations[root];
-      const existingMatchesMode =
-        existing &&
-        (
-          dictMode === "en"
-            ? !/[\u4e00-\u9fff]/.test(existing.meaning)
-            : /[\u4e00-\u9fff]/.test(existing.meaning)
-        );
-
-      if (existingMatchesMode) {
-        return;
-      }
-
-      // Auto-annotate
-      const isEnglishMode = dictMode === 'en';
-
-      // 1. 先查内置词典
-      let meaning = isEnglishMode
-        ? getWordMeaningEn(cleanWord)
-        : getWordMeaning(cleanWord);
-
-      // 2. 内置词典没有，再查外部词典
-      if (!meaning) {
-        meaning = isEnglishMode
-          ? lookupExternalDictEn(cleanWord)
-          : lookupExternalDict(cleanWord);
-      }
-
-      // 3. 外部词典也没有，调用AI翻译
-      if (!meaning) {
-        meaning = isEnglishMode
-          ? await translateWordEn(cleanWord)
-          : await translateWord(cleanWord);
-      }
-
-      if (meaning) {
-        // 精简释义
-        const shortMeaning = shortenTranslation(meaning, isEnglishMode ? 'en' : 'zh');
-        updateBookAnnotations(currentBook!.id, {
-          ...annotations,
-          [root]: { root, meaning: shortMeaning, pos: "", count: 1 },
-        });
-      }
-    },
-    [annotations, currentBook, dictMode, updateBookAnnotations]
-  );
-
   // Annotate all occurrences of a word
   const annotateAll = useCallback(
     async (word: string) => {
@@ -1602,7 +1546,6 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
   processedContent={processedContent}
   annotations={annotations}
   onWordClick={handleWordClick}
-  onWordDoubleClick={handleWordDoubleClick}
   getWordAnnotation={getWordAnnotation}
   isClickable={isClickable}
   fontSize={fontSize}
