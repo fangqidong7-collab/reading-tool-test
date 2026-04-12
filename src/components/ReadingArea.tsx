@@ -303,6 +303,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
   const [readProgress, setReadProgress] = useState(0);
   const [containerHeight, setContainerHeight] = useState(600);
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const lastSwipeTimeRef = useRef(0);
 
   const virtualizer = useVirtualizer({
     count: processedContent ? processedContent.length : 0,
@@ -403,7 +404,7 @@ const getFirstVisibleIndex = useCallback(() => {
     return () => el.removeEventListener('scroll', onScroll);
   }, [getScrollPercent, onProgressChange, onParagraphIndexChange, getFirstVisibleIndex]);
 
-  // 左右滑动翻页
+  // 手势翻页
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -411,46 +412,56 @@ const getFirstVisibleIndex = useCallback(() => {
     let startX = 0;
     let startY = 0;
     let startTime = 0;
-    let isTracking = false;
+    let direction: 'none' | 'horizontal' | 'vertical' = 'none';
 
     const handleTouchStart = (e: TouchEvent) => {
       const touch = e.touches[0];
       startX = touch.clientX;
       startY = touch.clientY;
       startTime = Date.now();
-      isTracking = true;
+      direction = 'none';
     };
 
     const handleTouchMove = (e: TouchEvent) => {
-      if (!isTracking) return;
+      if (direction === 'vertical') return; // 已判定为垂直滚动，不干预
+
       const touch = e.touches[0];
       const deltaX = touch.clientX - startX;
       const deltaY = touch.clientY - startY;
 
-      // 如果水平滑动距离明显大于垂直，阻止默认的上下滚动
-      if (Math.abs(deltaX) > 30 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
+      // 首次判定方向（移动超过 10px 时）
+      if (direction === 'none' && (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10)) {
+        if (Math.abs(deltaX) > Math.abs(deltaY)) {
+          direction = 'horizontal';
+        } else {
+          direction = 'vertical';
+          return;
+        }
+      }
+
+      // 水平滑动时阻止默认滚动
+      if (direction === 'horizontal') {
         e.preventDefault();
       }
     };
 
     const handleTouchEnd = (e: TouchEvent) => {
-      if (!isTracking) return;
-      isTracking = false;
+      if (direction !== 'horizontal') return; // 只处理水平滑动
 
       const touch = e.changedTouches[0];
       const deltaX = touch.clientX - startX;
-      const deltaY = touch.clientY - startY;
       const deltaTime = Date.now() - startTime;
 
-      // 条件：水平距离 > 70px，水平 > 垂直，时间 < 1000ms
-      if (Math.abs(deltaX) > 70 && Math.abs(deltaX) > Math.abs(deltaY) && deltaTime < 1000) {
+      // 水平滑动 > 50px 且时间 < 800ms
+      if (Math.abs(deltaX) > 50 && deltaTime < 800) {
         if (deltaX < 0) {
-          // 从右往左滑 → 下一页
+          // 左滑 → 下一页
           el.scrollBy({ top: containerHeight * 0.85, behavior: "smooth" });
         } else {
-          // 从左往右滑 → 上一页
+          // 右滑 → 上一页
           el.scrollBy({ top: -(containerHeight * 0.85), behavior: "smooth" });
         }
+        lastSwipeTimeRef.current = Date.now();
       }
     };
 
@@ -651,6 +662,8 @@ const getFirstVisibleIndex = useCallback(() => {
           ref={containerRef}
           className="reading-container"
           onClick={(e) => {
+            // 防止滑动翻页后 click 又翻一页
+            if (Date.now() - lastSwipeTimeRef.current < 400) return;
             // 只在点击空白区域时翻页，点击单词/标注不触发
             const target = e.target as HTMLElement;
             if (
