@@ -43,6 +43,7 @@ interface ParagraphProps {
   paragraph: ProcessedContent[number];
   pIndex: number;
   onWordClick: (word: string, lemma: string, event: React.MouseEvent) => void;
+  onWordDoubleClick?: (word: string, lemma: string, event: React.MouseEvent) => void;
   annotations?: Annotations;
   annotationColor?: string;
   searchQuery?: string;
@@ -55,6 +56,7 @@ const Paragraph = React.memo(({
   paragraph,
   pIndex,
   onWordClick,
+  onWordDoubleClick,
   annotations,
   annotationColor = "#E74C3C",
   searchQuery = "",
@@ -70,6 +72,17 @@ const Paragraph = React.memo(({
       onWordClick(word, lemma, e);
     }
   }, [onWordClick]);
+
+  const handleDoubleClick = useCallback((e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.classList.contains('word')) {
+      const word = target.dataset.word || '';
+      const lemma = target.dataset.lemma || '';
+      if (onWordDoubleClick) {
+        onWordDoubleClick(word, lemma, e);
+      }
+    }
+  }, [onWordDoubleClick]);
 
   // Check if this is a heading paragraph
   const isHeading = paragraph.headingLevel !== undefined;
@@ -125,6 +138,7 @@ const Paragraph = React.memo(({
       data-paragraph-index={pIndex}
       data-heading-level={isHeading ? headingLevel : undefined}
       onClick={handleClick}
+      onDoubleClick={handleDoubleClick}
       style={isCurrentSearchResult ? { backgroundColor: highlightBg } : (isHeading ? getHeadingStyles() : undefined)}
     >
       {paragraph.segments.map((segment, sIndex) => {
@@ -239,6 +253,7 @@ interface ReadingAreaProps {
   bookId?: string;
   onProgressChange?: (percent: number) => void;
   onParagraphIndexChange?: (index: number) => void;
+  onWordDoubleClick?: (word: string, lemma: string, event: React.MouseEvent) => void;
   onAddBookmark?: () => void;
   initialScrollPercent?: number;
   initialParagraphIndex?: number;
@@ -269,6 +284,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
   bookId = "",
   onProgressChange,
   onParagraphIndexChange,
+  onWordDoubleClick,
   onAddBookmark,
   initialScrollPercent = 0,
   initialParagraphIndex = -1,
@@ -586,6 +602,7 @@ const getFirstVisibleIndex = useCallback(() => {
                     paragraph={paragraph}
                     pIndex={pIndex}
                     onWordClick={onWordClick}
+                    onWordDoubleClick={onWordDoubleClick}
                     annotations={annotations}
                     annotationColor={annotationColor}
                     searchQuery={searchQuery}
@@ -603,20 +620,53 @@ const getFirstVisibleIndex = useCallback(() => {
 
         </div>
 
-        {/* 滚动进度指示器 */}
+        {/* 翻页按钮 */}
         <div style={{
-          position: "fixed",
-          bottom: 12,
-          right: 16,
-          fontSize: "12px",
-          color: isDarkMode ? "#888" : "#999",
-          background: isDarkMode ? "rgba(0,0,0,0.5)" : "rgba(255,255,255,0.85)",
-          padding: "4px 10px",
-          borderRadius: "12px",
-          zIndex: 100,
-          pointerEvents: "none",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          padding: "8px 16px",
+          borderTop: `1px solid ${isDarkMode ? "#333" : "#e8e8e8"}`,
+          backgroundColor: isDarkMode ? "#1a1a2e" : "#f8f8f8",
+          flexShrink: 0,
         }}>
-          {readProgress}%
+          <button
+            onClick={() => {
+              const el = containerRef.current;
+              if (el) el.scrollBy({ top: -(containerHeight * 0.85), behavior: "smooth" });
+            }}
+            style={{
+              padding: "10px 24px",
+              border: `1px solid ${isDarkMode ? "#444" : "#ddd"}`,
+              borderRadius: "6px",
+              backgroundColor: isDarkMode ? "#2a2a3e" : "#fff",
+              color: isDarkMode ? "#ccc" : "#333",
+              fontSize: "14px",
+              cursor: "pointer",
+            }}
+          >
+            上一页
+          </button>
+          <span style={{ fontSize: "13px", color: isDarkMode ? "#888" : "#999" }}>
+            {readProgress}%
+          </span>
+          <button
+            onClick={() => {
+              const el = containerRef.current;
+              if (el) el.scrollBy({ top: containerHeight * 0.85, behavior: "smooth" });
+            }}
+            style={{
+              padding: "10px 24px",
+              border: `1px solid ${isDarkMode ? "#444" : "#ddd"}`,
+              borderRadius: "6px",
+              backgroundColor: isDarkMode ? "#2a2a3e" : "#fff",
+              color: isDarkMode ? "#ccc" : "#333",
+              fontSize: "14px",
+              cursor: "pointer",
+            }}
+          >
+            下一页
+          </button>
         </div>
 
         <style jsx>{`
