@@ -553,7 +553,7 @@ const getFirstVisibleIndex = useCallback(() => {
         className="reading-wrapper" 
         style={{ 
           backgroundColor,
-          height: "100%",
+          height: "100vh",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
@@ -673,7 +673,7 @@ const getFirstVisibleIndex = useCallback(() => {
 
         <style jsx>{`
           .reading-wrapper {
-            min-height: 100vh;
+            height: 100vh;
             position: relative;
           }
 
@@ -711,7 +711,6 @@ const getFirstVisibleIndex = useCallback(() => {
 
           @media (max-width: 768px) {
             .reading-wrapper {
-              min-height: 100dvh !important;
               height: 100dvh !important;
             }
           }
