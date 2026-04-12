@@ -408,25 +408,42 @@ const getFirstVisibleIndex = useCallback(() => {
     const el = containerRef.current;
     if (!el) return;
 
+    let startX = 0;
+    let startY = 0;
+    let startTime = 0;
+    let isTracking = false;
+
     const handleTouchStart = (e: TouchEvent) => {
       const touch = e.touches[0];
-      touchStartRef.current = {
-        x: touch.clientX,
-        y: touch.clientY,
-        time: Date.now(),
-      };
+      startX = touch.clientX;
+      startY = touch.clientY;
+      startTime = Date.now();
+      isTracking = true;
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!isTracking) return;
+      const touch = e.touches[0];
+      const deltaX = touch.clientX - startX;
+      const deltaY = touch.clientY - startY;
+
+      // 如果水平滑动距离明显大于垂直，阻止默认的上下滚动
+      if (Math.abs(deltaX) > 30 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
+        e.preventDefault();
+      }
     };
 
     const handleTouchEnd = (e: TouchEvent) => {
-      if (!touchStartRef.current) return;
-      const touch = e.changedTouches[0];
-      const deltaX = touch.clientX - touchStartRef.current.x;
-      const deltaY = touch.clientY - touchStartRef.current.y;
-      const deltaTime = Date.now() - touchStartRef.current.time;
-      touchStartRef.current = null;
+      if (!isTracking) return;
+      isTracking = false;
 
-      // 条件：水平滑动距离 > 50px，水平距离 > 垂直距离的1.5倍（防止和上下滚动冲突），时间 < 500ms
-      if (Math.abs(deltaX) > 50 && Math.abs(deltaX) > Math.abs(deltaY) * 1.5 && deltaTime < 500) {
+      const touch = e.changedTouches[0];
+      const deltaX = touch.clientX - startX;
+      const deltaY = touch.clientY - startY;
+      const deltaTime = Date.now() - startTime;
+
+      // 条件：水平距离 > 70px，水平 > 垂直，时间 < 1000ms
+      if (Math.abs(deltaX) > 70 && Math.abs(deltaX) > Math.abs(deltaY) && deltaTime < 1000) {
         if (deltaX < 0) {
           // 从右往左滑 → 下一页
           el.scrollBy({ top: containerHeight * 0.85, behavior: "smooth" });
@@ -438,9 +455,11 @@ const getFirstVisibleIndex = useCallback(() => {
     };
 
     el.addEventListener('touchstart', handleTouchStart, { passive: true });
+    el.addEventListener('touchmove', handleTouchMove, { passive: false });
     el.addEventListener('touchend', handleTouchEnd, { passive: true });
     return () => {
       el.removeEventListener('touchstart', handleTouchStart);
+      el.removeEventListener('touchmove', handleTouchMove);
       el.removeEventListener('touchend', handleTouchEnd);
     };
   }, [containerHeight]);
