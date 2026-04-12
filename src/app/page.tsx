@@ -261,6 +261,7 @@ export default function Home() {
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const readingAreaRef = useRef<ReadingAreaRef | null>(null);
+  const tocListRef = useRef<HTMLDivElement>(null);
   const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   // Search state
@@ -1179,7 +1180,7 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
         <div className="left-drawer-content">
           {/* TOC Tab */}
           {leftDrawerTab === 'toc' && (
-            <div className="toc-list">
+            <div className="toc-list" ref={tocListRef}>
               {currentBook?.tableOfContents && currentBook.tableOfContents.length > 0 ? (
                 <>
                   {/* 排序按钮 */}
@@ -1234,6 +1235,32 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
                       </button>
                     );
                   })}
+
+                  {/* 到底部按钮 */}
+                  {currentBook?.tableOfContents && currentBook.tableOfContents.length > 10 && (
+                    <button
+                      className="toc-scroll-bottom-btn"
+                      onClick={() => {
+                        if (tocListRef.current) {
+                          tocListRef.current.scrollTo({
+                            top: tocListRef.current.scrollHeight,
+                            behavior: 'smooth',
+                          });
+                        }
+                      }}
+                      style={{
+                        color: isDarkMode ? "#6ba3e0" : "#4a90d9",
+                        borderColor: isDarkMode ? "#444" : "#ddd",
+                        backgroundColor: isDarkMode ? "#2a2a3e" : "#f8f9fa",
+                      }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <polyline points="7 13 12 18 17 13" />
+                        <polyline points="7 6 12 11 17 6" />
+                      </svg>
+                      到底部
+                    </button>
+                  )}
                 </>
               ) : (
                 <div className="empty-message" style={{ color: isDarkMode ? "#666" : "#999" }}>
@@ -2136,6 +2163,30 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
 
         .toc-item.toc-active {
           border-left: 3px solid #4a90d9;
+        }
+
+        .toc-scroll-bottom-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          width: calc(100% - 24px);
+          margin: 12px auto;
+          padding: 10px 0;
+          border: 1px solid;
+          border-radius: 8px;
+          font-size: 13px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: opacity 0.15s ease;
+          position: sticky;
+          bottom: 8px;
+          z-index: 10;
+          box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.06);
+        }
+
+        .toc-scroll-bottom-btn:hover {
+          opacity: 0.8;
         }
 
         .add-bookmark-btn {
