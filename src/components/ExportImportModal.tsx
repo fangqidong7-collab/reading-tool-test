@@ -54,6 +54,16 @@ export function ExportImportModal({ open, onOpenChange }: ExportImportModalProps
         } catch {}
       }
 
+      // 从 IndexedDB 读取全局词汇表
+      try {
+        const vocabStr = await idbGet("english-reader-global-vocabulary");
+        if (vocabStr) {
+          data.globalVocabulary = JSON.parse(vocabStr);
+        }
+      } catch (e) {
+        console.warn("从 IndexedDB 读取全局词汇表失败:", e);
+      }
+
       // 添加导出时间戳
       data.exportedAt = new Date().toISOString();
       data.version = 1;
@@ -76,8 +86,9 @@ export function ExportImportModal({ open, onOpenChange }: ExportImportModalProps
       URL.revokeObjectURL(url);
 
       const bookCount = Array.isArray(data.books) ? data.books.length : 0;
+      const vocabCount = data.globalVocabulary ? Object.keys(data.globalVocabulary).length : 0;
       setStatus("success");
-      setMessage(`导出成功！文件已下载（共 ${bookCount} 本书）`);
+      setMessage(`导出成功！文件已下载（共 ${bookCount} 本书，${vocabCount} 个词汇）`);
     } catch (err) {
       setStatus("error");
       setMessage("导出失败: " + (err instanceof Error ? err.message : "未知错误"));
@@ -109,7 +120,8 @@ export function ExportImportModal({ open, onOpenChange }: ExportImportModalProps
       const bookCount = data.books.length;
 
       // 确认导入
-      if (!window.confirm(`导入将覆盖当前设备上的所有数据，确定要继续吗？\n\n文件包含 ${bookCount} 本书。`)) {
+      const vocabCount = data.globalVocabulary ? Object.keys(data.globalVocabulary).length : 0;
+      if (!window.confirm(`导入将覆盖当前设备上的所有数据，确定要继续吗？\n\n文件包含 ${bookCount} 本书，${vocabCount} 个词汇。`)) {
         setStatus("idle");
         setMessage("");
         return;
@@ -120,6 +132,11 @@ export function ExportImportModal({ open, onOpenChange }: ExportImportModalProps
       // 写入 IndexedDB
       if (data.books) {
         await idbSet("english-reader-books", JSON.stringify(data.books));
+      }
+
+      // 写入全局词汇表到 IndexedDB
+      if (data.globalVocabulary) {
+        await idbSet("english-reader-global-vocabulary", JSON.stringify(data.globalVocabulary));
       }
 
       // 写入 localStorage
