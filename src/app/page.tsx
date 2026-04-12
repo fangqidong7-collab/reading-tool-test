@@ -261,7 +261,7 @@ export default function Home() {
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const readingAreaRef = useRef<ReadingAreaRef | null>(null);
-  const tocListRef = useRef<HTMLDivElement>(null);
+  const tocScrollContainerRef = useRef<HTMLDivElement>(null);
   const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   // Search state
@@ -1179,10 +1179,10 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
           </button>
         </div>
         
-        <div className="left-drawer-content">
+        <div className="left-drawer-content" ref={tocScrollContainerRef}>
           {/* TOC Tab */}
           {leftDrawerTab === 'toc' && (
-            <div className="toc-list" ref={tocListRef}>
+            <div className="toc-list">
               {currentBook?.tableOfContents && currentBook.tableOfContents.length > 0 ? (
                 <>
                   {/* 排序按钮 */}
@@ -1243,9 +1243,10 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
                     <button
                       className="toc-scroll-bottom-btn"
                       onClick={() => {
-                        if (tocListRef.current) {
-                          tocListRef.current.scrollTo({
-                            top: tocListRef.current.scrollHeight,
+                        const container = tocScrollContainerRef.current;
+                        if (container) {
+                          container.scrollTo({
+                            top: container.scrollHeight,
                             behavior: 'smooth',
                           });
                         }
