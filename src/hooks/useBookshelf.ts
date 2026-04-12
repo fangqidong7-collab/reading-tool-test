@@ -388,6 +388,20 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
     setGlobalVocabulary({});
   }, []);
 
+  // 合并导入的词汇到全局词汇表（重复替换，不重复追加，不覆盖原有）
+  const mergeGlobalVocabulary = useCallback(
+    (incoming: Record<string, { root: string; meaning: string; pos: string }>) => {
+      setGlobalVocabulary((prev) => {
+        const merged = { ...prev };
+        for (const [key, value] of Object.entries(incoming)) {
+          merged[key] = value;
+        }
+        return merged;
+      });
+    },
+    []
+  );
+
 
   // Open a book for reading
   const openBook = useCallback((id: string) => {
@@ -439,6 +453,7 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
     addToGlobalVocabulary,
     removeFromGlobalVocabulary,
     clearGlobalVocabulary,
+    mergeGlobalVocabulary,
   };
 
 }

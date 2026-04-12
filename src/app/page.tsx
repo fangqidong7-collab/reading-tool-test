@@ -211,6 +211,7 @@ export default function Home() {
     addToGlobalVocabulary,
     removeFromGlobalVocabulary,
     clearGlobalVocabulary,
+    mergeGlobalVocabulary,
   } = useBookshelf();
 
 
@@ -978,6 +979,9 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
             <ExportImportModal
               open={dataManageOpen}
               onOpenChange={setDataManageOpen}
+              globalVocabulary={globalVocabulary}
+              onMergeGlobalVocabulary={mergeGlobalVocabulary}
+              books={books}
             />
           </>
         ) : (
