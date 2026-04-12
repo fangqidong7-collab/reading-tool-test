@@ -1522,14 +1522,6 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
               )}
             </div>
           )}
-
-          <div className="header-stats" style={{ color: isDarkMode ? "#999" : "#666" }}>
-            <span className="stat">
-              词汇: <strong style={{ color: isDarkMode ? "#6ba3e0" : "#4a90d9" }}>
-                {Object.keys(annotations).length}
-              </strong>
-            </span>
-          </div>
           <button
             className={`sidebar-toggle nav-btn-vocab ${isDarkMode ? "dark" : ""}`}
             onClick={handleSidebarToggle}
