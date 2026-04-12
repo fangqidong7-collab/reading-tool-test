@@ -256,6 +256,7 @@ export default function Home() {
   const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
   const [leftDrawerOpen, setLeftDrawerOpen] = useState(false);
   const [leftDrawerTab, setLeftDrawerTab] = useState<'toc' | 'bookmarks'>('toc');
+  const [tocReversed, setTocReversed] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const readingAreaRef = useRef<ReadingAreaRef | null>(null);
@@ -453,6 +454,13 @@ export default function Home() {
   const handleTocClick = useCallback(() => {
     setLeftDrawerTab('toc');
     setLeftDrawerOpen(true);
+    // 打开后自动滚动到当前章节
+    setTimeout(() => {
+      const activeItem = document.querySelector('.toc-item.toc-active');
+      if (activeItem) {
+        activeItem.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+    }, 100);
   }, []);
 
   // Handle bookmark button click
@@ -1169,22 +1177,60 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
           {leftDrawerTab === 'toc' && (
             <div className="toc-list">
               {currentBook?.tableOfContents && currentBook.tableOfContents.length > 0 ? (
-                currentBook.tableOfContents.map((entry, index) => (
-                  <button
-                    key={index}
-                    className="toc-item"
-                    onClick={() => {
-                      if (entry.paragraphIndex !== undefined) {
-                        goToParagraph(entry.paragraphIndex);
-                      } else {
-                        readingAreaRef.current?.restoreScrollPosition(entry.page);
-                      }
-                    }}
-                    style={{ color: isDarkMode ? "#ccc" : "#333" }}
-                  >
-                    {entry.title}
-                  </button>
-                ))
+                <>
+                  {/* 排序按钮 */}
+                  <div style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    padding: "8px 12px",
+                    borderBottom: `1px solid ${isDarkMode ? "#333" : "#eee"}`,
+                  }}>
+                    <button
+                      onClick={() => setTocReversed(!tocReversed)}
+                      style={{
+                        background: "none",
+                        border: `1px solid ${isDarkMode ? "#555" : "#ddd"}`,
+                        borderRadius: "4px",
+                        padding: "4px 10px",
+                        fontSize: "12px",
+                        color: isDarkMode ? "#aaa" : "#666",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {tocReversed ? "倒序 ↑" : "正序 ↓"}
+                    </button>
+                  </div>
+                  {/* 目录列表 */}
+                  {(tocReversed ? [...currentBook.tableOfContents].reverse() : currentBook.tableOfContents).map((entry, index) => {
+                    // 判断是否是当前章节
+                    const originalIndex = tocReversed ? currentBook.tableOfContents!.length - 1 - index : index;
+                    const nextEntry = currentBook.tableOfContents![originalIndex + 1];
+                    const isActive = entry.paragraphIndex !== undefined &&
+                      entry.paragraphIndex <= currentParagraphIndex &&
+                      (nextEntry === undefined || nextEntry.paragraphIndex === undefined || nextEntry.paragraphIndex > currentParagraphIndex);
+
+                    return (
+                      <button
+                        key={originalIndex}
+                        className={`toc-item ${isActive ? 'toc-active' : ''}`}
+                        onClick={() => {
+                          if (entry.paragraphIndex !== undefined) {
+                            goToParagraph(entry.paragraphIndex);
+                          } else {
+                            readingAreaRef.current?.restoreScrollPosition(entry.page);
+                          }
+                        }}
+                        style={{
+                          color: isActive ? (isDarkMode ? "#6ba3e0" : "#4a90d9") : (isDarkMode ? "#ccc" : "#333"),
+                          fontWeight: isActive ? 600 : 400,
+                          backgroundColor: isActive ? (isDarkMode ? "rgba(74,144,217,0.1)" : "rgba(74,144,217,0.08)") : "transparent",
+                        }}
+                      >
+                        {entry.title}
+                      </button>
+                    );
+                  })}
+                </>
               ) : (
                 <div className="empty-message" style={{ color: isDarkMode ? "#666" : "#999" }}>
                   {currentBook?.isSample ? "示例书籍暂无目录" : "暂无目录信息"}
@@ -2082,6 +2128,10 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
 
         .toc-item:hover {
           background: rgba(0, 0, 0, 0.05);
+        }
+
+        .toc-item.toc-active {
+          border-left: 3px solid #4a90d9;
         }
 
         .add-bookmark-btn {
