@@ -259,6 +259,7 @@ export default function Home() {
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const readingAreaRef = useRef<ReadingAreaRef | null>(null);
+  const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   // Search state
   const [searchOpen, setSearchOpen] = useState(false);
@@ -543,13 +544,21 @@ export default function Home() {
       if (!cleanWord) return;
 
       const rect = (event.target as HTMLElement).getBoundingClientRect();
-      setSelectedWord({
-        word: cleanWord,
-        position: {
-          x: rect.left + rect.width / 2,
-          y: rect.top - 10,
-        },
-      });
+
+      // 延迟300ms弹窗，给双击留出时间
+      if (clickTimerRef.current) {
+        clearTimeout(clickTimerRef.current);
+      }
+      clickTimerRef.current = setTimeout(() => {
+        setSelectedWord({
+          word: cleanWord,
+          position: {
+            x: rect.left + rect.width / 2,
+            y: rect.top - 10,
+          },
+        });
+        clickTimerRef.current = null;
+      }, 300);
     },
     []
   );
@@ -557,6 +566,13 @@ export default function Home() {
   // Handle word double click - auto annotate without popup
   const handleWordDoubleClick = useCallback(
     async (word: string, lemma: string, event: React.MouseEvent) => {
+      // 取消单击弹窗
+      if (clickTimerRef.current) {
+        clearTimeout(clickTimerRef.current);
+        clickTimerRef.current = null;
+      }
+      setSelectedWord(null);
+
       const cleanWord = word.toLowerCase().trim();
       if (!cleanWord) return;
 
