@@ -315,7 +315,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
     const calcHeight = () => {
       const mobile = window.innerWidth <= MOBILE_BREAKPOINT;
       const headerH = mobile ? MOBILE_HEADER_HEIGHT : HEADER_HEIGHT;
-      const PAGER_HEIGHT = 50;
+      const PAGER_HEIGHT = 0;
       const h = mobile
         ? window.innerHeight - headerH - MOBILE_TOP_GAP - MOBILE_BOTTOM_SAFE_ZONE - PAGER_HEIGHT
         : window.innerHeight - headerH - PAGER_HEIGHT;
@@ -674,53 +674,21 @@ const getFirstVisibleIndex = useCallback(() => {
 
         </div>
 
-        {/* 翻页按钮 */}
+        {/* 左下角阅读进度 */}
         <div style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          padding: "8px 16px",
-          borderTop: `1px solid ${isDarkMode ? "#333" : "#e8e8e8"}`,
-          backgroundColor: isDarkMode ? "#1a1a2e" : "#f8f8f8",
-          flexShrink: 0,
+          position: "fixed",
+          bottom: 12,
+          left: 16,
+          backgroundColor: isDarkMode ? "rgba(30,30,46,0.85)" : "rgba(255,255,255,0.85)",
+          color: isDarkMode ? "#888" : "#999",
+          fontSize: "12px",
+          padding: "4px 8px",
+          borderRadius: "4px",
+          zIndex: 100,
+          pointerEvents: "none",
+          backdropFilter: "blur(4px)",
         }}>
-          <button
-            onClick={() => {
-              const el = containerRef.current;
-              if (el) el.scrollBy({ top: -(containerHeight * 0.85), behavior: "smooth" });
-            }}
-            style={{
-              padding: "10px 24px",
-              border: `1px solid ${isDarkMode ? "#444" : "#ddd"}`,
-              borderRadius: "6px",
-              backgroundColor: isDarkMode ? "#2a2a3e" : "#fff",
-              color: isDarkMode ? "#ccc" : "#333",
-              fontSize: "14px",
-              cursor: "pointer",
-            }}
-          >
-            上一页
-          </button>
-          <span style={{ fontSize: "13px", color: isDarkMode ? "#888" : "#999" }}>
-            {readProgress}%
-          </span>
-          <button
-            onClick={() => {
-              const el = containerRef.current;
-              if (el) el.scrollBy({ top: containerHeight * 0.85, behavior: "smooth" });
-            }}
-            style={{
-              padding: "10px 24px",
-              border: `1px solid ${isDarkMode ? "#444" : "#ddd"}`,
-              borderRadius: "6px",
-              backgroundColor: isDarkMode ? "#2a2a3e" : "#fff",
-              color: isDarkMode ? "#ccc" : "#333",
-              fontSize: "14px",
-              cursor: "pointer",
-            }}
-          >
-            下一页
-          </button>
+          {readProgress.toFixed(2)}%
         </div>
 
         <style jsx>{`

@@ -465,6 +465,7 @@ export default function Home() {
   const [currentScrollPercent, setCurrentScrollPercent] = useState(0);
   const [currentParagraphIndex, setCurrentParagraphIndex] = useState(-1);
   const [currentParagraphText, setCurrentParagraphText] = useState("");  // 新增这一行
+  const [currentChapterTitle, setCurrentChapterTitle] = useState("");
 
 
   
@@ -1328,9 +1329,18 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
             </svg>
           </button>
           
-          <h1 className="app-title" title={currentBook.title} style={{ color: headerTextColor }}>
-            {currentBook.title.length > 15 ? currentBook.title.substring(0, 15) + '...' : currentBook.title}
-          </h1>
+          <span style={{
+            flex: 1,
+            textAlign: "center",
+            fontSize: "14px",
+            fontWeight: 500,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            padding: "0 8px",
+          }}>
+            {currentChapterTitle || currentBook.title}
+          </span>
         </div>
         
         <div className="header-right">
@@ -1649,14 +1659,27 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
   onProgressChange={(percent) => {
     setCurrentScrollPercent(percent);
   }}
-onParagraphIndexChange={(index) => {
-  setCurrentParagraphIndex(index);
-  // 同时保存该段落的前80个字符作为锚点
-  if (processedContent && index >= 0 && index < processedContent.length) {
-    const paraText = processedContent[index].segments.map(s => s.text).join('').substring(0, 80);
-    setCurrentParagraphText(paraText);
-  }
-}}
+	onParagraphIndexChange={(index) => {
+	  setCurrentParagraphIndex(index);
+	  // 同时保存该段落的前80个字符作为锚点
+	  if (processedContent && index >= 0 && index < processedContent.length) {
+	    const paraText = processedContent[index].segments.map(s => s.text).join('').substring(0, 80);
+	    setCurrentParagraphText(paraText);
+	  }
+	  // 根据当前段落索引，从目录中找到当前章节
+	  if (currentBook?.tableOfContents && currentBook.tableOfContents.length > 0) {
+	    let chapterName = "";
+	    for (let i = currentBook.tableOfContents.length - 1; i >= 0; i--) {
+	      const toc = currentBook.tableOfContents[i];
+	      if (toc.paragraphIndex !== undefined && toc.paragraphIndex <= index) {
+	        chapterName = toc.title;
+	        break;
+	      }
+	    }
+	    setCurrentChapterTitle(chapterName);
+	  }
+	}}
+
 
 
   initialParagraphIndex={currentBook?.lastParagraphIndex ?? -1}
