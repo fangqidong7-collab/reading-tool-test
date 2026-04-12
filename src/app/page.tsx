@@ -1603,7 +1603,6 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
   annotations={annotations}
   onWordClick={handleWordClick}
   onWordDoubleClick={handleWordDoubleClick}
-  onWordDoubleClick={(word) => { annotateAll(word); }}
   getWordAnnotation={getWordAnnotation}
   isClickable={isClickable}
   fontSize={fontSize}
