@@ -302,6 +302,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
   
   const [readProgress, setReadProgress] = useState(0);
   const [containerHeight, setContainerHeight] = useState(600);
+  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
 
   const virtualizer = useVirtualizer({
     count: processedContent ? processedContent.length : 0,
@@ -402,6 +403,47 @@ const getFirstVisibleIndex = useCallback(() => {
     return () => el.removeEventListener('scroll', onScroll);
   }, [getScrollPercent, onProgressChange, onParagraphIndexChange, getFirstVisibleIndex]);
 
+  // 左右滑动翻页
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      const touch = e.touches[0];
+      touchStartRef.current = {
+        x: touch.clientX,
+        y: touch.clientY,
+        time: Date.now(),
+      };
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (!touchStartRef.current) return;
+      const touch = e.changedTouches[0];
+      const deltaX = touch.clientX - touchStartRef.current.x;
+      const deltaY = touch.clientY - touchStartRef.current.y;
+      const deltaTime = Date.now() - touchStartRef.current.time;
+      touchStartRef.current = null;
+
+      // 条件：水平滑动距离 > 50px，水平距离 > 垂直距离的1.5倍（防止和上下滚动冲突），时间 < 500ms
+      if (Math.abs(deltaX) > 50 && Math.abs(deltaX) > Math.abs(deltaY) * 1.5 && deltaTime < 500) {
+        if (deltaX < 0) {
+          // 从右往左滑 → 下一页
+          el.scrollBy({ top: containerHeight * 0.85, behavior: "smooth" });
+        } else {
+          // 从左往右滑 → 上一页
+          el.scrollBy({ top: -(containerHeight * 0.85), behavior: "smooth" });
+        }
+      }
+    };
+
+    el.addEventListener('touchstart', handleTouchStart, { passive: true });
+    el.addEventListener('touchend', handleTouchEnd, { passive: true });
+    return () => {
+      el.removeEventListener('touchstart', handleTouchStart);
+      el.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [containerHeight]);
 
   // 跳转到段落（滚动方式）
   const jumpToParagraph = useCallback((paragraphIndex: number) => {
