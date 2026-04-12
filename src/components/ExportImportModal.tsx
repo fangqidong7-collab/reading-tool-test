@@ -307,8 +307,37 @@ export function ExportImportModal({
   );
 
   return (
-    <div className="export-import-modal-overlay" onClick={() => onOpenChange(false)}>
-      <div className="export-import-modal" onClick={(e) => e.stopPropagation()}>
+    <div
+      style={{
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        width: "100vw",
+        height: "100vh",
+        background: "rgba(0,0,0,0.5)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 9999,
+        padding: 20,
+      }}
+      onClick={() => onOpenChange(false)}
+    >
+      <div
+        style={{
+          background: "white",
+          borderRadius: 12,
+          width: "90%",
+          maxWidth: 420,
+          maxHeight: "90vh",
+          overflow: "hidden",
+          boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
+          position: "relative",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="modal-header">
           <h2>数据管理</h2>
@@ -452,22 +481,6 @@ export function ExportImportModal({
         )}
 
         <style jsx>{`
-          .export-import-modal-overlay {
-            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-            width: 100vw; height: 100vh;
-            background: rgba(0,0,0,0.5);
-            display: flex; align-items: center; justify-content: center;
-            z-index: 1000; padding: 20px;
-          }
-          .export-import-modal {
-            background: white; border-radius: 12px;
-            width: 90%; max-width: 420px; max-height: 90vh;
-            overflow: hidden;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-            margin: auto; position: relative;
-          }
-          :global(.dark) .export-import-modal { background: #1e1e2e; color: #e0e0e0; }
-
           .modal-header {
             display: flex; align-items: center; justify-content: space-between;
             padding: 16px 20px; border-bottom: 1px solid #eee;
