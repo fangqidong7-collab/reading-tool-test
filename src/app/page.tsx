@@ -964,10 +964,10 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
   // Bookshelf view (when no book is open)
   if (!currentBook) {
     return (
-      <div className="bookshelf-page" style={{ backgroundColor }}>
-        {/* 主内容区域 */}
-        {activeTab === 'bookshelf' ? (
-          <>
+      <>
+        <div className="bookshelf-page" style={{ backgroundColor }}>
+          {/* 主内容区域 */}
+          {activeTab === 'bookshelf' ? (
             <Bookshelf
               books={books}
               getProgress={getProgress}
@@ -977,25 +977,17 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
               onOpenBook={openBook}
               onDataManageClick={() => setDataManageOpen(true)}
             />
-            <ExportImportModal
-              open={dataManageOpen}
-              onOpenChange={setDataManageOpen}
-              globalVocabulary={globalVocabulary}
-              onMergeGlobalVocabulary={mergeGlobalVocabulary}
-              books={books}
+          ) : (
+            <GlobalVocabularyPage
+              vocabulary={globalVocabulary}
+              onRemoveWord={removeFromGlobalVocabulary}
+              onClearAll={clearGlobalVocabulary}
+              backgroundColor={backgroundColor}
             />
-          </>
-        ) : (
-          <GlobalVocabularyPage
-            vocabulary={globalVocabulary}
-            onRemoveWord={removeFromGlobalVocabulary}
-            onClearAll={clearGlobalVocabulary}
-            backgroundColor={backgroundColor}
-          />
-        )}
+          )}
 
-        {/* 底部工具栏 */}
-        <div className="bottom-tab-bar">
+          {/* 底部工具栏 */}
+          <div className="bottom-tab-bar">
           <button
             className={`tab-bar-item ${activeTab === 'bookshelf' ? 'active' : ''}`}
             onClick={() => setActiveTab('bookshelf')}
@@ -1112,7 +1104,17 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
             padding: 0 5px;
           }
         `}</style>
-      </div>
+        </div>
+
+        {/* Modal 放在 bookshelf-page 外面，直接挂在 React 根节点下 */}
+        <ExportImportModal
+          open={dataManageOpen}
+          onOpenChange={setDataManageOpen}
+          globalVocabulary={globalVocabulary}
+          onMergeGlobalVocabulary={mergeGlobalVocabulary}
+          books={books}
+        />
+      </>
     );
   }
 
