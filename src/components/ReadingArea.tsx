@@ -314,16 +314,9 @@ export const ReadingArea = forwardRef(function ReadingArea({
       const h = mobile
         ? window.innerHeight - headerH - MOBILE_TOP_GAP - MOBILE_BOTTOM_SAFE_ZONE - PAGER_HEIGHT
         : window.innerHeight - headerH - PAGER_HEIGHT;
-      const PAGER_HEIGHT = 50;
-      const h = mobile
-        ? window.innerHeight - headerH - MOBILE_TOP_GAP - MOBILE_BOTTOM_SAFE_ZONE - PAGER_HEIGHT
-        : window.innerHeight - headerH - PAGER_HEIGHT;
-      const PAGER_HEIGHT = 50;
-      const h = mobile
-        ? window.innerHeight - headerH - MOBILE_TOP_GAP - MOBILE_BOTTOM_SAFE_ZONE - PAGER_HEIGHT
-        : window.innerHeight - headerH - PAGER_HEIGHT;
       setContainerHeight(Math.max(h, 200));
     };
+
     calcHeight();
     window.addEventListener('resize', calcHeight);
     return () => window.removeEventListener('resize', calcHeight);
