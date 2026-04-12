@@ -1,3 +1,8 @@
+/* 禁用安卓浏览器下拉刷新，防止阅读时误触导致页面刷新 */
+html, body {
+  overscroll-behavior-y: contain;
+}
+
 @import "tailwindcss";
 
 :root {
