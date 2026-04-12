@@ -932,6 +932,18 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
   // Load JSZip library for EPUB parsing
   <JSLibLoader />
 
+  // 全局词汇作为底层，书本标注覆盖在上面
+  const mergedAnnotationsForRender = React.useMemo(() => {
+    const merged: Record<string, { root: string; meaning: string; pos: string; count: number }> = {};
+    for (const [root, vocab] of Object.entries(globalVocabulary)) {
+      merged[root] = { root: vocab.root, meaning: vocab.meaning, pos: vocab.pos, count: 0 };
+    }
+    for (const [root, ann] of Object.entries(annotations)) {
+      merged[root] = ann; // 书本标注优先
+    }
+    return merged;
+  }, [annotations, globalVocabulary]);
+
   // Show loading while initializing
   if (!isLoaded || !settingsLoaded) {
     return (
@@ -1100,18 +1112,6 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
 
 
   // Reading view
-  // 全局词汇作为底层，书本标注覆盖在上面
-  const mergedAnnotationsForRender = React.useMemo(() => {
-    const merged: Record<string, { root: string; meaning: string; pos: string; count: number }> = {};
-    for (const [root, vocab] of Object.entries(globalVocabulary)) {
-      merged[root] = { root: vocab.root, meaning: vocab.meaning, pos: vocab.pos, count: 0 };
-    }
-    for (const [root, ann] of Object.entries(annotations)) {
-      merged[root] = ann; // 书本标注优先
-    }
-    return merged;
-  }, [annotations, globalVocabulary]);
-
   return (
     <div className="app-container" style={{ backgroundColor }}>
       {/* Settings Panel */}
