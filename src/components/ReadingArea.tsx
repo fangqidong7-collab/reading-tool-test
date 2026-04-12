@@ -74,6 +74,8 @@ const Paragraph = React.memo(({
   }, [onWordClick]);
 
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    window.getSelection()?.removeAllRanges();
     const target = e.target as HTMLElement;
     if (target.classList.contains('word')) {
       const word = target.dataset.word || '';
@@ -213,6 +215,7 @@ function paragraphPropsAreEqual(
   if (prev.isCurrentSearchResult !== next.isCurrentSearchResult) return false;
   if (prev.highlightBg !== next.highlightBg) return false;
   if (prev.isDarkMode !== next.isDarkMode) return false;
+  if (prev.onWordDoubleClick !== next.onWordDoubleClick) return false;
   
   const prevKeys = prev.annotations ? Object.keys(prev.annotations) : [];
   const nextKeys = next.annotations ? Object.keys(next.annotations) : [];

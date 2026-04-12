@@ -601,13 +601,19 @@ export default function Home() {
       if (meaning) {
         // 精简释义
         const shortMeaning = shortenTranslation(meaning, isEnglishMode ? 'en' : 'zh');
+        const newAnnotation = { root, meaning: shortMeaning, pos: "", count: 1 };
+        setAnnotations((prev) => ({
+          ...prev,
+          [root]: newAnnotation,
+        }));
         updateBookAnnotations(currentBook!.id, {
           ...annotations,
-          [root]: { root, meaning: shortMeaning, pos: "", count: 1 },
+          [root]: newAnnotation,
         });
+        addToGlobalVocabulary(root, shortMeaning, "");
       }
     },
-    [annotations, currentBook, dictMode, updateBookAnnotations]
+    [annotations, currentBook, dictMode, updateBookAnnotations, addToGlobalVocabulary]
   );
 
   // Annotate all occurrences of a word
