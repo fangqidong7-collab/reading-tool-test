@@ -322,6 +322,27 @@ export const ReadingArea = forwardRef(function ReadingArea({
     return () => window.removeEventListener('resize', calcHeight);
   }, []);
 
+  // 音量键翻页
+  useEffect(() => {
+    // 方法1：监听 keydown（部分安卓浏览器会把音量键映射为 keydown 事件）
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // AudioVolumeUp / AudioVolumeDown 是标准键名
+      // VolumeUp / VolumeDown 是某些浏览器的旧键名
+      if (e.key === 'AudioVolumeUp' || e.key === 'VolumeUp') {
+        e.preventDefault();
+        const el = containerRef.current;
+        if (el) el.scrollBy({ top: -(containerHeight * 0.85), behavior: "smooth" });
+      } else if (e.key === 'AudioVolumeDown' || e.key === 'VolumeDown') {
+        e.preventDefault();
+        const el = containerRef.current;
+        if (el) el.scrollBy({ top: containerHeight * 0.85, behavior: "smooth" });
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [containerHeight]);
+
   // 计算滚动百分比
   const getScrollPercent = useCallback(() => {
     if (!containerRef.current) return 0;
