@@ -589,6 +589,32 @@ const getFirstVisibleIndex = useCallback(() => {
         <div 
           ref={containerRef}
           className="reading-container"
+          onClick={(e) => {
+            // 只在点击空白区域时翻页，点击单词/标注不触发
+            const target = e.target as HTMLElement;
+            if (
+              target.classList.contains('word') ||
+              target.classList.contains('annotation') ||
+              target.closest('.word') ||
+              target.closest('.annotation')
+            ) {
+              return;
+            }
+            // 获取点击位置相对于容器的水平比例
+            const rect = containerRef.current?.getBoundingClientRect();
+            if (!rect) return;
+            const clickX = e.clientX - rect.left;
+            const halfWidth = rect.width / 2;
+            const el = containerRef.current;
+            if (!el) return;
+            if (clickX < halfWidth) {
+              // 左半边 → 上一页
+              el.scrollBy({ top: -(containerHeight * 0.85), behavior: "smooth" });
+            } else {
+              // 右半边 → 下一页
+              el.scrollBy({ top: containerHeight * 0.85, behavior: "smooth" });
+            }
+          }}
           style={{
             height: containerHeight,
             overflowY: "auto",
