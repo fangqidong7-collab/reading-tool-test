@@ -189,6 +189,7 @@ function paragraphPropsAreEqual(
     paragraph: ProcessedContent[number];
     pIndex: number;
     onWordClick: (word: string, lemma: string, event: React.MouseEvent) => void;
+    onWordDoubleClick?: (word: string, lemma: string, event: React.MouseEvent) => void;
     annotations?: Annotations;
     annotationColor?: string;
     searchQuery?: string;
@@ -200,6 +201,7 @@ function paragraphPropsAreEqual(
     paragraph: ProcessedContent[number];
     pIndex: number;
     onWordClick: (word: string, lemma: string, event: React.MouseEvent) => void;
+    onWordDoubleClick?: (word: string, lemma: string, event: React.MouseEvent) => void;
     annotations?: Annotations;
     annotationColor?: string;
     searchQuery?: string;
