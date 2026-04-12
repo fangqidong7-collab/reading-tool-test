@@ -596,27 +596,33 @@ export default function Home() {
       const isEnglishMode = dictMode === 'en';
 
       // 1. 先查内置词典
-      let meaning = isEnglishMode
-        ? getWordMeaningEn(cleanWord)
-        : getWordMeaning(cleanWord);
+      let rawMeaning = "";
+      if (isEnglishMode) {
+        const enEntry = getWordMeaningEn(cleanWord);
+        if (enEntry) rawMeaning = enEntry;
+      } else {
+        const zhEntry = getWordMeaning(cleanWord);
+        if (zhEntry?.meaning) rawMeaning = zhEntry.meaning;
+      }
 
       // 2. 内置词典没有，再查外部词典
-      if (!meaning) {
-        meaning = isEnglishMode
+      if (!rawMeaning) {
+        const extMeaning = isEnglishMode
           ? lookupExternalDictEn(cleanWord)
           : lookupExternalDict(cleanWord);
+        if (extMeaning) rawMeaning = extMeaning;
       }
 
       // 3. 外部词典也没有，调用AI翻译
-      if (!meaning) {
-        meaning = isEnglishMode
+      if (!rawMeaning) {
+        rawMeaning = isEnglishMode
           ? await translateWordEn(cleanWord)
           : await translateWord(cleanWord);
       }
 
-      if (meaning) {
+      if (rawMeaning) {
         // 精简释义
-        const shortMeaning = shortenTranslation(meaning, isEnglishMode ? 'en' : 'zh');
+        const shortMeaning = shortenTranslation(rawMeaning, isEnglishMode ? 'en' : 'zh');
         const newAnnotation = { root, meaning: shortMeaning, pos: "", count: 1 };
         setAnnotations((prev) => ({
           ...prev,
