@@ -603,20 +603,53 @@ const getFirstVisibleIndex = useCallback(() => {
 
         </div>
 
-        {/* 滚动进度指示器 */}
+        {/* 翻页按钮 */}
         <div style={{
-          position: "fixed",
-          bottom: 12,
-          right: 16,
-          fontSize: "12px",
-          color: isDarkMode ? "#888" : "#999",
-          background: isDarkMode ? "rgba(0,0,0,0.5)" : "rgba(255,255,255,0.85)",
-          padding: "4px 10px",
-          borderRadius: "12px",
-          zIndex: 100,
-          pointerEvents: "none",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          padding: "8px 16px",
+          borderTop: `1px solid ${isDarkMode ? "#333" : "#e8e8e8"}`,
+          backgroundColor: isDarkMode ? "#1a1a2e" : "#f8f8f8",
+          flexShrink: 0,
         }}>
-          {readProgress}%
+          <button
+            onClick={() => {
+              const el = containerRef.current;
+              if (el) el.scrollBy({ top: -(containerHeight * 0.85), behavior: "smooth" });
+            }}
+            style={{
+              padding: "10px 24px",
+              border: `1px solid ${isDarkMode ? "#444" : "#ddd"}`,
+              borderRadius: "6px",
+              backgroundColor: isDarkMode ? "#2a2a3e" : "#fff",
+              color: isDarkMode ? "#ccc" : "#333",
+              fontSize: "14px",
+              cursor: "pointer",
+            }}
+          >
+            上一页
+          </button>
+          <span style={{ fontSize: "13px", color: isDarkMode ? "#888" : "#999" }}>
+            {readProgress}%
+          </span>
+          <button
+            onClick={() => {
+              const el = containerRef.current;
+              if (el) el.scrollBy({ top: containerHeight * 0.85, behavior: "smooth" });
+            }}
+            style={{
+              padding: "10px 24px",
+              border: `1px solid ${isDarkMode ? "#444" : "#ddd"}`,
+              borderRadius: "6px",
+              backgroundColor: isDarkMode ? "#2a2a3e" : "#fff",
+              color: isDarkMode ? "#ccc" : "#333",
+              fontSize: "14px",
+              cursor: "pointer",
+            }}
+          >
+            下一页
+          </button>
         </div>
 
         <style jsx>{`
