@@ -37,41 +37,15 @@ interface VocabExportData {
   };
 }
 
-// 兼容各种浏览器的 JSON 下载工具函数
-function downloadJSON(jsonStr: string, filename: string): void {
-  // 方案1: Blob URL
-  try {
-    const blob = new Blob([jsonStr], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    return;
-  } catch {}
-
-  // 方案2: Data URL (兼容性更好)
-  try {
-    const dataUrl = "data:application/json;charset=utf-8," + encodeURIComponent(jsonStr);
-    const link = document.createElement("a");
-    link.href = dataUrl;
-    link.download = filename;
-    link.style.display = "none";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    return;
-  } catch {}
-
-  // 方案3: 新窗口打开，让用户手动保存
-  const win = window.open("", "_blank");
-  if (win) {
-    win.document.write(`<html><head><title>${filename}</title></head><body><pre>${jsonStr}</pre><script>document.title='${filename}';<\/script></body></html>`);
-    win.document.close();
-  }
+/** 兼容所有浏览器的文件下载 */
+function downloadJSON(jsonStr: string, filename: string) {
+  const dataUrl = "data:application/json;charset=utf-8," + encodeURIComponent(jsonStr);
+  const a = document.createElement("a");
+  a.href = dataUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 }
 
 interface ExportImportModalProps {
