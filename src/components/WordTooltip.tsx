@@ -3,39 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { lemmatize, getWordMeaning, getWordMeaningEn } from "@/lib/dictionary";
 import { lookupExternalDict, lookupExternalDictEn } from "@/lib/dictLoader";
-
-// 模块级变量，用于管理当前播放的音频
-let currentAudio: HTMLAudioElement | null = null;
-
-/**
- * 朗读单词发音，优先使用有道词典真人发音，失败后回退到浏览器TTS
- */
-function speakWord(word: string) {
-  try {
-    // 停止上一次播放
-    if (currentAudio) {
-      currentAudio.pause();
-      currentAudio = null;
-    }
-
-    const url = `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(word)}&type=2`;
-    const audio = new Audio(url);
-    currentAudio = audio;
-
-    audio.play().catch(() => {
-      // 回退到浏览器 TTS
-      if (window.speechSynthesis) {
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(word);
-        utterance.lang = "en-US";
-        utterance.rate = 0.9;
-        window.speechSynthesis.speak(utterance);
-      }
-    });
-  } catch (e) {
-    console.warn("发音失败:", e);
-  }
-}
+import { speakWord } from "@/lib/speak";
 
 
 interface WordTooltipProps {

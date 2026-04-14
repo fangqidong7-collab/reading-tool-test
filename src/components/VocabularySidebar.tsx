@@ -1,6 +1,7 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
+import { speakWord } from "@/lib/speak";
 
 interface AnnotatedWord {
   root: string;
@@ -37,8 +38,18 @@ export function VocabularySidebar({
   annotationColor = "#E74C3C",
   highlightBg = "#f8f9fa",
 }: VocabularySidebarProps) {
+  const [searchQuery, setSearchQuery] = useState("");
   const annotationList = Object.values(annotations);
   const totalCount = annotationList.reduce((sum, item) => sum + item.count, 0);
+
+  // 搜索过滤
+  const filteredList = searchQuery.trim()
+    ? annotationList.filter(
+        (item) =>
+          item.root.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          item.meaning.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : annotationList;
 
   // Dark mode colors
   const colors = {
@@ -93,10 +104,36 @@ export function VocabularySidebar({
           </div>
         </div>
 
+        {/* 搜索框 */}
+        {annotationList.length > 0 && (
+          <div className="sidebar-search" style={{ borderBottomColor: colors.borderColor }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2">
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <input
+              type="text"
+              placeholder="搜索单词..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="sidebar-search-input"
+              style={{ color: textColor }}
+            />
+            {searchQuery && (
+              <button className="sidebar-search-clear" onClick={() => setSearchQuery("")}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            )}
+          </div>
+        )}
+
         {annotationList.length > 0 ? (
           <>
             <div className="vocabulary-list">
-              {annotationList.map((item) => (
+              {filteredList.map((item) => (
                 <div
                   key={item.root}
                   className="vocabulary-item"
@@ -119,6 +156,21 @@ export function VocabularySidebar({
                     >
                       {item.count}次
                     </span>
+                    {/* 发音按钮 */}
+                    <button
+                      className="sidebar-speak-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        speakWord(item.root);
+                      }}
+                      title="播放发音"
+                      style={{ color: colors.accentColor }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                        <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                      </svg>
+                    </button>
                   </div>
                   <div className="item-meaning" style={{ color: annotationColor }}>
                     {item.meaning}
@@ -237,6 +289,56 @@ export function VocabularySidebar({
 
         .stat-label {
           font-size: 12px;
+        }
+
+        .sidebar-search {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 16px;
+          border-bottom: 1px solid;
+        }
+
+        .sidebar-search-input {
+          flex: 1;
+          border: none;
+          outline: none;
+          font-size: 14px;
+          background: transparent;
+        }
+
+        .sidebar-search-input::placeholder {
+          color: #bbb;
+        }
+
+        .sidebar-search-clear {
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 2px;
+          display: flex;
+          align-items: center;
+        }
+
+        .sidebar-speak-btn {
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 2px 4px;
+          border-radius: 4px;
+          display: flex;
+          align-items: center;
+          opacity: 0.6;
+          transition: opacity 0.15s ease;
+          flex-shrink: 0;
+        }
+
+        .sidebar-speak-btn:hover {
+          opacity: 1;
+        }
+
+        .sidebar-speak-btn:active {
+          transform: scale(0.9);
         }
 
         .vocabulary-list {
