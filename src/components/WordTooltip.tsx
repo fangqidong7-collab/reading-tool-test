@@ -4,6 +4,38 @@ import React, { useState, useEffect } from "react";
 import { lemmatize, getWordMeaning, getWordMeaningEn } from "@/lib/dictionary";
 import { lookupExternalDict, lookupExternalDictEn } from "@/lib/dictLoader";
 
+// 模块级变量，用于管理当前播放的音频
+let currentAudio: HTMLAudioElement | null = null;
+
+/**
+ * 朗读单词发音，优先使用有道词典真人发音，失败后回退到浏览器TTS
+ */
+function speakWord(word: string) {
+  try {
+    // 停止上一次播放
+    if (currentAudio) {
+      currentAudio.pause();
+      currentAudio = null;
+    }
+
+    const url = `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(word)}&type=2`;
+    const audio = new Audio(url);
+    currentAudio = audio;
+
+    audio.play().catch(() => {
+      // 回退到浏览器 TTS
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(word);
+        utterance.lang = "en-US";
+        utterance.rate = 0.9;
+        window.speechSynthesis.speak(utterance);
+      }
+    });
+  } catch (e) {
+    console.warn("发音失败:", e);
+  }
+}
 
 
 interface WordTooltipProps {
@@ -175,6 +207,22 @@ const displayEntry = displayMeaning
               {displayEntry.pos}
             </span>
           )}
+          {/* 发音按钮 */}
+          <button
+            className="tooltip-speak-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              speakWord(word);
+            }}
+            title="播放发音"
+            style={{ color: colors.accent }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+              <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+            </svg>
+          </button>
         </div>
 
         {displayEntry ? (
@@ -258,6 +306,30 @@ onClick={() => { onClose(); setTimeout(() => onAnnotateAll(word), 50); }}
 
         .tooltip-pos {
           font-size: 12px;
+        }
+
+        .tooltip-speak-btn {
+          margin-left: auto;
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 2px;
+          border-radius: 4px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          opacity: 0.7;
+          transition: opacity 0.15s ease, transform 0.15s ease;
+          flex-shrink: 0;
+        }
+
+        .tooltip-speak-btn:hover {
+          opacity: 1;
+          transform: scale(1.1);
+        }
+
+        .tooltip-speak-btn:active {
+          transform: scale(0.95);
         }
 
         .tooltip-meaning {
