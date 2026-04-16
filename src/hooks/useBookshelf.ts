@@ -414,11 +414,11 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
 
   // 合并导入的词汇到全局词汇表（重复替换，不重复追加，不覆盖原有）
   const mergeGlobalVocabulary = useCallback(
-    (incoming: Record<string, { root: string; meaning: string; pos: string }>) => {
+    (incoming: Record<string, { root: string; meaning: string; pos: string; correctCount?: number }>) => {
       setGlobalVocabulary((prev) => {
         const merged = { ...prev };
         for (const [key, value] of Object.entries(incoming)) {
-          merged[key] = value;
+          merged[key] = { ...value, correctCount: value.correctCount ?? 0 };
         }
         return merged;
       });
