@@ -21,6 +21,7 @@ type QuizCard = {
   options: string[];
 };
 
+// 随机打乱数组
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
@@ -28,6 +29,48 @@ function shuffle<T>(arr: T[]): T[] {
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
+}
+
+/**
+ * 计算两个单词的"形近度"分数（0~1，越高越像）
+ * 基于编辑距离（Levenshtein Distance）
+ */
+function wordSimilarity(a: string, b: string): number {
+  const la = a.toLowerCase();
+  const lb = b.toLowerCase();
+  if (la === lb) return 1;
+
+  const lenA = la.length;
+  const lenB = lb.length;
+  const maxLen = Math.max(lenA, lenB);
+  if (maxLen === 0) return 1;
+
+  // 标准编辑距离 DP
+  const dp: number[][] = Array.from({ length: lenA + 1 }, () =>
+    Array(lenB + 1).fill(0)
+  );
+  for (let i = 0; i <= lenA; i++) dp[i][0] = i;
+  for (let j = 0; j <= lenB; j++) dp[0][j] = j;
+  for (let i = 1; i <= lenA; i++) {
+    for (let j = 1; j <= lenB; j++) {
+      const cost = la[i - 1] === lb[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,
+        dp[i][j - 1] + 1,
+        dp[i - 1][j - 1] + cost
+      );
+    }
+  }
+
+  const editDist = dp[lenA][lenB];
+  return 1 - editDist / maxLen;
+}
+
+/**
+ * 判断一个释义是否为中文（包含中文字符）
+ */
+function isChinese(text: string): boolean {
+  return /[\u4e00-\u9fff]/.test(text);
 }
 
 export function VocabularyQuiz({ vocabulary, onCorrect, onClose }: VocabularyQuizProps) {
@@ -44,15 +87,81 @@ export function VocabularyQuiz({ vocabulary, onCorrect, onClose }: VocabularyQui
   const [wrongWords, setWrongWords] = useState<string[]>([]);
 
   const generateCards = useCallback(() => {
-    const allMeanings = vocabList.map((v) => v.meaning);
     const count = Math.min(quizCount, vocabList.length);
     const selected = shuffle(vocabList).slice(0, count);
 
+    // 预先把词汇按中/英释义分成两个池子
+    const chinesePool = vocabList.filter((v) => isChinese(v.meaning));
+    const englishPool = vocabList.filter((v) => !isChinese(v.meaning));
+
     const generatedCards: QuizCard[] = selected.map((item) => {
-      const wrongMeanings = shuffle(
-        allMeanings.filter((m) => m !== item.meaning)
-      ).slice(0, 3);
-      const options = shuffle([item.meaning, ...wrongMeanings]);
+      const isZh = isChinese(item.meaning);
+      // 选同语言池作为候选干扰项来源
+      const sameLanguagePool = isZh ? chinesePool : englishPool;
+
+      // 从同语言池中找出除自己之外、且释义不同的词
+      const otherWords = sameLanguagePool.filter(
+        (v) => v.root !== item.root && v.meaning !== item.meaning
+      );
+
+      let wrongMeanings: string[] = [];
+
+      if (otherWords.length >= 3) {
+        // 按单词拼写相似度排序，优先选"形近词"的释义作为干扰项
+        const scoredWords = otherWords.map((v) => ({
+          meaning: v.meaning,
+          similarity: wordSimilarity(item.root, v.root),
+        }));
+
+        // 按相似度从高到低排序，取前 6 个候选，再从中随机选 3 个
+        // 加一点随机性，不要每次都是固定的前3个
+        scoredWords.sort((a, b) => b.similarity - a.similarity);
+        const topCandidates = scoredWords.slice(
+          0,
+          Math.min(6, scoredWords.length)
+        );
+        wrongMeanings = shuffle(topCandidates)
+          .slice(0, 3)
+          .map((v) => v.meaning);
+
+        // 如果形近词不够 3 个，从剩余词中随机补
+        if (wrongMeanings.length < 3) {
+          const remaining = scoredWords
+            .slice(topCandidates.length)
+            .map((v) => v.meaning)
+            .filter((m) => !wrongMeanings.includes(m));
+          wrongMeanings.push(
+            ...shuffle(remaining).slice(0, 3 - wrongMeanings.length)
+          );
+        }
+      } else {
+        // 同语言池不够 3 个，退化为从全部词汇中选
+        const fallback = vocabList.filter(
+          (v) => v.root !== item.root && v.meaning !== item.meaning
+        );
+        wrongMeanings = shuffle(fallback)
+          .slice(0, 3)
+          .map((v) => v.meaning);
+      }
+
+      // 去重：确保 wrongMeanings 中没有跟正确答案重复的
+      wrongMeanings = wrongMeanings.filter((m) => m !== item.meaning);
+      // 如果去重后不够 3 个，再补
+      if (wrongMeanings.length < 3) {
+        const allOther = vocabList
+          .filter(
+            (v) =>
+              v.root !== item.root &&
+              v.meaning !== item.meaning &&
+              !wrongMeanings.includes(v.meaning)
+          )
+          .map((v) => v.meaning);
+        wrongMeanings.push(
+          ...shuffle(allOther).slice(0, 3 - wrongMeanings.length)
+        );
+      }
+
+      const options = shuffle([item.meaning, ...wrongMeanings.slice(0, 3)]);
       return {
         word: item.root,
         correctMeaning: item.meaning,
@@ -109,7 +218,8 @@ export function VocabularyQuiz({ vocabulary, onCorrect, onClose }: VocabularyQui
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [phase, selectedOption, handleNext]);
 
-  const card = phase === "quiz" && cards[currentIndex] ? cards[currentIndex] : null;
+  const card =
+    phase === "quiz" && cards[currentIndex] ? cards[currentIndex] : null;
 
   return (
     <>
@@ -119,7 +229,8 @@ export function VocabularyQuiz({ vocabulary, onCorrect, onClose }: VocabularyQui
           <div className="quiz-modal" onClick={(e) => e.stopPropagation()}>
             <h2 className="quiz-title">单词 Quiz</h2>
             <p className="quiz-subtitle">
-              词汇表共 <strong>{vocabList.length}</strong> 个单词，选择要复习的数量：
+              词汇表共 <strong>{vocabList.length}</strong>{" "}
+              个单词，选择要复习的数量：
             </p>
             <div className="quiz-count-input">
               <input
@@ -129,7 +240,13 @@ export function VocabularyQuiz({ vocabulary, onCorrect, onClose }: VocabularyQui
                 value={quizCount}
                 onChange={(e) =>
                   setQuizCount(
-                    Math.max(1, Math.min(vocabList.length, parseInt(e.target.value) || 1))
+                    Math.max(
+                      1,
+                      Math.min(
+                        vocabList.length,
+                        parseInt(e.target.value) || 1
+                      )
+                    )
                   )
                 }
               />
@@ -151,7 +268,9 @@ export function VocabularyQuiz({ vocabulary, onCorrect, onClose }: VocabularyQui
               {vocabList.length > 0 && (
                 <button
                   onClick={() => setQuizCount(vocabList.length)}
-                  className={quizCount === vocabList.length ? "active" : ""}
+                  className={
+                    quizCount === vocabList.length ? "active" : ""
+                  }
                 >
                   全部
                 </button>
@@ -170,7 +289,9 @@ export function VocabularyQuiz({ vocabulary, onCorrect, onClose }: VocabularyQui
               </button>
             </div>
             {vocabList.length < 4 && (
-              <p className="quiz-warning">词汇表至少需要 4 个单词才能生成选项</p>
+              <p className="quiz-warning">
+                词汇表至少需要 4 个单词才能生成选项
+              </p>
             )}
           </div>
         </div>
@@ -179,11 +300,16 @@ export function VocabularyQuiz({ vocabulary, onCorrect, onClose }: VocabularyQui
       {/* ===== Quiz Phase ===== */}
       {phase === "quiz" && card && (
         <div className="quiz-overlay" onClick={onClose}>
-          <div className="quiz-modal quiz-card-modal" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="quiz-modal quiz-card-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="quiz-progress-bar">
               <div
                 className="quiz-progress-fill"
-                style={{ width: `${((currentIndex + 1) / cards.length) * 100}%` }}
+                style={{
+                  width: `${((currentIndex + 1) / cards.length) * 100}%`,
+                }}
               />
             </div>
             <div className="quiz-progress-text">
@@ -222,11 +348,19 @@ export function VocabularyQuiz({ vocabulary, onCorrect, onClose }: VocabularyQui
 
             {selectedOption !== null && (
               <div className="quiz-feedback">
-                <span className={isCorrect ? "feedback-correct" : "feedback-wrong"}>
-                  {isCorrect ? "正确!" : `错误! 正确答案: ${card.correctMeaning}`}
+                <span
+                  className={
+                    isCorrect ? "feedback-correct" : "feedback-wrong"
+                  }
+                >
+                  {isCorrect
+                    ? "正确!"
+                    : `错误! 正确答案: ${card.correctMeaning}`}
                 </span>
                 <button className="quiz-next-btn" onClick={handleNext}>
-                  {currentIndex + 1 >= cards.length ? "查看结果" : "下一题 →"}
+                  {currentIndex + 1 >= cards.length
+                    ? "查看结果"
+                    : "下一题 →"}
                 </button>
               </div>
             )}
@@ -250,7 +384,10 @@ export function VocabularyQuiz({ vocabulary, onCorrect, onClose }: VocabularyQui
               </div>
               <div className="result-stat rate-stat">
                 <span className="result-number">
-                  {cards.length > 0 ? Math.round((correctTotal / cards.length) * 100) : 0}%
+                  {cards.length > 0
+                    ? Math.round((correctTotal / cards.length) * 100)
+                    : 0}
+                  %
                 </span>
                 <span className="result-label">正确率</span>
               </div>
