@@ -5,23 +5,32 @@ import type { Book } from "@/hooks/useBookshelf";
 
 function getCoverColor(title: string): string {
   const colors = [
-    "linear-gradient(135deg, #9BC6ED 0%, #86B5DC 100%)",  // Jordy蓝 浅
-    "linear-gradient(135deg, #4E90F5 0%, #3A7DE0 100%)",  // Chefchaouen蓝
-    "linear-gradient(135deg, #94C000 0%, #7EA800 100%)",  // 苹果绿
-    "linear-gradient(135deg, #4B6B03 0%, #3D5902 100%)",  // 苔藓绿
-    "linear-gradient(135deg, #6FA8DC 0%, #5B93C7 100%)",  // 天空蓝
-    "linear-gradient(135deg, #7CB342 0%, #689F38 100%)",  // 草地绿
-    "linear-gradient(135deg, #5C9BE6 0%, #4888D3 100%)",  // 矢车菊蓝
-    "linear-gradient(135deg, #8DB600 0%, #769A00 100%)",  // 黄绿
-    "linear-gradient(135deg, #4A7FC4 0%, #3B6DAF 100%)",  // 钴蓝
-    "linear-gradient(135deg, #66A355 0%, #558B45 100%)",  // 森林绿
-    "linear-gradient(135deg, #87BFEA 0%, #72ABD8 100%)",  // 粉蓝
-    "linear-gradient(135deg, #5E8C31 0%, #4D7528 100%)",  // 橄榄绿
+    "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",  // 靛紫
+    "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)",  // 粉红
+    "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",  // 天蓝
+    "linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)",  // 薄荷绿
+    "linear-gradient(135deg, #fa709a 0%, #fee140 100%)",  // 橙粉
+    "linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)",  // 薰衣草
+    "linear-gradient(135deg, #fccb90 0%, #d57eeb 100%)",  // 蜜桃紫
+    "linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%)",  // 淡紫蓝
+    "linear-gradient(135deg, #f5576c 0%, #ff6a88 100%)",  // 珊瑚红
+    "linear-gradient(135deg, #0ba360 0%, #3cba92 100%)",  // 翡翠绿
+    "linear-gradient(135deg, #6a11cb 0%, #2575fc 100%)",  // 深紫蓝
+    "linear-gradient(135deg, #fc5c7d 0%, #6a82fb 100%)",  // 玫瑰蓝
+    "linear-gradient(135deg, #f78ca0 0%, #f9748f 50%, #fd868c 100%)",  // 暖粉
+    "linear-gradient(135deg, #c471f5 0%, #fa71cd 100%)",  // 紫红
+    "linear-gradient(135deg, #48c6ef 0%, #6f86d6 100%)",  // 冰蓝
+    "linear-gradient(135deg, #feada6 0%, #f5efef 100%)",  // 奶茶
   ];
 
-  const firstChar = title.trim().charAt(0).toUpperCase();
-  const code = firstChar.charCodeAt(0) || 0;
-  return colors[code % colors.length];
+  // 用整个标题做简单 hash，分布更均匀
+  let hash = 0;
+  const str = title.trim();
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+  }
+  const index = Math.abs(hash) % colors.length;
+  return colors[index];
 }
 
 interface BookCardProps {
