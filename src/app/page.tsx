@@ -231,6 +231,8 @@ export default function Home() {
     resetToDefault,
     dictMode,
     setDictMode,
+    pageTurnRatio,
+    setPageTurnRatio,
   } = useReadingSettings();
 
   // Reading state
@@ -1135,6 +1137,8 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
         isDarkMode={isDarkMode}
         dictMode={dictMode}
         onDictModeChange={setDictMode}
+        pageTurnRatio={pageTurnRatio}
+        onPageTurnRatioChange={setPageTurnRatio}
       />
 
       {/* Left Drawer - TOC and Bookmarks */}
@@ -1753,6 +1757,7 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
   initialParagraphIndex={currentBook?.lastParagraphIndex ?? -1}
   initialParagraphText={currentParagraphText}
   initialScrollPercent={currentBook?.lastScrollPosition || 0}
+  pageTurnRatio={pageTurnRatio}
 />
 
         </div>

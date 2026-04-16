@@ -20,6 +20,8 @@ interface SettingsPanelProps {
   isDarkMode: boolean;
   dictMode: 'zh' | 'en';
   onDictModeChange: (mode: 'zh' | 'en') => void;
+  pageTurnRatio: number;
+  onPageTurnRatioChange: (ratio: number) => void;
 }
 
 export function SettingsPanel({
@@ -38,6 +40,8 @@ export function SettingsPanel({
   isDarkMode,
   dictMode,
   onDictModeChange,
+  pageTurnRatio,
+  onPageTurnRatioChange,
 }: SettingsPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -151,6 +155,29 @@ export function SettingsPanel({
               >
                 English
               </button>
+            </div>
+          </div>
+
+          {/* Page Turn Ratio */}
+          <div className="setting-item">
+            <div className="setting-label">
+              <span className="label-text">50%</span>
+              <span className="label-text">翻页幅度</span>
+              <span className="label-text">100%</span>
+            </div>
+            <div className="setting-control">
+              <input
+                type="range"
+                min="0.5"
+                max="1.0"
+                step="0.05"
+                value={pageTurnRatio}
+                onChange={(e) => onPageTurnRatioChange(Number(e.target.value))}
+                className="slider"
+              />
+              <span className="setting-value" style={{ color: textColor }}>
+                {Math.round(pageTurnRatio * 100)}%
+              </span>
             </div>
           </div>
 

@@ -22,6 +22,7 @@ export interface ReadingSettingsStorage {
   backgroundTheme: string;
   sidebarOpenByBook: Record<string, boolean>;
   dictMode: 'zh' | 'en';
+  pageTurnRatio: number;
 }
 
 const DEFAULT_SETTINGS: ReadingSettings = {
@@ -78,6 +79,7 @@ function loadSettingsFromStorage(): ReadingSettingsStorage {
       backgroundTheme: "cream",
       sidebarOpenByBook: {},
       dictMode: "zh",
+      pageTurnRatio: 0.9,
     };
   }
 
@@ -96,6 +98,7 @@ function loadSettingsFromStorage(): ReadingSettingsStorage {
     backgroundTheme: "cream",
     sidebarOpenByBook: {},
     dictMode: "zh",
+    pageTurnRatio: 0.9,
   };
 }
 
@@ -117,15 +120,18 @@ export function useReadingSettings() {
     backgroundTheme: "cream",
     sidebarOpenByBook: {},
     dictMode: "zh",
+    pageTurnRatio: 0.9,
   });
   const [isLoaded, setIsLoaded] = useState(false);
   const [dictMode, setDictModeState] = useState<'zh' | 'en'>('zh');
+  const [pageTurnRatio, setPageTurnRatioState] = useState(0.9);
 
   // Load settings on mount
   useEffect(() => {
     const loaded = loadSettingsFromStorage();
     setStorage(loaded);
     setDictModeState(loaded.dictMode || 'zh');
+    setPageTurnRatioState(loaded.pageTurnRatio ?? 0.9);
     const colors = getThemeColors(loaded.backgroundTheme);
     setSettings({
       ...colors,
@@ -144,6 +150,7 @@ export function useReadingSettings() {
         backgroundTheme: storage.backgroundTheme,
         sidebarOpenByBook: storage.sidebarOpenByBook,
         dictMode: storage.dictMode,
+        pageTurnRatio: storage.pageTurnRatio,
       });
     }
   }, [settings, storage, isLoaded]);
@@ -207,12 +214,20 @@ export function useReadingSettings() {
       sidebarOpenByBook: {},
     }));
     setDictModeState('zh');
+    setPageTurnRatioState(0.9);
   }, []);
 
   // Set dictionary mode (zh for Chinese, en for English)
   const setDictMode = useCallback((mode: 'zh' | 'en') => {
     setDictModeState(mode);
     setStorage((prev) => ({ ...prev, dictMode: mode }));
+  }, []);
+
+  // Set page turn ratio
+  const setPageTurnRatio = useCallback((ratio: number) => {
+    const clamped = Math.max(0.5, Math.min(1.0, ratio));
+    setPageTurnRatioState(clamped);
+    setStorage((prev) => ({ ...prev, pageTurnRatio: clamped }));
   }, []);
 
   // Calculate annotation font size (70% of body font size)
@@ -242,5 +257,7 @@ export function useReadingSettings() {
     resetToDefault,
     dictMode,
     setDictMode,
+    pageTurnRatio,
+    setPageTurnRatio,
   };
 }

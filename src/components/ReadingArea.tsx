@@ -13,7 +13,6 @@ const PARAGRAPH_GAP = 16;
 const MOBILE_BREAKPOINT = 768;
 const MOBILE_TOP_GAP = 5;
 const MOBILE_BOTTOM_SAFE_ZONE = 60;
-const PAGE_TURN_RATIO = 0.9;
 
 // Ref type
 export interface ReadingAreaRef {
@@ -263,9 +262,8 @@ interface ReadingAreaProps {
   onAddBookmark?: () => void;
   initialScrollPercent?: number;
   initialParagraphIndex?: number;
-  initialParagraphText?: string;  // 新增这一行
-
-
+  initialParagraphText?: string;
+  pageTurnRatio?: number;
 }
 
 export const ReadingArea = forwardRef(function ReadingArea({
@@ -294,8 +292,8 @@ export const ReadingArea = forwardRef(function ReadingArea({
   onAddBookmark,
   initialScrollPercent = 0,
   initialParagraphIndex = -1,
-  initialParagraphText = "",  // 新增这一行
-
+  initialParagraphText = "",
+  pageTurnRatio = 0.9,
 
 }: ReadingAreaProps, ref: React.Ref<ReadingAreaRef>) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -339,17 +337,17 @@ export const ReadingArea = forwardRef(function ReadingArea({
       if (e.key === 'AudioVolumeUp' || e.key === 'VolumeUp') {
         e.preventDefault();
         const el = containerRef.current;
-        if (el) el.scrollBy({ top: -(containerHeight * PAGE_TURN_RATIO), behavior: "smooth" });
+        if (el) el.scrollBy({ top: -(containerHeight * pageTurnRatio), behavior: "smooth" });
       } else if (e.key === 'AudioVolumeDown' || e.key === 'VolumeDown') {
         e.preventDefault();
         const el = containerRef.current;
-        if (el) el.scrollBy({ top: containerHeight * PAGE_TURN_RATIO, behavior: "smooth" });
+        if (el) el.scrollBy({ top: containerHeight * pageTurnRatio, behavior: "smooth" });
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [containerHeight]);
+  }, [containerHeight, pageTurnRatio]);
 
   // 计算滚动百分比
   const getScrollPercent = useCallback(() => {
@@ -457,10 +455,10 @@ const getFirstVisibleIndex = useCallback(() => {
       if (Math.abs(deltaX) > 50 && deltaTime < 800) {
         if (deltaX < 0) {
           // 左滑 → 下一页
-          el.scrollBy({ top: containerHeight * PAGE_TURN_RATIO, behavior: "smooth" });
+          el.scrollBy({ top: containerHeight * pageTurnRatio, behavior: "smooth" });
         } else {
           // 右滑 → 上一页
-          el.scrollBy({ top: -(containerHeight * PAGE_TURN_RATIO), behavior: "smooth" });
+          el.scrollBy({ top: -(containerHeight * pageTurnRatio), behavior: "smooth" });
         }
         lastSwipeTimeRef.current = Date.now();
       }
@@ -474,7 +472,7 @@ const getFirstVisibleIndex = useCallback(() => {
       el.removeEventListener('touchmove', handleTouchMove);
       el.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [containerHeight]);
+  }, [containerHeight, pageTurnRatio]);
 
   // 跳转到段落（滚动方式）
   const jumpToParagraph = useCallback((paragraphIndex: number) => {
@@ -684,10 +682,10 @@ const getFirstVisibleIndex = useCallback(() => {
             if (!el) return;
             if (clickX < halfWidth) {
               // 左半边 → 上一页
-              el.scrollBy({ top: -(containerHeight * PAGE_TURN_RATIO), behavior: "smooth" });
+              el.scrollBy({ top: -(containerHeight * pageTurnRatio), behavior: "smooth" });
             } else {
               // 右半边 → 下一页
-              el.scrollBy({ top: containerHeight * PAGE_TURN_RATIO, behavior: "smooth" });
+              el.scrollBy({ top: containerHeight * pageTurnRatio, behavior: "smooth" });
             }
           }}
           style={{
