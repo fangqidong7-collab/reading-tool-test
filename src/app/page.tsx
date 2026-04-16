@@ -12,6 +12,7 @@ import { ExportImportModal } from "@/components/ExportImportModal";
 import JSLibLoader from "@/components/JSLibLoader";
 import { useBookshelf, ProcessedContent, ProcessedSegment, ProcessedParagraph } from "@/hooks/useBookshelf";
 import { useReadingSettings } from "@/hooks/useReadingSettings";
+import { getThemeById } from "@/lib/shelfThemes";
 import { lemmatize, getWordMeaning, getWordMeaningEn, findWordFamily, loadBuiltinDictionary, loadBuiltinDictionaryEn } from "@/lib/dictionary";
 //import { translateWord, translateWordEn } from "@/lib/translate";
 //import { forceReloadDictionary, lookupExternalDict, lookupExternalDictEn, loadExternalDictionaryEn, type DictLoadStatus } from "@/lib/dictLoader";
@@ -233,6 +234,8 @@ export default function Home() {
     setDictMode,
     pageTurnRatio,
     setPageTurnRatio,
+    shelfThemeId,
+    setShelfThemeId,
   } = useReadingSettings();
 
   // Reading state
@@ -950,9 +953,12 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
 
   // Bookshelf view (when no book is open)
   if (!currentBook) {
+    const shelfTheme = getThemeById(shelfThemeId);
+    const shelfBg = shelfTheme.colors[0];
+
     return (
       <>
-        <div className="bookshelf-page" style={{ backgroundColor }}>
+        <div className="bookshelf-page" style={{ backgroundColor: shelfBg }}>
           {/* 主内容区域 */}
           {activeTab === 'bookshelf' ? (
             <Bookshelf
@@ -963,6 +969,8 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
               onDeleteBook={deleteBook}
               onOpenBook={openBook}
               onDataManageClick={() => setDataManageOpen(true)}
+              shelfThemeId={shelfThemeId}
+              onShelfThemeChange={setShelfThemeId}
             />
           ) : (
             <GlobalVocabularyPage
@@ -976,10 +984,17 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
           )}
 
           {/* 底部工具栏 */}
-          <div className="bottom-tab-bar">
+          <div
+            className="bottom-tab-bar"
+            style={{
+              background: shelfBg,
+              borderTopColor: `${shelfTheme.colors[1]}44`,
+            }}
+          >
           <button
             className={`tab-bar-item ${activeTab === 'bookshelf' ? 'active' : ''}`}
             onClick={() => setActiveTab('bookshelf')}
+            style={{ color: activeTab === 'bookshelf' ? shelfTheme.colors[3] : `${shelfTheme.colors[4]}66` }}
           >
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
@@ -990,6 +1005,7 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
           <button
             className={`tab-bar-item ${activeTab === 'vocabulary' ? 'active' : ''}`}
             onClick={() => setActiveTab('vocabulary')}
+            style={{ color: activeTab === 'vocabulary' ? shelfTheme.colors[3] : `${shelfTheme.colors[4]}66` }}
           >
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M12 20h9" />
@@ -997,7 +1013,7 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
             </svg>
             <span>词汇表</span>
             {Object.keys(globalVocabulary).length > 0 && (
-              <span className="tab-bar-badge">{Object.keys(globalVocabulary).length}</span>
+              <span className="tab-bar-badge" style={{ background: shelfTheme.colors[2] }}>{Object.keys(globalVocabulary).length}</span>
             )}
           </button>
         </div>

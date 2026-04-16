@@ -23,6 +23,7 @@ export interface ReadingSettingsStorage {
   sidebarOpenByBook: Record<string, boolean>;
   dictMode: 'zh' | 'en';
   pageTurnRatio: number;
+  shelfThemeId: string;
 }
 
 const DEFAULT_SETTINGS: ReadingSettings = {
@@ -80,6 +81,7 @@ function loadSettingsFromStorage(): ReadingSettingsStorage {
       sidebarOpenByBook: {},
       dictMode: "zh",
       pageTurnRatio: 0.9,
+      shelfThemeId: "spring",
     };
   }
 
@@ -99,6 +101,7 @@ function loadSettingsFromStorage(): ReadingSettingsStorage {
     sidebarOpenByBook: {},
     dictMode: "zh",
     pageTurnRatio: 0.9,
+    shelfThemeId: "spring",
   };
 }
 
@@ -121,10 +124,12 @@ export function useReadingSettings() {
     sidebarOpenByBook: {},
     dictMode: "zh",
     pageTurnRatio: 0.9,
+    shelfThemeId: "spring",
   });
   const [isLoaded, setIsLoaded] = useState(false);
   const [dictMode, setDictModeState] = useState<'zh' | 'en'>('zh');
   const [pageTurnRatio, setPageTurnRatioState] = useState(0.9);
+  const [shelfThemeId, setShelfThemeIdState] = useState("spring");
 
   // Load settings on mount
   useEffect(() => {
@@ -132,6 +137,7 @@ export function useReadingSettings() {
     setStorage(loaded);
     setDictModeState(loaded.dictMode || 'zh');
     setPageTurnRatioState(loaded.pageTurnRatio ?? 0.9);
+    setShelfThemeIdState(loaded.shelfThemeId || "spring");
     const colors = getThemeColors(loaded.backgroundTheme);
     setSettings({
       ...colors,
@@ -151,6 +157,7 @@ export function useReadingSettings() {
         sidebarOpenByBook: storage.sidebarOpenByBook,
         dictMode: storage.dictMode,
         pageTurnRatio: storage.pageTurnRatio,
+        shelfThemeId: storage.shelfThemeId,
       });
     }
   }, [settings, storage, isLoaded]);
@@ -215,6 +222,7 @@ export function useReadingSettings() {
     }));
     setDictModeState('zh');
     setPageTurnRatioState(0.9);
+    setShelfThemeIdState("spring");
   }, []);
 
   // Set dictionary mode (zh for Chinese, en for English)
@@ -228,6 +236,12 @@ export function useReadingSettings() {
     const clamped = Math.max(0.5, Math.min(1.0, ratio));
     setPageTurnRatioState(clamped);
     setStorage((prev) => ({ ...prev, pageTurnRatio: clamped }));
+  }, []);
+
+  // Set shelf theme id
+  const setShelfThemeId = useCallback((id: string) => {
+    setShelfThemeIdState(id);
+    setStorage((prev) => ({ ...prev, shelfThemeId: id }));
   }, []);
 
   // Calculate annotation font size (70% of body font size)
@@ -259,5 +273,7 @@ export function useReadingSettings() {
     setDictMode,
     pageTurnRatio,
     setPageTurnRatio,
+    shelfThemeId,
+    setShelfThemeId,
   };
 }
