@@ -175,7 +175,7 @@ export function ExportImportModal({
     try {
       // 先把全局词汇全部放入
       const allVocab: Record<string, VocabItem> = { ...globalVocabulary };
-      const fromGlobal = Object.keys(globalVocabulary).length;
+      let fromGlobal = Object.keys(globalVocabulary).length;
       let fromBooks = 0;
       const bookNames: string[] = [];
 

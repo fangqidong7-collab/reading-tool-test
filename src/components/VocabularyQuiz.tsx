@@ -71,7 +71,7 @@ export function VocabularyQuiz({
         .slice(0, 3)
         .map((v) => v.meaning);
 
-      const wrongMeanings = [...otherMeanings];
+      let wrongMeanings = [...otherMeanings];
 
       // 如果同语言池不够 3 个，从全部词汇中补
       if (wrongMeanings.length < 3) {

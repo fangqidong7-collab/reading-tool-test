@@ -233,8 +233,6 @@ export default function Home() {
     setDictMode,
     pageTurnRatio,
     setPageTurnRatio,
-    shelfThemeId,
-    setShelfThemeId,
   } = useReadingSettings();
 
   // Reading state
@@ -965,8 +963,6 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
               onDeleteBook={deleteBook}
               onOpenBook={openBook}
               onDataManageClick={() => setDataManageOpen(true)}
-              shelfThemeId={shelfThemeId}
-              onShelfThemeChange={setShelfThemeId}
             />
           ) : (
             <GlobalVocabularyPage
