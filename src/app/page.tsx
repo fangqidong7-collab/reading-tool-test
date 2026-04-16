@@ -6,6 +6,7 @@ import { ReadingArea, type ReadingAreaRef } from "@/components/ReadingArea";
 import { WordTooltip } from "@/components/WordTooltip";
 import { VocabularySidebar } from "@/components/VocabularySidebar";
 import { GlobalVocabularyPage } from "@/components/GlobalVocabularyPage";
+import { VocabularyQuiz } from "@/components/VocabularyQuiz";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { ExportImportModal } from "@/components/ExportImportModal";
 import JSLibLoader from "@/components/JSLibLoader";
@@ -288,6 +289,7 @@ export default function Home() {
 
   // Data management modal state
   const [dataManageOpen, setDataManageOpen] = useState(false);
+  const [showQuiz, setShowQuiz] = useState(false);
   const [activeTab, setActiveTab] = useState<'bookshelf' | 'vocabulary'>('bookshelf');
 
   // 清理可能残留的大数据（启动时一次性执行）
@@ -965,8 +967,8 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
               vocabulary={globalVocabulary}
               onRemoveWord={removeFromGlobalVocabulary}
               onClearAll={clearGlobalVocabulary}
-              onCorrect={incrementCorrectCount}
               onClearMastered={clearMasteredWords}
+              onStartQuiz={() => setShowQuiz(true)}
               backgroundColor={backgroundColor}
             />
           )}
@@ -1099,6 +1101,15 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
           onMergeGlobalVocabulary={mergeGlobalVocabulary}
           books={books}
         />
+
+        {/* Quiz 弹窗 */}
+        {showQuiz && (
+          <VocabularyQuiz
+            vocabulary={globalVocabulary}
+            onCorrect={incrementCorrectCount}
+            onClose={() => setShowQuiz(false)}
+          />
+        )}
       </>
     );
   }

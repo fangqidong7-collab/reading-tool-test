@@ -2,7 +2,6 @@
 
 import React, { useState } from "react";
 import { speakWord } from "@/lib/speak";
-import { VocabularyQuiz } from "@/components/VocabularyQuiz";
 
 interface VocabItem {
   root: string;
@@ -15,8 +14,8 @@ interface GlobalVocabularyPageProps {
   vocabulary: Record<string, VocabItem>;
   onRemoveWord: (root: string) => void;
   onClearAll: () => void;
-  onCorrect: (root: string) => void;
   onClearMastered: (threshold: number) => void;
+  onStartQuiz: () => void;
   backgroundColor?: string;
 }
 
@@ -24,13 +23,12 @@ export function GlobalVocabularyPage({
   vocabulary,
   onRemoveWord,
   onClearAll,
-  onCorrect,
   onClearMastered,
+  onStartQuiz,
   backgroundColor = "#FFF8F0",
 }: GlobalVocabularyPageProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [showConfirmClear, setShowConfirmClear] = useState(false);
-  const [showQuiz, setShowQuiz] = useState(false);
   const [showClearMastered, setShowClearMastered] = useState(false);
   const [clearThreshold, setClearThreshold] = useState(3);
 
@@ -68,7 +66,7 @@ export function GlobalVocabularyPage({
             </button>
           )}
           {vocabList.length >= 4 && (
-            <button className="global-vocab-quiz-btn" onClick={() => setShowQuiz(true)}>
+            <button className="global-vocab-quiz-btn" onClick={onStartQuiz}>
               Quiz
             </button>
           )}
@@ -217,15 +215,6 @@ export function GlobalVocabularyPage({
             </div>
           </div>
         </div>
-      )}
-
-      {/* Quiz 弹窗 */}
-      {showQuiz && (
-        <VocabularyQuiz
-          vocabulary={vocabulary}
-          onCorrect={onCorrect}
-          onClose={() => setShowQuiz(false)}
-        />
       )}
 
       {/* 批量清除弹窗 */}
