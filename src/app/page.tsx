@@ -70,19 +70,8 @@ function shortenTranslation(text: string, mode: 'zh' | 'en' = 'zh'): string {
   if (!cleaned) return mode === 'en' ? 'No definition' : '未知';
   
   if (mode === 'en') {
-    // English mode: simpler processing, just truncate
-    // Split by semicolons or commas
-    let items = cleaned.split(/[;,]/).map(s => s.trim()).filter(s => s.length > 0);
-    
-    // Take first 2 items, max 40 chars each
-    items = items.slice(0, 2).map(s => {
-      if (s.length > 40) {
-        return s.substring(0, 40).trim() + '...';
-      }
-      return s;
-    });
-    
-    return items.length > 0 ? items.join('; ') : 'No definition';
+    // English mode: return full cleaned text without truncation
+    return cleaned || 'No definition';
   }
   
   // Chinese mode (original logic)
