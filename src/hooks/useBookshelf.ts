@@ -89,7 +89,7 @@ export function useBookshelf() {
   const [currentBookId, setCurrentBookId] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
 const [globalVocabulary, setGlobalVocabulary] = useState<
-  Record<string, { root: string; meaning: string; pos: string }>
+  Record<string, { root: string; meaning: string; pos: string; correctCount: number }>
 >({});
 
   // Load books from IndexedDB (异步加载)
@@ -368,11 +368,35 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
     (root: string, meaning: string, pos: string) => {
       setGlobalVocabulary((prev) => ({
         ...prev,
-        [root]: { root, meaning, pos },
+        [root]: { root, meaning, pos, correctCount: prev[root]?.correctCount || 0 },
       }));
     },
     []
   );
+
+  // 答对一次，增加 correctCount
+  const incrementCorrectCount = useCallback((root: string) => {
+    setGlobalVocabulary((prev) => {
+      if (!prev[root]) return prev;
+      return {
+        ...prev,
+        [root]: { ...prev[root], correctCount: (prev[root].correctCount || 0) + 1 },
+      };
+    });
+  }, []);
+
+  // 批量清除答对 N 次以上的已掌握单词
+  const clearMasteredWords = useCallback((threshold: number) => {
+    setGlobalVocabulary((prev) => {
+      const next: typeof prev = {};
+      for (const [key, value] of Object.entries(prev)) {
+        if ((value.correctCount || 0) < threshold) {
+          next[key] = value;
+        }
+      }
+      return next;
+    });
+  }, []);
 
   // 从全局词汇表删除词
   const removeFromGlobalVocabulary = useCallback((root: string) => {
@@ -454,6 +478,8 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
     removeFromGlobalVocabulary,
     clearGlobalVocabulary,
     mergeGlobalVocabulary,
+    incrementCorrectCount,
+    clearMasteredWords,
   };
 
 }

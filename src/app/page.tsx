@@ -212,6 +212,8 @@ export default function Home() {
     removeFromGlobalVocabulary,
     clearGlobalVocabulary,
     mergeGlobalVocabulary,
+    incrementCorrectCount,
+    clearMasteredWords,
   } = useBookshelf();
 
 
@@ -974,6 +976,8 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
               vocabulary={globalVocabulary}
               onRemoveWord={removeFromGlobalVocabulary}
               onClearAll={clearGlobalVocabulary}
+              onCorrect={incrementCorrectCount}
+              onClearMastered={clearMasteredWords}
               backgroundColor={backgroundColor}
             />
           )}

@@ -2,17 +2,21 @@
 
 import React, { useState } from "react";
 import { speakWord } from "@/lib/speak";
+import { VocabularyQuiz } from "@/components/VocabularyQuiz";
 
 interface VocabItem {
   root: string;
   meaning: string;
   pos: string;
+  correctCount: number;
 }
 
 interface GlobalVocabularyPageProps {
   vocabulary: Record<string, VocabItem>;
   onRemoveWord: (root: string) => void;
   onClearAll: () => void;
+  onCorrect: (root: string) => void;
+  onClearMastered: (threshold: number) => void;
   backgroundColor?: string;
 }
 
@@ -20,10 +24,15 @@ export function GlobalVocabularyPage({
   vocabulary,
   onRemoveWord,
   onClearAll,
+  onCorrect,
+  onClearMastered,
   backgroundColor = "#FFF8F0",
 }: GlobalVocabularyPageProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [showConfirmClear, setShowConfirmClear] = useState(false);
+  const [showQuiz, setShowQuiz] = useState(false);
+  const [showClearMastered, setShowClearMastered] = useState(false);
+  const [clearThreshold, setClearThreshold] = useState(3);
 
   const vocabList = Object.values(vocabulary);
 
@@ -56,6 +65,16 @@ export function GlobalVocabularyPage({
               onClick={() => setShowConfirmClear(true)}
             >
               清空全部
+            </button>
+          )}
+          {vocabList.length >= 4 && (
+            <button className="global-vocab-quiz-btn" onClick={() => setShowQuiz(true)}>
+              Quiz
+            </button>
+          )}
+          {vocabList.length > 0 && (
+            <button className="global-vocab-mastered-btn" onClick={() => setShowClearMastered(true)}>
+              清除已掌握
             </button>
           )}
         </div>
@@ -108,7 +127,14 @@ export function GlobalVocabularyPage({
             {sortedList.map((item) => (
               <div key={item.root} className="global-vocab-item">
                 <div className="global-vocab-item-left">
-                  <span className="global-vocab-word">{item.root}</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span className="global-vocab-word">{item.root}</span>
+                    {(item.correctCount || 0) > 0 && (
+                      <span className="global-vocab-correct-badge">
+                        ✓ {item.correctCount}
+                      </span>
+                    )}
+                  </div>
                   <span className="global-vocab-meaning">{item.meaning}</span>
                 </div>
                 {/* 发音按钮 */}
@@ -193,6 +219,85 @@ export function GlobalVocabularyPage({
         </div>
       )}
 
+      {/* Quiz 弹窗 */}
+      {showQuiz && (
+        <VocabularyQuiz
+          vocabulary={vocabulary}
+          onCorrect={onCorrect}
+          onClose={() => setShowQuiz(false)}
+        />
+      )}
+
+      {/* 批量清除弹窗 */}
+      {showClearMastered && (
+        <div
+          className="global-vocab-confirm-overlay"
+          onClick={() => setShowClearMastered(false)}
+        >
+          <div
+            className="global-vocab-confirm-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="global-vocab-confirm-text">清除答对次数 ≥ N 的单词</p>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "8px",
+                margin: "16px 0",
+              }}
+            >
+              <span>N = </span>
+              <input
+                type="number"
+                min={1}
+                value={clearThreshold}
+                onChange={(e) =>
+                  setClearThreshold(Math.max(1, parseInt(e.target.value) || 1))
+                }
+                style={{
+                  width: "60px",
+                  padding: "6px",
+                  border: "2px solid #ddd",
+                  borderRadius: "8px",
+                  textAlign: "center",
+                  fontSize: "16px",
+                  fontWeight: 600,
+                }}
+              />
+              <span>次</span>
+            </div>
+            <p style={{ fontSize: "13px", color: "#999", textAlign: "center" }}>
+              将清除{" "}
+              {
+                Object.values(vocabulary).filter(
+                  (v) => (v.correctCount || 0) >= clearThreshold
+                ).length
+              }{" "}
+              个单词
+            </p>
+            <div className="global-vocab-confirm-buttons">
+              <button
+                className="global-vocab-confirm-cancel"
+                onClick={() => setShowClearMastered(false)}
+              >
+                取消
+              </button>
+              <button
+                className="global-vocab-confirm-ok"
+                onClick={() => {
+                  onClearMastered(clearThreshold);
+                  setShowClearMastered(false);
+                }}
+              >
+                确定清除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style jsx>{`
         .global-vocab-page {
           min-height: 100vh;
@@ -251,6 +356,49 @@ export function GlobalVocabularyPage({
           border-color: #e74c3c;
           color: #e74c3c;
           background: rgba(231, 76, 60, 0.05);
+        }
+
+        .global-vocab-quiz-btn {
+          padding: 6px 14px;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          border: none;
+          border-radius: 8px;
+          font-size: 13px;
+          color: white;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .global-vocab-quiz-btn:hover {
+          opacity: 0.9;
+          transform: scale(1.02);
+        }
+
+        .global-vocab-mastered-btn {
+          padding: 6px 14px;
+          background: none;
+          border: 1px solid #ddd;
+          border-radius: 8px;
+          font-size: 13px;
+          color: #999;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .global-vocab-mastered-btn:hover {
+          border-color: #27ae60;
+          color: #27ae60;
+          background: rgba(39, 174, 96, 0.05);
+        }
+
+        .global-vocab-correct-badge {
+          font-size: 11px;
+          color: #27ae60;
+          background: rgba(39, 174, 96, 0.1);
+          padding: 2px 7px;
+          border-radius: 10px;
+          font-weight: 500;
         }
 
         .global-vocab-search {
