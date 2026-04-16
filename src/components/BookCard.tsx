@@ -3,7 +3,7 @@
 import React from "react";
 import type { Book } from "@/hooks/useBookshelf";
 import type { ShelfTheme } from "@/lib/shelfThemes";
-import { getCoverGradient } from "@/lib/shelfThemes";
+import { getCoverColor } from "@/lib/shelfThemes";
 
 interface BookCardProps {
   book: Book;
@@ -12,17 +12,7 @@ interface BookCardProps {
   onOpen: () => void;
   onDelete: () => void;
   isAddCard?: boolean;
-  theme?: ShelfTheme;
-  themeColors?: {
-    text: string;
-    subText: string;
-    accent: string;
-    progressBg: string;
-    progressFill: string;
-    cardBg: string;
-    addBorder: string;
-    addHoverBg: string;
-  };
+  shelfTheme?: ShelfTheme;
 }
 
 export function BookCard({
@@ -32,28 +22,18 @@ export function BookCard({
   onOpen,
   onDelete,
   isAddCard,
-  theme,
-  themeColors,
+  shelfTheme,
 }: BookCardProps) {
-  const tc = themeColors;
-
   if (isAddCard) {
     return (
-      <button
-        className="book-card add-card"
-        onClick={onOpen}
-        style={tc ? {
-          borderColor: tc.addBorder,
-          background: tc.cardBg,
-        } : undefined}
-      >
-        <div className="add-icon" style={tc ? { color: tc.subText } : undefined}>
+      <button className="book-card add-card" onClick={onOpen}>
+        <div className="add-icon">
           <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <line x1="12" y1="5" x2="12" y2="19" />
             <line x1="5" y1="12" x2="19" y2="12" />
           </svg>
         </div>
-        <span className="add-text" style={tc ? { color: tc.subText } : undefined}>添加新书</span>
+        <span className="add-text">添加新书</span>
       </button>
     );
   }
@@ -65,14 +45,12 @@ export function BookCard({
     }
   };
 
-  const coverBg = theme ? getCoverGradient(book.title, theme) : "linear-gradient(135deg, #4a90d9 0%, #357abd 100%)";
+  const coverBg = shelfTheme
+    ? getCoverColor(book.title, shelfTheme)
+    : "#4a90d9";
 
   return (
-    <div
-      className="book-card"
-      onClick={onOpen}
-      style={tc ? { background: tc.cardBg } : undefined}
-    >
+    <div className="book-card" onClick={onOpen}>
       <div className="book-cover" style={{ background: coverBg }}>
         <div className="book-icon">
           <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -82,17 +60,11 @@ export function BookCard({
         </div>
       </div>
       <div className="book-info">
-        <h3
-          className="book-title"
-          title={book.title}
-          style={tc ? { color: tc.text } : undefined}
-        >
-          {book.title}
-        </h3>
+        <h3 className="book-title" title={book.title}>{book.title}</h3>
         <div className="book-meta">
-          <div className="progress-bar" style={tc ? { background: tc.progressBg } : undefined}>
+          <div className="progress-bar">
             {progress >= 0 ? (
-              <div className="progress-fill" style={{ width: `${progress}%`, background: tc?.progressFill }} />
+              <div className="progress-fill" style={{ width: `${progress}%` }} />
             ) : (
               <div className="progress-fill unread" style={{ width: "2%" }} />
             )}
@@ -100,21 +72,15 @@ export function BookCard({
           <div className="progress-text">
             {progress >= 0 ? (
               <>
-                <span className="progress-value" style={tc ? { color: tc.accent } : undefined}>
-                  {progress}%
-                </span>
-                <span className="progress-label" style={tc ? { color: tc.subText } : undefined}>
-                  已读
-                </span>
+                <span className="progress-value">{progress}%</span>
+                <span className="progress-label">已读</span>
               </>
             ) : (
-              <span className="progress-value unread-text" style={tc ? { color: tc.subText } : undefined}>
-                未读
-              </span>
+              <span className="progress-value unread-text">未读</span>
             )}
           </div>
         </div>
-        <div className="book-time" style={tc ? { color: tc.subText } : undefined}>
+        <div className="book-time">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="12" cy="12" r="10" />
             <polyline points="12 6 12 12 16 14" />

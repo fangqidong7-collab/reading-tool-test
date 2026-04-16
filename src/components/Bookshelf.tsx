@@ -5,7 +5,7 @@ import { BookCard } from "./BookCard";
 import { AddBookModal } from "./AddBookModal";
 import type { Book } from "@/hooks/useBookshelf";
 import type { TocEntry } from "@/lib/fileParser";
-import { SHELF_THEMES, getThemeById, type ShelfTheme } from "@/lib/shelfThemes";
+import { SHELF_THEMES, getThemeById } from "@/lib/shelfThemes";
 
 interface BookshelfProps {
   books: Book[];
@@ -17,29 +17,6 @@ interface BookshelfProps {
   onDataManageClick: () => void;
   shelfThemeId: string;
   onShelfThemeChange: (id: string) => void;
-}
-
-/** 根据主题色阶计算各 UI 元素的颜色 */
-function computeThemeColors(theme: ShelfTheme) {
-  const [c0, c1, c2, c3, c4] = theme.colors;
-  return {
-    pageBg: c0,
-    cardBg: `${c0}cc`,
-    text: c4,
-    subText: `${c4}99`,
-    accent: c3,
-    progressBg: `${c1}40`,
-    progressFill: `linear-gradient(90deg, ${c2}, ${c3})`,
-    addBorder: `${c1}88`,
-    addHoverBg: `${c1}22`,
-    headerText: c4,
-    syncBtnBg: `linear-gradient(135deg, ${c2} 0%, ${c3} 100%)`,
-    syncBtnShadow: `${c2}50`,
-    tabActiveBg: c3,
-    tabActiveText: c0,
-    badgeBg: c2,
-    badgeText: c4,
-  };
 }
 
 export function Bookshelf({
@@ -57,18 +34,6 @@ export function Bookshelf({
   const [showThemePicker, setShowThemePicker] = useState(false);
 
   const theme = getThemeById(shelfThemeId);
-  const tc = computeThemeColors(theme);
-
-  const cardColors = {
-    text: tc.text,
-    subText: tc.subText,
-    accent: tc.accent,
-    progressBg: tc.progressBg,
-    progressFill: tc.progressFill,
-    cardBg: tc.cardBg,
-    addBorder: tc.addBorder,
-    addHoverBg: tc.addHoverBg,
-  };
 
   const handleAddBook = (title: string, content: string, tableOfContents?: TocEntry[]) => {
     const newBook = onAddBook(title, content, tableOfContents);
@@ -76,22 +41,20 @@ export function Bookshelf({
   };
 
   return (
-    <div className="bookshelf" style={{ background: tc.pageBg }}>
+    <div className="bookshelf">
       <div className="bookshelf-header">
         <div className="header-left-area">
-          <h1 className="bookshelf-title" style={{ color: tc.headerText }}>我的书架</h1>
+          <h1 className="bookshelf-title">我的书架</h1>
           <button
             className="theme-picker-btn"
             onClick={() => setShowThemePicker(!showThemePicker)}
-            title="切换书架主题"
-            style={{ color: tc.subText }}
+            title="封面配色"
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10" />
-              <path d="M12 2a7 7 0 0 0 0 14h7" />
-              <circle cx="12" cy="9" r="1.5" fill="currentColor" />
-              <circle cx="8.5" cy="12.5" r="1.5" fill="currentColor" />
-              <circle cx="15.5" cy="12.5" r="1.5" fill="currentColor" />
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="13.5" cy="6.5" r="2.5"/>
+              <circle cx="6.5" cy="13.5" r="2.5"/>
+              <circle cx="17.5" cy="17.5" r="2.5"/>
+              <circle cx="12" cy="12" r="10"/>
             </svg>
           </button>
         </div>
@@ -99,10 +62,6 @@ export function Bookshelf({
           className="cloud-sync-btn"
           onClick={onDataManageClick}
           title="数据备份"
-          style={{
-            background: tc.syncBtnBg,
-            boxShadow: `0 2px 8px ${tc.syncBtnShadow}`,
-          }}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -114,28 +73,22 @@ export function Bookshelf({
       </div>
 
       {showThemePicker && (
-        <div className="theme-picker" style={{ background: tc.cardBg }}>
-          <div className="theme-picker-title" style={{ color: tc.text }}>选择书架主题</div>
-          <div className="theme-picker-grid">
-            {SHELF_THEMES.map((t) => (
-              <button
-                key={t.id}
-                className={`theme-swatch ${shelfThemeId === t.id ? "active" : ""}`}
-                onClick={() => {
-                  onShelfThemeChange(t.id);
-                  setShowThemePicker(false);
-                }}
-                title={t.name}
-              >
-                <div className="swatch-colors">
-                  {t.colors.map((c, i) => (
-                    <div key={i} className="swatch-stripe" style={{ background: c }} />
-                  ))}
-                </div>
-                <span className="swatch-name" style={{ color: t.colors[4] }}>{t.name}</span>
-              </button>
-            ))}
-          </div>
+        <div className="theme-picker">
+          {SHELF_THEMES.map((t) => (
+            <button
+              key={t.id}
+              className={`theme-swatch ${shelfThemeId === t.id ? "active" : ""}`}
+              onClick={() => { onShelfThemeChange(t.id); setShowThemePicker(false); }}
+              title={t.name}
+            >
+              <div className="swatch-colors">
+                {t.coverColors.map((c, i) => (
+                  <div key={i} style={{ background: c, flex: 1 }} />
+                ))}
+              </div>
+              <span className="swatch-label">{t.name}</span>
+            </button>
+          ))}
         </div>
       )}
 
@@ -147,8 +100,7 @@ export function Bookshelf({
           lastRead=""
           onOpen={() => setShowAddModal(true)}
           onDelete={() => {}}
-          theme={theme}
-          themeColors={cardColors}
+          shelfTheme={theme}
         />
         {books
           .filter((b) => !b.isSample)
@@ -160,8 +112,7 @@ export function Bookshelf({
               lastRead={formatLastRead(book.lastReadAt)}
               onOpen={() => onOpenBook(book.id)}
               onDelete={() => onDeleteBook(book.id)}
-              theme={theme}
-              themeColors={cardColors}
+              shelfTheme={theme}
             />
           ))}
         {books
@@ -174,8 +125,7 @@ export function Bookshelf({
               lastRead={formatLastRead(book.lastReadAt)}
               onOpen={() => onOpenBook(book.id)}
               onDelete={() => {}}
-              theme={theme}
-              themeColors={cardColors}
+              shelfTheme={theme}
             />
           ))}
       </div>
@@ -193,32 +143,24 @@ export function Bookshelf({
           cursor: pointer;
           padding: 6px;
           border-radius: 8px;
+          color: #888;
           display: flex;
           align-items: center;
-          justify-content: center;
           transition: all 0.15s;
-          opacity: 0.7;
         }
         .theme-picker-btn:hover {
-          opacity: 1;
-          background: rgba(128, 128, 128, 0.1);
+          color: #555;
+          background: rgba(0,0,0,0.05);
         }
         .theme-picker {
-          border-radius: 12px;
-          padding: 16px;
-          margin-bottom: 24px;
-          backdrop-filter: blur(10px);
-          border: 1px solid rgba(128, 128, 128, 0.15);
-        }
-        .theme-picker-title {
-          font-size: 14px;
-          font-weight: 600;
-          margin-bottom: 12px;
-        }
-        .theme-picker-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+          grid-template-columns: repeat(3, 1fr);
           gap: 10px;
+          margin-bottom: 24px;
+          padding: 16px;
+          background: white;
+          border-radius: 12px;
+          box-shadow: 0 2px 12px rgba(0,0,0,0.08);
         }
         .theme-swatch {
           background: none;
@@ -226,43 +168,30 @@ export function Bookshelf({
           border-radius: 10px;
           padding: 6px;
           cursor: pointer;
-          transition: all 0.2s;
           display: flex;
           flex-direction: column;
           align-items: center;
-          gap: 6px;
+          gap: 4px;
+          transition: all 0.15s;
         }
         .theme-swatch:hover {
-          transform: scale(1.05);
+          border-color: #ddd;
         }
         .theme-swatch.active {
-          border-color: ${tc.accent};
-          box-shadow: 0 0 0 2px ${tc.accent}40;
+          border-color: #4a90d9;
+          box-shadow: 0 0 0 2px rgba(74,144,217,0.2);
         }
         .swatch-colors {
           width: 100%;
-          height: 36px;
+          height: 28px;
           border-radius: 6px;
           overflow: hidden;
           display: flex;
         }
-        .swatch-stripe {
-          flex: 1;
-        }
-        .swatch-name {
+        .swatch-label {
           font-size: 11px;
+          color: #666;
           font-weight: 500;
-        }
-
-        @media (max-width: 600px) {
-          .theme-picker-grid {
-            grid-template-columns: repeat(3, 1fr);
-            gap: 8px;
-          }
-          .theme-picker {
-            padding: 12px;
-            margin-bottom: 16px;
-          }
         }
       `}</style>
     </div>
