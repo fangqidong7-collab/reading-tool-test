@@ -21,7 +21,6 @@ type QuizCard = {
   options: string[];
 };
 
-// 随机打乱数组
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
@@ -31,49 +30,15 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-/**
- * 计算两个单词的"形近度"分数（0~1，越高越像）
- * 基于编辑距离（Levenshtein Distance）
- */
-function wordSimilarity(a: string, b: string): number {
-  const la = a.toLowerCase();
-  const lb = b.toLowerCase();
-  if (la === lb) return 1;
-
-  const lenA = la.length;
-  const lenB = lb.length;
-  const maxLen = Math.max(lenA, lenB);
-  if (maxLen === 0) return 1;
-
-  // 标准编辑距离 DP
-  const dp: number[][] = Array.from({ length: lenA + 1 }, () =>
-    Array(lenB + 1).fill(0)
-  );
-  for (let i = 0; i <= lenA; i++) dp[i][0] = i;
-  for (let j = 0; j <= lenB; j++) dp[0][j] = j;
-  for (let i = 1; i <= lenA; i++) {
-    for (let j = 1; j <= lenB; j++) {
-      const cost = la[i - 1] === lb[j - 1] ? 0 : 1;
-      dp[i][j] = Math.min(
-        dp[i - 1][j] + 1,
-        dp[i][j - 1] + 1,
-        dp[i - 1][j - 1] + cost
-      );
-    }
-  }
-
-  const editDist = dp[lenA][lenB];
-  return 1 - editDist / maxLen;
-}
-
-/**
- * 判断一个释义是否为中文（包含中文字符）
- */
 function isChinese(text: string): boolean {
   return /[\u4e00-\u9fff]/.test(text);
 }
 
-export function VocabularyQuiz({ vocabulary, onCorrect, onClose }: VocabularyQuizProps) {
+export function VocabularyQuiz({
+  vocabulary,
+  onCorrect,
+  onClose,
+}: VocabularyQuizProps) {
   const vocabList = useMemo(() => Object.values(vocabulary), [vocabulary]);
 
   const [phase, setPhase] = useState<"setup" | "quiz" | "result">("setup");
@@ -90,74 +55,36 @@ export function VocabularyQuiz({ vocabulary, onCorrect, onClose }: VocabularyQui
     const count = Math.min(quizCount, vocabList.length);
     const selected = shuffle(vocabList).slice(0, count);
 
-    // 预先把词汇按中/英释义分成两个池子
     const chinesePool = vocabList.filter((v) => isChinese(v.meaning));
     const englishPool = vocabList.filter((v) => !isChinese(v.meaning));
 
     const generatedCards: QuizCard[] = selected.map((item) => {
       const isZh = isChinese(item.meaning);
-      // 选同语言池作为候选干扰项来源
       const sameLanguagePool = isZh ? chinesePool : englishPool;
 
-      // 从同语言池中找出除自己之外、且释义不同的词
-      const otherWords = sameLanguagePool.filter(
-        (v) => v.root !== item.root && v.meaning !== item.meaning
-      );
-
-      let wrongMeanings: string[] = [];
-
-      if (otherWords.length >= 3) {
-        // 按单词拼写相似度排序，优先选"形近词"的释义作为干扰项
-        const scoredWords = otherWords.map((v) => ({
-          meaning: v.meaning,
-          similarity: wordSimilarity(item.root, v.root),
-        }));
-
-        // 按相似度从高到低排序，取前 6 个候选，再从中随机选 3 个
-        // 加一点随机性，不要每次都是固定的前3个
-        scoredWords.sort((a, b) => b.similarity - a.similarity);
-        const topCandidates = scoredWords.slice(
-          0,
-          Math.min(6, scoredWords.length)
-        );
-        wrongMeanings = shuffle(topCandidates)
-          .slice(0, 3)
-          .map((v) => v.meaning);
-
-        // 如果形近词不够 3 个，从剩余词中随机补
-        if (wrongMeanings.length < 3) {
-          const remaining = scoredWords
-            .slice(topCandidates.length)
-            .map((v) => v.meaning)
-            .filter((m) => !wrongMeanings.includes(m));
-          wrongMeanings.push(
-            ...shuffle(remaining).slice(0, 3 - wrongMeanings.length)
-          );
-        }
-      } else {
-        // 同语言池不够 3 个，退化为从全部词汇中选
-        const fallback = vocabList.filter(
+      // 从同语言池中随机选 3 个不同释义作为干扰项
+      const otherMeanings = shuffle(
+        sameLanguagePool.filter(
           (v) => v.root !== item.root && v.meaning !== item.meaning
-        );
-        wrongMeanings = shuffle(fallback)
-          .slice(0, 3)
-          .map((v) => v.meaning);
-      }
+        )
+      )
+        .slice(0, 3)
+        .map((v) => v.meaning);
 
-      // 去重：确保 wrongMeanings 中没有跟正确答案重复的
-      wrongMeanings = wrongMeanings.filter((m) => m !== item.meaning);
-      // 如果去重后不够 3 个，再补
+      let wrongMeanings = [...otherMeanings];
+
+      // 如果同语言池不够 3 个，从全部词汇中补
       if (wrongMeanings.length < 3) {
-        const allOther = vocabList
-          .filter(
-            (v) =>
-              v.root !== item.root &&
-              v.meaning !== item.meaning &&
-              !wrongMeanings.includes(v.meaning)
-          )
-          .map((v) => v.meaning);
+        const fallback = vocabList.filter(
+          (v) =>
+            v.root !== item.root &&
+            v.meaning !== item.meaning &&
+            !wrongMeanings.includes(v.meaning)
+        );
         wrongMeanings.push(
-          ...shuffle(allOther).slice(0, 3 - wrongMeanings.length)
+          ...shuffle(fallback)
+            .slice(0, 3 - wrongMeanings.length)
+            .map((v) => v.meaning)
         );
       }
 
@@ -208,18 +135,29 @@ export function VocabularyQuiz({ vocabulary, onCorrect, onClose }: VocabularyQui
     }
   }, [currentIndex, cards.length]);
 
+  const handleQuit = useCallback(() => {
+    setPhase("result");
+  }, []);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (phase === "quiz" && selectedOption !== null && e.key === "Enter") {
         handleNext();
       }
+      if (phase === "quiz" && e.key === "Escape") {
+        handleQuit();
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [phase, selectedOption, handleNext]);
+  }, [phase, selectedOption, handleNext, handleQuit]);
 
   const card =
     phase === "quiz" && cards[currentIndex] ? cards[currentIndex] : null;
+
+  const answeredCount = correctTotal + wrongTotal;
+  const accuracy =
+    answeredCount > 0 ? Math.round((correctTotal / answeredCount) * 100) : 0;
 
   return (
     <>
@@ -229,8 +167,7 @@ export function VocabularyQuiz({ vocabulary, onCorrect, onClose }: VocabularyQui
           <div className="quiz-modal" onClick={(e) => e.stopPropagation()}>
             <h2 className="quiz-title">单词 Quiz</h2>
             <p className="quiz-subtitle">
-              词汇表共 <strong>{vocabList.length}</strong>{" "}
-              个单词，选择要复习的数量：
+              词汇表共 <strong>{vocabList.length}</strong> 个单词，选择要复习的数量：
             </p>
             <div className="quiz-count-input">
               <input
@@ -242,10 +179,7 @@ export function VocabularyQuiz({ vocabulary, onCorrect, onClose }: VocabularyQui
                   setQuizCount(
                     Math.max(
                       1,
-                      Math.min(
-                        vocabList.length,
-                        parseInt(e.target.value) || 1
-                      )
+                      Math.min(vocabList.length, parseInt(e.target.value) || 1)
                     )
                   )
                 }
@@ -268,9 +202,7 @@ export function VocabularyQuiz({ vocabulary, onCorrect, onClose }: VocabularyQui
               {vocabList.length > 0 && (
                 <button
                   onClick={() => setQuizCount(vocabList.length)}
-                  className={
-                    quizCount === vocabList.length ? "active" : ""
-                  }
+                  className={quizCount === vocabList.length ? "active" : ""}
                 >
                   全部
                 </button>
@@ -299,27 +231,37 @@ export function VocabularyQuiz({ vocabulary, onCorrect, onClose }: VocabularyQui
 
       {/* ===== Quiz Phase ===== */}
       {phase === "quiz" && card && (
-        <div className="quiz-overlay" onClick={onClose}>
+        <div className="quiz-overlay">
           <div
             className="quiz-modal quiz-card-modal"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="quiz-progress-bar">
-              <div
-                className="quiz-progress-fill"
-                style={{
-                  width: `${((currentIndex + 1) / cards.length) * 100}%`,
-                }}
-              />
-            </div>
-            <div className="quiz-progress-text">
-              {currentIndex + 1} / {cards.length}
+            {/* Top bar: progress + quit */}
+            <div className="quiz-top-bar">
+              <div className="quiz-progress-bar">
+                <div
+                  className="quiz-progress-fill"
+                  style={{
+                    width: `${((currentIndex + 1) / cards.length) * 100}%`,
+                  }}
+                />
+              </div>
+              <div className="quiz-top-row">
+                <span className="quiz-progress-text">
+                  {currentIndex + 1} / {cards.length}
+                </span>
+                <button className="quiz-quit-btn" onClick={handleQuit}>
+                  退出
+                </button>
+              </div>
             </div>
 
+            {/* Word card */}
             <div className="quiz-word-card">
               <span className="quiz-word">{card.word}</span>
             </div>
 
+            {/* Options */}
             <div className="quiz-options">
               {card.options.map((opt, idx) => {
                 let optionClass = "quiz-option";
@@ -346,21 +288,18 @@ export function VocabularyQuiz({ vocabulary, onCorrect, onClose }: VocabularyQui
               })}
             </div>
 
+            {/* Feedback */}
             {selectedOption !== null && (
               <div className="quiz-feedback">
                 <span
-                  className={
-                    isCorrect ? "feedback-correct" : "feedback-wrong"
-                  }
+                  className={isCorrect ? "feedback-correct" : "feedback-wrong"}
                 >
                   {isCorrect
                     ? "正确!"
                     : `错误! 正确答案: ${card.correctMeaning}`}
                 </span>
                 <button className="quiz-next-btn" onClick={handleNext}>
-                  {currentIndex + 1 >= cards.length
-                    ? "查看结果"
-                    : "下一题 →"}
+                  {currentIndex + 1 >= cards.length ? "查看结果" : "下一题 →"}
                 </button>
               </div>
             )}
@@ -383,15 +322,16 @@ export function VocabularyQuiz({ vocabulary, onCorrect, onClose }: VocabularyQui
                 <span className="result-label">答错</span>
               </div>
               <div className="result-stat rate-stat">
-                <span className="result-number">
-                  {cards.length > 0
-                    ? Math.round((correctTotal / cards.length) * 100)
-                    : 0}
-                  %
-                </span>
+                <span className="result-number">{accuracy}%</span>
                 <span className="result-label">正确率</span>
               </div>
             </div>
+
+            {answeredCount < cards.length && (
+              <p className="quiz-quit-note">
+                已提前退出，完成了 {answeredCount}/{cards.length} 题
+              </p>
+            )}
 
             {wrongWords.length > 0 && (
               <div className="quiz-wrong-list">
@@ -434,29 +374,31 @@ export function VocabularyQuiz({ vocabulary, onCorrect, onClose }: VocabularyQui
           align-items: center;
           justify-content: center;
           z-index: 1100;
-          padding: 20px;
+          padding: 12px;
         }
 
         .quiz-modal {
           background: white;
           border-radius: 16px;
-          padding: 28px 24px;
+          padding: 24px 20px;
           max-width: 420px;
           width: 100%;
           box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
-          max-height: 90vh;
+          max-height: 95vh;
           overflow-y: auto;
         }
 
         .quiz-card-modal {
-          padding: 20px 24px;
+          padding: 16px 18px;
+          display: flex;
+          flex-direction: column;
         }
 
         .quiz-title {
-          font-size: 22px;
+          font-size: 20px;
           font-weight: 700;
           color: #333;
-          margin: 0 0 8px;
+          margin: 0 0 6px;
           text-align: center;
         }
 
@@ -464,7 +406,7 @@ export function VocabularyQuiz({ vocabulary, onCorrect, onClose }: VocabularyQui
           font-size: 14px;
           color: #666;
           text-align: center;
-          margin: 0 0 20px;
+          margin: 0 0 16px;
         }
 
         .quiz-count-input {
@@ -472,7 +414,7 @@ export function VocabularyQuiz({ vocabulary, onCorrect, onClose }: VocabularyQui
           align-items: center;
           justify-content: center;
           gap: 8px;
-          margin-bottom: 12px;
+          margin-bottom: 10px;
         }
 
         .quiz-count-input input {
@@ -501,7 +443,7 @@ export function VocabularyQuiz({ vocabulary, onCorrect, onClose }: VocabularyQui
           gap: 8px;
           justify-content: center;
           flex-wrap: wrap;
-          margin-bottom: 20px;
+          margin-bottom: 16px;
         }
 
         .quiz-quick-btns button {
@@ -575,12 +517,17 @@ export function VocabularyQuiz({ vocabulary, onCorrect, onClose }: VocabularyQui
           margin-top: 8px;
         }
 
+        /* === Quiz top bar === */
+        .quiz-top-bar {
+          margin-bottom: 10px;
+        }
+
         .quiz-progress-bar {
           height: 4px;
           background: #eee;
           border-radius: 2px;
           overflow: hidden;
-          margin-bottom: 6px;
+          margin-bottom: 4px;
         }
 
         .quiz-progress-fill {
@@ -589,43 +536,66 @@ export function VocabularyQuiz({ vocabulary, onCorrect, onClose }: VocabularyQui
           transition: width 0.3s ease;
         }
 
+        .quiz-top-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+
         .quiz-progress-text {
           font-size: 12px;
           color: #999;
-          text-align: right;
-          margin-bottom: 16px;
         }
 
+        .quiz-quit-btn {
+          padding: 4px 14px;
+          background: #f5f5f5;
+          border: 1px solid #ddd;
+          border-radius: 6px;
+          font-size: 13px;
+          color: #888;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+
+        .quiz-quit-btn:hover {
+          background: #e8e8e8;
+          color: #e74c3c;
+          border-color: #e74c3c;
+        }
+
+        /* === Word card === */
         .quiz-word-card {
           background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          border-radius: 14px;
-          padding: 36px 20px;
+          border-radius: 12px;
+          padding: 24px 16px;
           text-align: center;
-          margin-bottom: 20px;
+          margin-bottom: 12px;
         }
 
         .quiz-word {
-          font-size: 32px;
+          font-size: 28px;
           font-weight: 700;
           color: white;
           font-family: Georgia, "Times New Roman", serif;
           letter-spacing: 1px;
         }
 
+        /* === Options === */
         .quiz-options {
           display: flex;
           flex-direction: column;
-          gap: 10px;
-          margin-bottom: 16px;
+          gap: 8px;
+          margin-bottom: 10px;
         }
 
         .quiz-option {
           display: flex;
           align-items: center;
-          gap: 12px;
-          padding: 14px 16px;
+          gap: 10px;
+          padding: 10px 14px;
           border: 2px solid #e0e0e0;
-          border-radius: 12px;
+          border-radius: 10px;
           background: white;
           cursor: pointer;
           transition: all 0.15s;
@@ -648,14 +618,14 @@ export function VocabularyQuiz({ vocabulary, onCorrect, onClose }: VocabularyQui
         }
 
         .option-label {
-          width: 28px;
-          height: 28px;
+          width: 26px;
+          height: 26px;
           border-radius: 50%;
           background: #f0f0f0;
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 13px;
+          font-size: 12px;
           font-weight: 600;
           color: #666;
           flex-shrink: 0;
@@ -672,52 +642,56 @@ export function VocabularyQuiz({ vocabulary, onCorrect, onClose }: VocabularyQui
         }
 
         .option-text {
-          font-size: 15px;
+          font-size: 14px;
           color: #333;
-          line-height: 1.4;
+          line-height: 1.3;
         }
 
+        /* === Feedback === */
         .quiz-feedback {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          gap: 12px;
+          gap: 10px;
         }
 
         .feedback-correct {
           color: #27ae60;
           font-weight: 600;
-          font-size: 15px;
+          font-size: 14px;
         }
 
         .feedback-wrong {
           color: #e74c3c;
           font-weight: 500;
-          font-size: 13px;
+          font-size: 12px;
           flex: 1;
+          line-height: 1.3;
         }
 
         .quiz-next-btn {
-          padding: 10px 20px;
+          padding: 8px 16px;
           background: #4a90d9;
           color: white;
           border: none;
           border-radius: 8px;
-          font-size: 14px;
+          font-size: 13px;
           font-weight: 600;
           cursor: pointer;
           white-space: nowrap;
+          flex-shrink: 0;
         }
 
         .quiz-next-btn:hover {
           background: #3a7bc8;
         }
 
+        /* === Result === */
         .quiz-result-stats {
           display: flex;
           justify-content: center;
           gap: 24px;
-          margin: 24px 0;
+          margin: 20px 0;
         }
 
         .result-stat {
@@ -728,7 +702,7 @@ export function VocabularyQuiz({ vocabulary, onCorrect, onClose }: VocabularyQui
         }
 
         .result-number {
-          font-size: 32px;
+          font-size: 28px;
           font-weight: 700;
         }
 
@@ -749,11 +723,18 @@ export function VocabularyQuiz({ vocabulary, onCorrect, onClose }: VocabularyQui
           color: #999;
         }
 
+        .quiz-quit-note {
+          text-align: center;
+          font-size: 13px;
+          color: #999;
+          margin: 0 0 12px;
+        }
+
         .quiz-wrong-list {
           background: #fff5f5;
           border-radius: 10px;
-          padding: 14px;
-          margin-bottom: 20px;
+          padding: 12px;
+          margin-bottom: 16px;
         }
 
         .wrong-list-title {
@@ -779,16 +760,109 @@ export function VocabularyQuiz({ vocabulary, onCorrect, onClose }: VocabularyQui
           font-family: Georgia, serif;
         }
 
+        /* === Mobile adaptation === */
         @media (max-width: 768px) {
+          .quiz-overlay {
+            padding: 8px;
+            align-items: flex-start;
+            padding-top: env(safe-area-inset-top, 8px);
+          }
+
           .quiz-modal {
-            padding: 20px 16px;
-            margin: 10px;
+            padding: 16px 14px;
+            max-height: 100vh;
+            max-height: 100dvh;
+            border-radius: 12px;
           }
-          .quiz-word {
-            font-size: 26px;
+
+          .quiz-card-modal {
+            padding: 12px 12px;
           }
+
           .quiz-word-card {
-            padding: 28px 16px;
+            padding: 18px 12px;
+            margin-bottom: 8px;
+            border-radius: 10px;
+          }
+
+          .quiz-word {
+            font-size: 24px;
+          }
+
+          .quiz-options {
+            gap: 6px;
+            margin-bottom: 8px;
+          }
+
+          .quiz-option {
+            padding: 8px 10px;
+            border-radius: 8px;
+            gap: 8px;
+          }
+
+          .option-label {
+            width: 22px;
+            height: 22px;
+            font-size: 11px;
+          }
+
+          .option-text {
+            font-size: 13px;
+          }
+
+          .quiz-feedback {
+            gap: 8px;
+          }
+
+          .feedback-wrong {
+            font-size: 11px;
+          }
+
+          .quiz-next-btn {
+            padding: 7px 14px;
+            font-size: 12px;
+          }
+
+          .quiz-title {
+            font-size: 18px;
+          }
+
+          .result-number {
+            font-size: 24px;
+          }
+
+          .quiz-result-stats {
+            margin: 14px 0;
+            gap: 16px;
+          }
+        }
+
+        /* Extra small screens (iPhone SE etc.) */
+        @media (max-height: 600px) {
+          .quiz-word-card {
+            padding: 14px 10px;
+            margin-bottom: 6px;
+          }
+
+          .quiz-word {
+            font-size: 20px;
+          }
+
+          .quiz-option {
+            padding: 6px 8px;
+          }
+
+          .option-text {
+            font-size: 12px;
+          }
+
+          .quiz-options {
+            gap: 4px;
+            margin-bottom: 6px;
+          }
+
+          .quiz-top-bar {
+            margin-bottom: 6px;
           }
         }
       `}</style>

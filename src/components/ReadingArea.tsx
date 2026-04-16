@@ -13,6 +13,7 @@ const PARAGRAPH_GAP = 16;
 const MOBILE_BREAKPOINT = 768;
 const MOBILE_TOP_GAP = 5;
 const MOBILE_BOTTOM_SAFE_ZONE = 60;
+const PAGE_TURN_RATIO = 0.9;
 
 // Ref type
 export interface ReadingAreaRef {
@@ -338,11 +339,11 @@ export const ReadingArea = forwardRef(function ReadingArea({
       if (e.key === 'AudioVolumeUp' || e.key === 'VolumeUp') {
         e.preventDefault();
         const el = containerRef.current;
-        if (el) el.scrollBy({ top: -(containerHeight * 0.85), behavior: "smooth" });
+        if (el) el.scrollBy({ top: -(containerHeight * PAGE_TURN_RATIO), behavior: "smooth" });
       } else if (e.key === 'AudioVolumeDown' || e.key === 'VolumeDown') {
         e.preventDefault();
         const el = containerRef.current;
-        if (el) el.scrollBy({ top: containerHeight * 0.85, behavior: "smooth" });
+        if (el) el.scrollBy({ top: containerHeight * PAGE_TURN_RATIO, behavior: "smooth" });
       }
     };
 
@@ -456,10 +457,10 @@ const getFirstVisibleIndex = useCallback(() => {
       if (Math.abs(deltaX) > 50 && deltaTime < 800) {
         if (deltaX < 0) {
           // 左滑 → 下一页
-          el.scrollBy({ top: containerHeight * 0.85, behavior: "smooth" });
+          el.scrollBy({ top: containerHeight * PAGE_TURN_RATIO, behavior: "smooth" });
         } else {
           // 右滑 → 上一页
-          el.scrollBy({ top: -(containerHeight * 0.85), behavior: "smooth" });
+          el.scrollBy({ top: -(containerHeight * PAGE_TURN_RATIO), behavior: "smooth" });
         }
         lastSwipeTimeRef.current = Date.now();
       }
@@ -683,10 +684,10 @@ const getFirstVisibleIndex = useCallback(() => {
             if (!el) return;
             if (clickX < halfWidth) {
               // 左半边 → 上一页
-              el.scrollBy({ top: -(containerHeight * 0.85), behavior: "smooth" });
+              el.scrollBy({ top: -(containerHeight * PAGE_TURN_RATIO), behavior: "smooth" });
             } else {
               // 右半边 → 下一页
-              el.scrollBy({ top: containerHeight * 0.85, behavior: "smooth" });
+              el.scrollBy({ top: containerHeight * PAGE_TURN_RATIO, behavior: "smooth" });
             }
           }}
           style={{
