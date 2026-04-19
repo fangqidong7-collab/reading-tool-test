@@ -568,11 +568,29 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
               color: isDarkMode ? "#ccc" : "#666",
             }}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polyline points="15 18 9 12 15 6" />
             </svg>
           </button>
 
+          <span
+            style={{
+              flex: 1,
+              textAlign: "left",
+              fontSize: "14px",
+              fontWeight: 500,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              padding: "0 4px",
+            }}
+          >
+            {currentChapterTitle || currentBook?.title}
+          </span>
+        </div>
+
+        <div className="header-right">
+          {/* TOC Button - right second */}
           <button
             className={`toc-btn nav-btn-catalog ${isDarkMode ? "dark" : ""}`}
             onClick={handleTocClick}
@@ -588,7 +606,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
             }}
             title="目录"
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="8" y1="6" x2="21" y2="6" />
               <line x1="8" y1="12" x2="21" y2="12" />
               <line x1="8" y1="18" x2="21" y2="18" />
@@ -598,82 +616,10 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
             </svg>
           </button>
 
-          <span
-            style={{
-              flex: 1,
-              textAlign: "center",
-              fontSize: "14px",
-              fontWeight: 500,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              padding: "0 8px",
-            }}
-          >
-            {currentChapterTitle || currentBook?.title}
-          </span>
-        </div>
-
-        <div className="header-right">
-          {/* Search Button */}
-          <button
-            className={`search-btn ${isDarkMode ? "dark" : ""}`}
-            onClick={() => {
-              setSearchOpen(!searchOpen);
-              if (!searchOpen) {
-                setTimeout(() => searchInputRef.current?.focus(), 50);
-              }
-            }}
-            title="搜索全文 (Ctrl+F)"
-            style={{
-              backgroundColor: searchOpen
-                ? isDarkMode
-                  ? "#3a3a4e"
-                  : "#e0e0e0"
-                : "transparent",
-              borderColor: isDarkMode ? "#444" : "#ddd",
-              color: headerTextColor,
-            }}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
-          </button>
-
-          {/* Bookmark Button */}
-          <button
-            className={`bookmark-btn nav-btn-bookmark ${isDarkMode ? "dark" : ""}`}
-            onClick={handleBookmarkClick}
-            title="书签"
-            style={{
-              backgroundColor:
-                leftDrawerOpen && leftDrawerTab === "bookmarks"
-                  ? isDarkMode
-                    ? "#3a3a4e"
-                    : "#e0e0e0"
-                  : "transparent",
-              borderColor: isDarkMode ? "#444" : "#ddd",
-              color: headerTextColor,
-            }}
-          >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill={currentBook?.bookmarks?.some((bm) => bm.page === currentScrollPercent) ? "currentColor" : "none"}
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-            </svg>
-          </button>
-
-          {/* More Menu Button */}
+          {/* More Menu Button - right first */}
           <button
             className={`more-menu-btn nav-btn-more ${isDarkMode ? "dark" : ""}`}
             onClick={() => setMoreMenuOpen(!moreMenuOpen)}
-            title="更多"
             style={{
               backgroundColor: moreMenuOpen
                 ? isDarkMode
@@ -683,8 +629,9 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
               borderColor: isDarkMode ? "#444" : "#ddd",
               color: headerTextColor,
             }}
+            title="更多"
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="12" cy="12" r="1" />
               <circle cx="19" cy="12" r="1" />
               <circle cx="5" cy="12" r="1" />
@@ -693,7 +640,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
         </div>
       </header>
 
-      {/* Mobile More Menu Dropdown */}
+      {/* More Menu Dropdown */}
       {moreMenuOpen && (
         <>
           <div className="more-menu-overlay" onClick={() => setMoreMenuOpen(false)} />
@@ -701,27 +648,46 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
             className={`more-menu-dropdown ${isDarkMode ? "dark" : ""}`}
             style={{ backgroundColor: isDarkMode ? "#2a2a3e" : "#ffffff" }}
           >
-            {/* TOC */}
+            {/* Search */}
             <button
               className="more-menu-item"
               onClick={() => {
-                handleTocClick();
+                setSearchOpen(!searchOpen);
+                if (!searchOpen) setTimeout(() => searchInputRef.current?.focus(), 50);
                 setMoreMenuOpen(false);
               }}
               style={{ color: isDarkMode ? "#ccc" : "#333" }}
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="8" y1="6" x2="21" y2="6" />
-                <line x1="8" y1="12" x2="21" y2="12" />
-                <line x1="8" y1="18" x2="21" y2="18" />
-                <line x1="3" y1="6" x2="3.01" y2="6" />
-                <line x1="3" y1="12" x2="3.01" y2="12" />
-                <line x1="3" y1="18" x2="3.01" y2="18" />
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
               </svg>
-              <span>目录</span>
+              <span>搜索</span>
             </button>
 
-            {/* Settings / Aa */}
+            {/* Bookmark */}
+            <button
+              className="more-menu-item"
+              onClick={() => {
+                handleBookmarkClick();
+                setMoreMenuOpen(false);
+              }}
+              style={{ color: isDarkMode ? "#ccc" : "#333" }}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill={currentBook?.bookmarks?.some((bm) => bm.page === currentScrollPercent) ? "currentColor" : "none"}
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+              </svg>
+              <span>书签</span>
+            </button>
+
+            {/* Settings */}
             <button
               className="more-menu-item"
               onClick={() => {
@@ -730,7 +696,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
               }}
               style={{ color: isDarkMode ? "#ccc" : "#333" }}
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <circle cx="12" cy="12" r="3" />
                 <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
               </svg>
@@ -746,7 +712,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
               }}
               style={{ color: isDarkMode ? "#ccc" : "#333" }}
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
                 <line x1="15" y1="3" x2="15" y2="21" />
               </svg>
@@ -762,7 +728,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
                 {dictLoadStatus === "loading" && <><span className="dict-status-spinner"></span><span>词典加载中...</span></>}
                 {dictLoadStatus === "loaded" && (
                   <>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <polyline points="20 6 9 17 4 12" />
                     </svg>
                     <span>词典已就绪</span>
@@ -770,7 +736,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
                 )}
                 {dictLoadStatus === "failed" && (
                   <>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <circle cx="12" cy="12" r="10" />
                       <line x1="15" y1="9" x2="9" y2="15" />
                       <line x1="9" y1="9" x2="15" y2="15" />
