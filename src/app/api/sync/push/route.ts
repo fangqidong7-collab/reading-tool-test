@@ -57,10 +57,11 @@ export async function POST(request: Request) {
 
 // 智能合并策略：
 // - 词汇表：取并集，相同词根保留 correctCount 较大的
-// - 阅读进度：相同 bookId 取 lastScrollPosition 较大的
+// - 阅读进度：按 bookId 匹配，找不到则按 title 回退匹配
 // - 标注（annotations）：取并集合并
 // - 句子标注（sentenceAnnotations）：按 id 去重取并集
 // - 书签（bookmarks）：按 id 去重取并集
+// - 当同一本书在两端有不同 bookId 时（通过 title 匹配），合并后用两个 bookId 都存储
 function mergeData(remote: SyncData, local: SyncData): SyncData {
   // 1. 合并词汇表（并集，保留 correctCount 较大的）
   const mergedVocab: Record<string, VocabEntry> = { ...(remote.vocabulary || {}) };
@@ -75,65 +76,90 @@ function mergeData(remote: SyncData, local: SyncData): SyncData {
     }
   }
 
-  // 2. 合并阅读进度
-  const mergedProgress: Record<string, BookProgress> = { ...(remote.bookProgress || {}) };
-  
-  for (const [bookId, localProgress] of Object.entries(local.bookProgress || {})) {
-    if (!mergedProgress[bookId]) {
-      // 本地有，远端没有，直接使用
-      mergedProgress[bookId] = localProgress;
-    } else {
-      // 两者都有，需要智能合并
-      const remoteProgress = mergedProgress[bookId];
-      
-      // 阅读进度取较大值
-      if ((localProgress.lastScrollPosition || 0) > (remoteProgress.lastScrollPosition || 0)) {
-        mergedProgress[bookId] = {
-          ...remoteProgress,
-          ...localProgress,
-          lastScrollPosition: localProgress.lastScrollPosition,
-          lastParagraphIndex: localProgress.lastParagraphIndex,
-          lastReadAt: Math.max(localProgress.lastReadAt || 0, remoteProgress.lastReadAt || 0),
-        };
-      } else {
-        mergedProgress[bookId] = {
-          ...mergedProgress[bookId],
-          lastReadAt: Math.max(localProgress.lastReadAt || 0, remoteProgress.lastReadAt || 0),
-        };
-      }
-
-      // 标注取并集
-      if (localProgress.annotations) {
-        mergedProgress[bookId].annotations = {
-          ...(mergedProgress[bookId].annotations || {}),
-          ...localProgress.annotations,
-        };
-      }
-
-      // 句子标注按 id 去重取并集
-      if (localProgress.sentenceAnnotations && localProgress.sentenceAnnotations.length > 0) {
-        const existingIds = new Set((mergedProgress[bookId].sentenceAnnotations || []).map(s => s.id));
-        const newAnnotations = localProgress.sentenceAnnotations.filter(s => !existingIds.has(s.id));
-        mergedProgress[bookId].sentenceAnnotations = [
-          ...(mergedProgress[bookId].sentenceAnnotations || []),
-          ...newAnnotations,
-        ];
-      }
-
-      // 书签按 id 去重取并集
-      if (localProgress.bookmarks && localProgress.bookmarks.length > 0) {
-        const existingIds = new Set((mergedProgress[bookId].bookmarks || []).map(b => b.id));
-        const newBookmarks = localProgress.bookmarks.filter(b => !existingIds.has(b.id));
-        mergedProgress[bookId].bookmarks = [
-          ...(mergedProgress[bookId].bookmarks || []),
-          ...newBookmarks,
-        ];
+  // 2. 建立远端的 title → bookId 映射，用于 title 回退匹配
+  const remoteTitleMap: Record<string, string> = {};
+  if (remote.bookProgress) {
+    for (const [bid, progress] of Object.entries(remote.bookProgress)) {
+      if (progress.title) {
+        remoteTitleMap[progress.title] = bid;
       }
     }
+  }
+
+  // 3. 合并阅读进度
+  const mergedProgress: Record<string, BookProgress> = { ...(remote.bookProgress || {}) };
+  // 记录哪些 bookId 是通过 title 匹配发现的，用于双份存储
+  const titleMatchedPairs: Array<{ localId: string; remoteId: string; mergedData: BookProgress }> = [];
+
+  for (const [localBookId, localProgress] of Object.entries(local.bookProgress || {})) {
+    if (!mergedProgress[localBookId]) {
+      // 本地有，远端没有，尝试按 title 查找
+      if (localProgress.title && remoteTitleMap[localProgress.title]) {
+        const remoteBookId = remoteTitleMap[localProgress.title];
+        const remoteProgress = mergedProgress[remoteBookId];
+        if (remoteProgress) {
+          // 两者都有，按 title 匹配成功，合并数据
+          const mergedData = mergeBookProgressData(remoteProgress, localProgress);
+          mergedProgress[localBookId] = mergedData;
+          titleMatchedPairs.push({ localId: localBookId, remoteId: remoteBookId, mergedData });
+        }
+      }
+      // 如果找不到匹配的，直接添加
+      if (!mergedProgress[localBookId]) {
+        mergedProgress[localBookId] = localProgress;
+      }
+    } else {
+      // bookId 相同，直接合并
+      mergedProgress[localBookId] = mergeBookProgressData(mergedProgress[localBookId], localProgress);
+    }
+  }
+
+  // 4. 对 title 匹配的对，用远端 bookId 也存一份（双份存储）
+  // 这样设备 A pull 时用自己的 bookId 能找到，设备 B pull 时用自己的 bookId 也能找到
+  for (const pair of titleMatchedPairs) {
+    mergedProgress[pair.remoteId] = pair.mergedData;
   }
 
   return {
     vocabulary: mergedVocab,
     bookProgress: mergedProgress,
   };
+}
+
+// 合并两本书的进度数据
+function mergeBookProgressData(remote: BookProgress, local: BookProgress): BookProgress {
+  // 阅读进度取较大值
+  const useLocal = (local.lastScrollPosition || 0) > (remote.lastScrollPosition || 0);
+
+  const merged: BookProgress = {
+    ...remote,
+    ...local,
+    lastScrollPosition: useLocal ? local.lastScrollPosition : remote.lastScrollPosition,
+    lastParagraphIndex: useLocal ? local.lastParagraphIndex : remote.lastParagraphIndex,
+    lastReadAt: Math.max(local.lastReadAt || 0, remote.lastReadAt || 0),
+  };
+
+  // 标注取并集
+  merged.annotations = {
+    ...(remote.annotations || {}),
+    ...(local.annotations || {}),
+  };
+
+  // 句子标注按 id 去重取并集
+  const sentenceIds = new Set((remote.sentenceAnnotations || []).map(s => s.id));
+  const newSentences = (local.sentenceAnnotations || []).filter(s => !sentenceIds.has(s.id));
+  merged.sentenceAnnotations = [
+    ...(remote.sentenceAnnotations || []),
+    ...newSentences,
+  ];
+
+  // 书签按 id 去重取并集
+  const bookmarkIds = new Set((remote.bookmarks || []).map(b => b.id));
+  const newBookmarks = (local.bookmarks || []).filter(b => !bookmarkIds.has(b.id));
+  merged.bookmarks = [
+    ...(remote.bookmarks || []),
+    ...newBookmarks,
+  ];
+
+  return merged;
 }

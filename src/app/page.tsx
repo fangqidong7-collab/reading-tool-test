@@ -376,19 +376,36 @@ export default function Home() {
           }
         });
       }
-      // 进度取较大值
+      // 进度取较大值，按 bookId 匹配，找不到则按 title 匹配
       if (remoteData.bookProgress) {
-        Object.entries(remoteData.bookProgress as Record<string, { scrollPosition?: number; paragraphIndex?: number; annotations?: Record<string, unknown>; bookmarks?: unknown[] }>).forEach(([bookId, progress]) => {
-          const book = books.find(b => b.id === bookId);
-          if (book && progress) {
-            if (!book.lastScrollPosition || (progress.scrollPosition ?? 0) > book.lastScrollPosition) {
-              updateScrollPosition(bookId, progress.scrollPosition ?? 0, progress.paragraphIndex ?? 0);
+        Object.entries(remoteData.bookProgress as Record<string, {
+          title?: string;
+          lastScrollPosition?: number;
+          lastParagraphIndex?: number;
+          annotations?: Record<string, unknown>;
+          sentenceAnnotations?: unknown[];
+          bookmarks?: unknown[];
+        }>).forEach(([bookId, progress]) => {
+          // 先按 bookId 查找
+          let localBook = books.find(b => b.id === bookId);
+          // 找不到则按 title 查找
+          if (!localBook && progress.title) {
+            localBook = books.find(b => b.title === progress.title);
+          }
+          if (localBook && progress) {
+            if ((progress.lastScrollPosition ?? 0) > (localBook.lastScrollPosition ?? 0)) {
+              updateScrollPosition(localBook.id, progress.lastScrollPosition ?? 0, progress.lastParagraphIndex ?? 0);
+            }
+            if (progress.annotations) {
+              mergeBookProgress(localBook.id, { 
+                annotations: progress.annotations as Parameters<typeof mergeBookProgress>[1]['annotations']
+              });
             }
           }
         });
       }
     }
-  }, [bindSyncCode, globalVocabulary, addToGlobalVocabulary, books, updateScrollPosition]);
+  }, [bindSyncCode, globalVocabulary, addToGlobalVocabulary, books, updateScrollPosition, mergeBookProgress]);
 
   // Handle sync - bidirectional sync (push local then pull merged result)
   const handleSync = useCallback(async () => {
@@ -402,23 +419,32 @@ export default function Home() {
 
     if (remoteData.bookProgress) {
       for (const [bookId, progress] of Object.entries(remoteData.bookProgress) as [string, {
+        title?: string;
         lastScrollPosition?: number;
         lastParagraphIndex?: number;
         annotations?: Record<string, { root: string; meaning: string; pos: string; count?: number }>;
         sentenceAnnotations?: unknown[];
         bookmarks?: unknown[];
       }][]) {
+        // 先按 bookId 查找本地书籍
+        let localBook = books.find(b => b.id === bookId);
+        // 找不到则按 title 查找
+        if (!localBook && progress.title) {
+          localBook = books.find(b => b.title === progress.title);
+        }
         // 服务端返回的数据已经是合并后的，直接使用
-        mergeBookProgress(bookId, {
-          lastScrollPosition: progress.lastScrollPosition,
-          lastParagraphIndex: progress.lastParagraphIndex,
-          annotations: progress.annotations,
-          sentenceAnnotations: progress.sentenceAnnotations as Parameters<typeof mergeBookProgress>[1]['sentenceAnnotations'],
-          bookmarks: progress.bookmarks as Parameters<typeof mergeBookProgress>[1]['bookmarks'],
-        });
+        if (localBook) {
+          mergeBookProgress(localBook.id, {
+            lastScrollPosition: progress.lastScrollPosition,
+            lastParagraphIndex: progress.lastParagraphIndex,
+            annotations: progress.annotations,
+            sentenceAnnotations: progress.sentenceAnnotations as Parameters<typeof mergeBookProgress>[1]['sentenceAnnotations'],
+            bookmarks: progress.bookmarks as Parameters<typeof mergeBookProgress>[1]['bookmarks'],
+          });
+        }
       }
     }
-  }, [syncBoth, buildSyncData, mergeGlobalVocabulary, mergeBookProgress]);
+  }, [syncBoth, buildSyncData, books, mergeGlobalVocabulary, mergeBookProgress]);
 
   // Sentence translation state
   const [translatingSelection, setTranslatingSelection] = useState(false);
