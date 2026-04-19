@@ -12,6 +12,9 @@ out/
 .next/
 .rsbuild/
 
+# Local sync data (client-side KV)
+.sync-data/
+
 # Testing
 coverage/
 *.lcov

@@ -18,6 +18,7 @@ interface AnnotatedWord {
 
 export interface ReadingHomeViewProps {
   // Reading area ref
+  containerRef: React.RefObject<HTMLDivElement | null>;
   readingAreaRef: React.RefObject<ReadingAreaRef | null>;
   // Book data
   currentBook: Book | null;
@@ -89,7 +90,7 @@ export interface ReadingHomeViewProps {
   handleWordDoubleClick: (word: string, lemma: string, event: React.MouseEvent) => void;
   getWordAnnotation: (word: string) => AnnotatedWord | null;
   isClickable: (word: string) => boolean;
-  annotateAll: () => void;
+  annotateAll: (word: string) => Promise<void>;
   removeAnnotation: (word: string) => void;
   clearAllAnnotations: () => void;
   scrollToWord: (word: string) => void;
@@ -146,6 +147,7 @@ export interface ReadingHomeViewProps {
 
 export function ReadingHomeView(props: ReadingHomeViewProps) {
   const {
+    containerRef,
     readingAreaRef,
     currentBook,
     processedContent,
@@ -906,7 +908,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
 
       {/* Main Content */}
       <main className="main-content" style={{ backgroundColor }}>
-        <div className="reading-container">
+        <div ref={containerRef} className="reading-container">
           {/* Loading overlay */}
           {loading && (
             <div className="loading-overlay">

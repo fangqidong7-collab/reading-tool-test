@@ -1,12 +1,19 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { Bookshelf } from "@/components/Bookshelf";
 import { GlobalVocabularyPage } from "@/components/GlobalVocabularyPage";
-import { VocabularyQuiz } from "@/components/VocabularyQuiz";
 import { ExportImportModal } from "@/components/ExportImportModal";
-import { SyncPanel } from "@/components/SyncPanel";
 import { DataBackupPanel } from "@/components/DataBackupPanel";
 import type { Book, TocEntry } from "@/hooks/useBookshelf";
+
+// Lazy-load heavy modal components that are only rendered on demand
+const VocabularyQuiz = dynamic(() => import("@/components/VocabularyQuiz").then((m) => m.VocabularyQuiz), {
+  loading: () => null,
+});
+const SyncPanel = dynamic(() => import("@/components/SyncPanel").then((m) => m.SyncPanel), {
+  loading: () => null,
+});
 
 export interface BookshelfHomeViewProps {
   // Tab state
