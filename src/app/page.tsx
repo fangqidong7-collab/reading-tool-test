@@ -9,6 +9,8 @@ import { GlobalVocabularyPage } from "@/components/GlobalVocabularyPage";
 import { VocabularyQuiz } from "@/components/VocabularyQuiz";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { ExportImportModal } from "@/components/ExportImportModal";
+import { SyncPanel } from "@/components/SyncPanel";
+import { useSync } from "@/hooks/useSync";
 import JSLibLoader from "@/components/JSLibLoader";
 import { useBookshelf, ProcessedContent, ProcessedSegment, ProcessedParagraph, SentenceAnnotation } from "@/hooks/useBookshelf";
 import { useReadingSettings } from "@/hooks/useReadingSettings";
@@ -297,6 +299,119 @@ export default function Home() {
   const [dataManageOpen, setDataManageOpen] = useState(false);
   const [showQuiz, setShowQuiz] = useState(false);
   const [activeTab, setActiveTab] = useState<'bookshelf' | 'vocabulary'>('bookshelf');
+
+  // Cloud sync state
+  const [syncPanelOpen, setSyncPanelOpen] = useState(false);
+  const {
+    syncCode,
+    syncing,
+    lastSyncAt,
+    syncError,
+    createSync,
+    bindSyncCode,
+    pushData,
+    pullData,
+    unbind,
+  } = useSync();
+
+  // Build sync data from current state
+  const buildSyncData = useCallback(() => {
+    return {
+      vocabulary: globalVocabulary,
+      bookProgress: books.reduce((acc: Record<string, unknown>, book) => {
+        acc[book.id] = {
+          scrollPosition: book.lastScrollPosition,
+          paragraphIndex: book.lastParagraphIndex,
+          annotations: book.annotations,
+          bookmarks: book.bookmarks,
+        };
+        return acc;
+      }, {}),
+    };
+  }, [globalVocabulary, books]);
+
+  // Handle create sync - push current local data to cloud
+  const handleCreateSync = useCallback(async () => {
+    const data = buildSyncData();
+    const code = await createSync(data);
+    if (code) {
+      console.log('已生成同步码:', code);
+    }
+  }, [buildSyncData, createSync]);
+
+  // Handle bind existing sync code - pull data from cloud and merge
+  const handleBindSync = useCallback(async (code: string) => {
+    const remoteData = await bindSyncCode(code);
+    if (remoteData) {
+      // Merge remote vocabulary into local
+      if (remoteData.vocabulary) {
+        Object.entries(remoteData.vocabulary).forEach(([word, info]) => {
+          const existing = globalVocabulary[word];
+          // 智能合并：词汇表取并集，count 取较大值
+          const infoObj = info as { root?: string; meaning?: string; pos?: string; count?: number } | undefined;
+          const existingCount = existing?.correctCount || 0;
+          const remoteCount = infoObj?.count || 0;
+          if (!existing || remoteCount > existingCount) {
+            addToGlobalVocabulary(
+              infoObj?.root || word,
+              infoObj?.meaning || '',
+              infoObj?.pos || ''
+            );
+          }
+        });
+      }
+      // 进度取较大值
+      if (remoteData.bookProgress) {
+        Object.entries(remoteData.bookProgress as Record<string, { scrollPosition?: number; paragraphIndex?: number; annotations?: Record<string, unknown>; bookmarks?: unknown[] }>).forEach(([bookId, progress]) => {
+          const book = books.find(b => b.id === bookId);
+          if (book && progress) {
+            if (!book.lastScrollPosition || (progress.scrollPosition ?? 0) > book.lastScrollPosition) {
+              updateScrollPosition(bookId, progress.scrollPosition ?? 0, progress.paragraphIndex ?? 0);
+            }
+          }
+        });
+      }
+    }
+  }, [bindSyncCode, globalVocabulary, addToGlobalVocabulary, books, updateScrollPosition]);
+
+  // Handle push data to cloud
+  const handlePushData = useCallback(async () => {
+    const data = buildSyncData();
+    const success = await pushData(data);
+    if (success) {
+      console.log('数据已上传');
+    }
+  }, [buildSyncData, pushData]);
+
+  // Handle pull data from cloud
+  const handlePullData = useCallback(async () => {
+    const remoteData = await pullData();
+    if (remoteData) {
+      // Similar merge logic as handleBindSync
+      if (remoteData.vocabulary) {
+        Object.entries(remoteData.vocabulary).forEach(([word, info]) => {
+          const existing = globalVocabulary[word];
+          const infoObj = info as { root?: string; meaning?: string; pos?: string; count?: number } | undefined;
+          const existingCount = existing?.correctCount || 0;
+          const remoteCount = infoObj?.count || 0;
+          if (!existing || remoteCount > existingCount) {
+            addToGlobalVocabulary(
+              infoObj?.root || word,
+              infoObj?.meaning || '',
+              infoObj?.pos || ''
+            );
+          }
+        });
+      }
+      if (remoteData.bookProgress) {
+        Object.entries(remoteData.bookProgress as Record<string, { scrollPosition?: number; paragraphIndex?: number }>).forEach(([bookId, progress]) => {
+          if (progress) {
+            updateScrollPosition(bookId, progress.scrollPosition ?? 0, progress.paragraphIndex ?? 0);
+          }
+        });
+      }
+    }
+  }, [pullData, globalVocabulary, addToGlobalVocabulary, updateScrollPosition]);
 
   // Sentence translation state
   const [translatingSelection, setTranslatingSelection] = useState(false);
@@ -1227,6 +1342,22 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
         onClickToTurnPageChange={setClickToTurnPage}
       />
 
+      {/* Cloud Sync Panel */}
+      <SyncPanel
+        isOpen={syncPanelOpen}
+        onClose={() => setSyncPanelOpen(false)}
+        syncCode={syncCode}
+        syncing={syncing}
+        lastSyncAt={lastSyncAt}
+        syncError={syncError}
+        onCreateSync={handleCreateSync}
+        onBindCode={handleBindSync}
+        onPush={handlePushData}
+        onPull={handlePullData}
+        onUnbind={unbind}
+        isDarkMode={isDarkMode}
+      />
+
       {/* Left Drawer - TOC and Bookmarks */}
       <div className={`left-drawer-overlay ${leftDrawerOpen ? 'open' : ''}`} onClick={() => setLeftDrawerOpen(false)} />
       <div className={`left-drawer ${leftDrawerOpen ? 'open' : ''}`} style={{ backgroundColor: isDarkMode ? "#1e1e2e" : "#ffffff" }}>
@@ -1550,6 +1681,29 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
             </svg>
           </button>
 
+          {/* Sync Button */}
+          <button
+            className="sync-btn nav-btn-sync"
+            onClick={() => setSyncPanelOpen(true)}
+            title="云同步"
+            style={{
+              backgroundColor: syncPanelOpen ? (isDarkMode ? "#3a3a4e" : "#e0e0e0") : "transparent",
+              borderColor: isDarkMode ? "#444" : "#ddd",
+              color: headerTextColor,
+            }}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9V3m0 18v-6m0-6a9 9 0 0 0 9-9" />
+            </svg>
+            {syncCode && (
+              <span style={{
+                position: "absolute", top: 4, right: 4,
+                width: 8, height: 8, borderRadius: "50%",
+                backgroundColor: "#4CAF50",
+              }} />
+            )}
+          </button>
+
           {/* Settings Button - Hidden on mobile */}
           <button
             className="settings-btn nav-btn-font"
@@ -1704,6 +1858,22 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
                 <line x1="15" y1="3" x2="15" y2="21" />
               </svg>
               <span>词汇表</span>
+            </button>
+            <button
+              className="more-menu-item"
+              onClick={() => {
+                setSyncPanelOpen(true);
+                setMoreMenuOpen(false);
+              }}
+              style={{ color: isDarkMode ? "#ccc" : "#333" }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9V3m0 18v-6m0-6a9 9 0 0 0 9-9" />
+              </svg>
+              <span>云同步</span>
+              {syncCode && (
+                <span style={{ marginLeft: "auto", color: "#4CAF50", fontSize: 12 }}>已绑定</span>
+              )}
             </button>
           </div>
         </>
@@ -2447,7 +2617,8 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
           .nav-btn-catalog,
           .nav-btn-font,
           .nav-btn-bookmark,
-          .nav-btn-vocab {
+          .nav-btn-vocab,
+          .nav-btn-sync {
             display: none !important;
           }
           
