@@ -208,6 +208,7 @@ export default function Home() {
     clearMasteredWords,
     addSentenceAnnotation,
     removeSentenceAnnotation,
+    mergeBookProgress,
   } = useBookshelf();
 
 
@@ -300,6 +301,11 @@ export default function Home() {
   const [showQuiz, setShowQuiz] = useState(false);
   const [activeTab, setActiveTab] = useState<'bookshelf' | 'vocabulary'>('bookshelf');
 
+  // 同步按钮点击（不切换 tab，只打开弹窗）
+  const handleSyncClick = useCallback(() => {
+    setSyncPanelOpen(true);
+  }, []);
+
   // Cloud sync state
   const [syncPanelOpen, setSyncPanelOpen] = useState(false);
   const {
@@ -313,16 +319,27 @@ export default function Home() {
     unbind,
   } = useSync();
 
-  // Build sync data from current state
+  // Build sync data from current state (不包含书籍内容，只同步元数据)
   const buildSyncData = useCallback(() => {
     return {
       vocabulary: globalVocabulary,
-      bookProgress: books.reduce((acc: Record<string, unknown>, book) => {
+      bookProgress: books.reduce((acc: Record<string, {
+        title: string;
+        lastScrollPosition: number;
+        lastParagraphIndex: number;
+        lastReadAt: number;
+        annotations: Record<string, unknown>;
+        sentenceAnnotations?: unknown[];
+        bookmarks?: unknown[];
+      }>, book) => {
         acc[book.id] = {
-          scrollPosition: book.lastScrollPosition,
-          paragraphIndex: book.lastParagraphIndex,
+          title: book.title,
+          lastScrollPosition: book.lastScrollPosition || 0,
+          lastParagraphIndex: book.lastParagraphIndex || 0,
+          lastReadAt: book.lastReadAt,
           annotations: book.annotations,
-          bookmarks: book.bookmarks,
+          sentenceAnnotations: book.sentenceAnnotations || [],
+          bookmarks: book.bookmarks || [],
         };
         return acc;
       }, {}),
@@ -378,33 +395,30 @@ export default function Home() {
     const remoteData = await syncBoth(buildSyncData());
     if (!remoteData) return;
 
-    // 用服务端合并后的数据覆盖本地
+    // 用服务端合并后的数据更新本地
     if (remoteData.vocabulary) {
       mergeGlobalVocabulary(remoteData.vocabulary);
     }
 
     if (remoteData.bookProgress) {
       for (const [bookId, progress] of Object.entries(remoteData.bookProgress) as [string, {
-        scrollPosition?: number;
-        paragraphIndex?: number;
+        lastScrollPosition?: number;
+        lastParagraphIndex?: number;
         annotations?: Record<string, { root: string; meaning: string; pos: string; count?: number }>;
+        sentenceAnnotations?: unknown[];
         bookmarks?: unknown[];
       }][]) {
-        const localBook = books.find(b => b.id === bookId);
-        if (localBook && progress) {
-          // 进度取较大值
-          if ((progress.scrollPosition ?? 0) > (localBook.lastScrollPosition ?? 0)) {
-            updateScrollPosition(bookId, progress.scrollPosition ?? 0, progress.paragraphIndex ?? 0);
-          }
-          // 合并标注
-          if (progress.annotations) {
-            const merged = { ...localBook.annotations, ...progress.annotations } as Record<string, { root: string; meaning: string; pos: string; count: number }>;
-            updateBookAnnotations(bookId, merged);
-          }
-        }
+        // 服务端返回的数据已经是合并后的，直接使用
+        mergeBookProgress(bookId, {
+          lastScrollPosition: progress.lastScrollPosition,
+          lastParagraphIndex: progress.lastParagraphIndex,
+          annotations: progress.annotations,
+          sentenceAnnotations: progress.sentenceAnnotations as Parameters<typeof mergeBookProgress>[1]['sentenceAnnotations'],
+          bookmarks: progress.bookmarks as Parameters<typeof mergeBookProgress>[1]['bookmarks'],
+        });
       }
     }
-  }, [syncBoth, buildSyncData, books, mergeGlobalVocabulary, updateScrollPosition, updateBookAnnotations]);
+  }, [syncBoth, buildSyncData, mergeGlobalVocabulary, mergeBookProgress]);
 
   // Sentence translation state
   const [translatingSelection, setTranslatingSelection] = useState(false);
@@ -1192,6 +1206,18 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
               <span className="tab-bar-badge">{Object.keys(globalVocabulary).length}</span>
             )}
           </button>
+          <button
+            className="tab-bar-item"
+            onClick={handleSyncClick}
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9V3m0 18v-6m0-6a9 9 0 0 0 9-9" />
+            </svg>
+            <span>同步</span>
+            {syncCode && (
+              <span className="tab-bar-badge-sync" />
+            )}
+          </button>
         </div>
 
         <style jsx>{`
@@ -1283,6 +1309,16 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
             align-items: center;
             justify-content: center;
             padding: 0 5px;
+          }
+
+          .tab-bar-badge-sync {
+            position: absolute;
+            top: 4px;
+            right: calc(50% - 22px);
+            width: 8px;
+            height: 8px;
+            background: #4CAF50;
+            border-radius: 50%;
           }
         `}</style>
         </div>
@@ -1673,29 +1709,6 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
             </svg>
           </button>
 
-          {/* Sync Button */}
-          <button
-            className="sync-btn nav-btn-sync"
-            onClick={() => setSyncPanelOpen(true)}
-            title="云同步"
-            style={{
-              backgroundColor: syncPanelOpen ? (isDarkMode ? "#3a3a4e" : "#e0e0e0") : "transparent",
-              borderColor: isDarkMode ? "#444" : "#ddd",
-              color: headerTextColor,
-            }}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9V3m0 18v-6m0-6a9 9 0 0 0 9-9" />
-            </svg>
-            {syncCode && (
-              <span style={{
-                position: "absolute", top: 4, right: 4,
-                width: 8, height: 8, borderRadius: "50%",
-                backgroundColor: "#4CAF50",
-              }} />
-            )}
-          </button>
-
           {/* Settings Button - Hidden on mobile */}
           <button
             className="settings-btn nav-btn-font"
@@ -1850,22 +1863,6 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
                 <line x1="15" y1="3" x2="15" y2="21" />
               </svg>
               <span>词汇表</span>
-            </button>
-            <button
-              className="more-menu-item"
-              onClick={() => {
-                setSyncPanelOpen(true);
-                setMoreMenuOpen(false);
-              }}
-              style={{ color: isDarkMode ? "#ccc" : "#333" }}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9V3m0 18v-6m0-6a9 9 0 0 0 9-9" />
-              </svg>
-              <span>云同步</span>
-              {syncCode && (
-                <span style={{ marginLeft: "auto", color: "#4CAF50", fontSize: 12 }}>已绑定</span>
-              )}
             </button>
           </div>
         </>
@@ -2609,8 +2606,7 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
           .nav-btn-catalog,
           .nav-btn-font,
           .nav-btn-bookmark,
-          .nav-btn-vocab,
-          .nav-btn-sync {
+          .nav-btn-vocab {
             display: none !important;
           }
           

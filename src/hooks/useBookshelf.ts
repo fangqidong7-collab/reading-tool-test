@@ -439,6 +439,67 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
     []
   );
 
+  // 合并同步数据到书籍（用于从云端拉取合并后的数据）
+  const mergeBookProgress = useCallback((
+    bookId: string,
+    data: {
+      lastScrollPosition?: number;
+      lastParagraphIndex?: number;
+      annotations?: Record<string, { root: string; meaning: string; pos: string; count?: number }>;
+      sentenceAnnotations?: SentenceAnnotation[];
+      bookmarks?: BookmarkEntry[];
+    }
+  ) => {
+    setBooks((prev) =>
+      prev.map((b) => {
+        if (b.id !== bookId) return b;
+        
+        let updated = b;
+        
+        // 更新阅读进度
+        if (data.lastScrollPosition !== undefined && 
+            (data.lastScrollPosition > (b.lastScrollPosition ?? 0))) {
+          updated = {
+            ...updated,
+            lastScrollPosition: data.lastScrollPosition,
+            lastParagraphIndex: data.lastParagraphIndex ?? b.lastParagraphIndex,
+            lastReadAt: Date.now(),
+          };
+        }
+        
+        // 合并标注
+        if (data.annotations) {
+          updated = {
+            ...updated,
+            annotations: { ...updated.annotations, ...data.annotations } as Record<string, { root: string; meaning: string; pos: string; count: number }>,
+          };
+        }
+        
+        // 合并句子标注（按 id 去重）
+        if (data.sentenceAnnotations && data.sentenceAnnotations.length > 0) {
+          const existingIds = new Set((updated.sentenceAnnotations || []).map(s => s.id));
+          const newAnnotations = data.sentenceAnnotations.filter(s => !existingIds.has(s.id));
+          updated = {
+            ...updated,
+            sentenceAnnotations: [...(updated.sentenceAnnotations || []), ...newAnnotations],
+          };
+        }
+        
+        // 合并书签（按 id 去重）
+        if (data.bookmarks && data.bookmarks.length > 0) {
+          const existingIds = new Set((updated.bookmarks || []).map(bm => bm.id));
+          const newBookmarks = data.bookmarks.filter(bm => !existingIds.has(bm.id));
+          updated = {
+            ...updated,
+            bookmarks: [...(updated.bookmarks || []), ...newBookmarks],
+          };
+        }
+        
+        return updated;
+      })
+    );
+  }, []);
+
   // 添加句子标注
   const addSentenceAnnotation = useCallback(
     (bookId: string, annotation: SentenceAnnotation) => {
@@ -526,6 +587,7 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
     clearMasteredWords,
     addSentenceAnnotation,
     removeSentenceAnnotation,
+    mergeBookProgress,
   };
 
 }
