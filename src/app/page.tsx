@@ -12,6 +12,7 @@ import { ExportImportModal } from "@/components/ExportImportModal";
 import { SyncPanel } from "@/components/SyncPanel";
 import { DataBackupPanel } from "@/components/DataBackupPanel";
 import { useSync } from "@/hooks/useSync";
+import { usePeriodicSync } from "@/hooks/usePeriodicSync";
 import JSLibLoader from "@/components/JSLibLoader";
 import { useBookshelf, ProcessedContent, ProcessedSegment, ProcessedParagraph, SentenceAnnotation } from "@/hooks/useBookshelf";
 import { useReadingSettings } from "@/hooks/useReadingSettings";
@@ -462,6 +463,57 @@ export default function Home() {
       mergeBooksFromRemote(remoteData.books as import("@/hooks/useBookshelf").Book[]);
     }
   }, [syncBoth, buildSyncData, books, mergeGlobalVocabulary, mergeBookProgress, mergeBooksFromRemote]);
+
+  // 自动同步专用：仅返回远程数据，不做本地合并（由 hook 调用方决定何时合并）
+  // 这里复用 handleSync 的逻辑，但通过回调通知外部有新的远程数据
+  const performSyncForPeriodic = useCallback(async () => {
+    const remoteData = await syncBoth(buildSyncData());
+    if (!remoteData) return null;
+
+    // 复用 handleSync 的合并逻辑
+    if (remoteData.vocabulary) {
+      mergeGlobalVocabulary(remoteData.vocabulary);
+    }
+
+    if (remoteData.bookProgress) {
+      for (const [bookId, progress] of Object.entries(remoteData.bookProgress) as [string, {
+        title?: string;
+        lastScrollPosition?: number;
+        lastParagraphIndex?: number;
+        annotations?: Record<string, { root: string; meaning: string; pos: string; count?: number }>;
+        sentenceAnnotations?: unknown[];
+        bookmarks?: unknown[];
+      }][]) {
+        let localBook = books.find(b => b.id === bookId);
+        if (!localBook && progress.title) {
+          localBook = books.find(b => b.title === progress.title);
+        }
+        if (localBook) {
+          mergeBookProgress(localBook.id, {
+            lastScrollPosition: progress.lastScrollPosition,
+            lastParagraphIndex: progress.lastParagraphIndex,
+            annotations: progress.annotations,
+            sentenceAnnotations: progress.sentenceAnnotations as Parameters<typeof mergeBookProgress>[1]['sentenceAnnotations'],
+            bookmarks: progress.bookmarks as Parameters<typeof mergeBookProgress>[1]['bookmarks'],
+          });
+        }
+      }
+    }
+
+    if (remoteData.books && mergeBooksFromRemote) {
+      mergeBooksFromRemote(remoteData.books as import("@/hooks/useBookshelf").Book[]);
+    }
+
+    return remoteData;
+  }, [syncBoth, buildSyncData, books, mergeGlobalVocabulary, mergeBookProgress, mergeBooksFromRemote]);
+
+  // 启用自动定时同步（仅前台 + 每小时 + 需 syncCode）
+  usePeriodicSync({
+    syncCode,
+    syncing,
+    buildSyncData,
+    performSync: performSyncForPeriodic,
+  });
 
   // Sentence translation state
   const [translatingSelection, setTranslatingSelection] = useState(false);
