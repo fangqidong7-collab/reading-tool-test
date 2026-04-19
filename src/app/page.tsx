@@ -235,6 +235,8 @@ export default function Home() {
     setDictMode,
     pageTurnRatio,
     setPageTurnRatio,
+    clickToTurnPage,
+    setClickToTurnPage,
   } = useReadingSettings();
 
   // Reading state
@@ -1205,6 +1207,8 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
         onDictModeChange={setDictMode}
         pageTurnRatio={pageTurnRatio}
         onPageTurnRatioChange={setPageTurnRatio}
+        clickToTurnPage={clickToTurnPage}
+        onClickToTurnPageChange={setClickToTurnPage}
       />
 
       {/* Left Drawer - TOC and Bookmarks */}
@@ -1827,6 +1831,7 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
   onTextSelect={handleTextSelect}
   sentenceAnnotations={currentBook?.sentenceAnnotations || []}
   onRemoveSentenceAnnotation={handleRemoveSentenceAnnotation}
+  clickToTurnPage={clickToTurnPage}
 />
 
         </div>

@@ -471,6 +471,7 @@ interface ReadingAreaProps {
   onTextSelect?: (selection: { text: string; startParagraphIndex: number; endParagraphIndex: number; startCharIndex: number; endCharIndex: number }) => void;
   sentenceAnnotations?: SentenceAnnotation[];
   onRemoveSentenceAnnotation?: (id: string) => void;
+  clickToTurnPage?: boolean;
 }
 
 export const ReadingArea = forwardRef(function ReadingArea({
@@ -504,6 +505,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
   onTextSelect,
   sentenceAnnotations = [],
   onRemoveSentenceAnnotation,
+  clickToTurnPage = false,
 
 }: ReadingAreaProps, ref: React.Ref<ReadingAreaRef>) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -985,19 +987,25 @@ const getFirstVisibleIndex = useCallback(() => {
           ref={containerRef}
           className="reading-container"
           onClick={(e) => {
-            // 防止滑动翻页后 click 又翻一页
+            // 滑动翻页后的防误触
             if (Date.now() - lastSwipeTimeRef.current < 400) return;
-            // 只在点击空白区域时翻页，点击单词/标注不触发
+
+            // 点击单词/标注/翻译标注 不处理
             const target = e.target as HTMLElement;
             if (
               target.classList.contains('word') ||
               target.classList.contains('annotation') ||
+              target.classList.contains('sentence-annotation') ||
               target.closest('.word') ||
-              target.closest('.annotation')
+              target.closest('.annotation') ||
+              target.closest('.sentence-annotation')
             ) {
               return;
             }
-            // 获取点击位置相对于容器的水平比例
+
+            // 只在开启点击翻页时才处理
+            if (!clickToTurnPage) return;
+
             const rect = containerRef.current?.getBoundingClientRect();
             if (!rect) return;
             const clickX = e.clientX - rect.left;
@@ -1005,9 +1013,9 @@ const getFirstVisibleIndex = useCallback(() => {
             const el = containerRef.current;
             if (!el) return;
             if (clickX < halfWidth) {
-              scrollReadingPage("prev");
+              el.scrollBy({ top: -(containerHeight * pageTurnRatio), behavior: "smooth" });
             } else {
-              scrollReadingPage("next");
+              el.scrollBy({ top: containerHeight * pageTurnRatio, behavior: "smooth" });
             }
           }}
           style={{

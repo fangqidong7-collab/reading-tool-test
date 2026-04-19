@@ -22,6 +22,8 @@ interface SettingsPanelProps {
   onDictModeChange: (mode: 'zh' | 'en') => void;
   pageTurnRatio: number;
   onPageTurnRatioChange: (ratio: number) => void;
+  clickToTurnPage: boolean;
+  onClickToTurnPageChange: (v: boolean) => void;
 }
 
 export function SettingsPanel({
@@ -42,6 +44,8 @@ export function SettingsPanel({
   onDictModeChange,
   pageTurnRatio,
   onPageTurnRatioChange,
+  clickToTurnPage,
+  onClickToTurnPageChange,
 }: SettingsPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -178,6 +182,30 @@ export function SettingsPanel({
               <span className="setting-value" style={{ color: textColor }}>
                 {Math.round(pageTurnRatio * 100)}%
               </span>
+            </div>
+          </div>
+
+          {/* Click to Turn Page */}
+          <div className="setting-item">
+            <div className="setting-label">
+              <span className="label-text">点击翻页</span>
+              <span className="label-text" style={{ fontSize: 12, opacity: 0.6 }}>
+                {clickToTurnPage ? '点击屏幕左/右翻页' : '自由滑动浏览'}
+              </span>
+            </div>
+            <div className="mode-options">
+              <button
+                className={`mode-btn ${!clickToTurnPage ? 'active' : ''}`}
+                onClick={() => onClickToTurnPageChange(false)}
+              >
+                滑动模式
+              </button>
+              <button
+                className={`mode-btn ${clickToTurnPage ? 'active' : ''}`}
+                onClick={() => onClickToTurnPageChange(true)}
+              >
+                点击翻页
+              </button>
             </div>
           </div>
 

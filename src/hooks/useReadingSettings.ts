@@ -23,6 +23,7 @@ export interface ReadingSettingsStorage {
   sidebarOpenByBook: Record<string, boolean>;
   dictMode: 'zh' | 'en';
   pageTurnRatio: number;
+  clickToTurnPage: boolean;
 }
 
 const DEFAULT_SETTINGS: ReadingSettings = {
@@ -79,14 +80,19 @@ function loadSettingsFromStorage(): ReadingSettingsStorage {
       backgroundTheme: "cream",
       sidebarOpenByBook: {},
       dictMode: "zh",
-      pageTurnRatio: 1,
+      pageTurnRatio: 0.9,
+      clickToTurnPage: false,
     };
   }
 
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
-      return JSON.parse(saved);
+      const parsed = JSON.parse(saved);
+      return {
+        ...parsed,
+        clickToTurnPage: parsed.clickToTurnPage ?? false,
+      };
     }
   } catch (e) {
     console.warn("Failed to load reading settings:", e);
@@ -98,7 +104,8 @@ function loadSettingsFromStorage(): ReadingSettingsStorage {
     backgroundTheme: "cream",
     sidebarOpenByBook: {},
     dictMode: "zh",
-    pageTurnRatio: 1,
+    pageTurnRatio: 0.9,
+    clickToTurnPage: false,
   };
 }
 
@@ -120,18 +127,21 @@ export function useReadingSettings() {
     backgroundTheme: "cream",
     sidebarOpenByBook: {},
     dictMode: "zh",
-    pageTurnRatio: 1,
+    pageTurnRatio: 0.9,
+    clickToTurnPage: false,
   });
   const [isLoaded, setIsLoaded] = useState(false);
   const [dictMode, setDictModeState] = useState<'zh' | 'en'>('zh');
-  const [pageTurnRatio, setPageTurnRatioState] = useState(1);
+  const [pageTurnRatio, setPageTurnRatioState] = useState(0.9);
+  const [clickToTurnPage, setClickToTurnPageState] = useState(false);
 
   // Load settings on mount
   useEffect(() => {
     const loaded = loadSettingsFromStorage();
     setStorage(loaded);
     setDictModeState(loaded.dictMode || 'zh');
-    setPageTurnRatioState(loaded.pageTurnRatio ?? 1);
+    setPageTurnRatioState(loaded.pageTurnRatio ?? 0.9);
+    setClickToTurnPageState(loaded.clickToTurnPage ?? false);
     const colors = getThemeColors(loaded.backgroundTheme);
     setSettings({
       ...colors,
@@ -151,6 +161,7 @@ export function useReadingSettings() {
         sidebarOpenByBook: storage.sidebarOpenByBook,
         dictMode: storage.dictMode,
         pageTurnRatio: storage.pageTurnRatio,
+        clickToTurnPage: storage.clickToTurnPage,
       });
     }
   }, [settings, storage, isLoaded]);
@@ -212,9 +223,11 @@ export function useReadingSettings() {
       lineHeight: 1.4,
       backgroundTheme: defaultTheme,
       sidebarOpenByBook: {},
+      clickToTurnPage: false,
     }));
     setDictModeState('zh');
-    setPageTurnRatioState(1);
+    setPageTurnRatioState(0.9);
+    setClickToTurnPageState(false);
   }, []);
 
   // Set dictionary mode (zh for Chinese, en for English)
@@ -228,6 +241,12 @@ export function useReadingSettings() {
     const clamped = Math.max(0.5, Math.min(1.0, ratio));
     setPageTurnRatioState(clamped);
     setStorage((prev) => ({ ...prev, pageTurnRatio: clamped }));
+  }, []);
+
+  // Set click to turn page mode
+  const setClickToTurnPage = useCallback((enabled: boolean) => {
+    setClickToTurnPageState(enabled);
+    setStorage((prev) => ({ ...prev, clickToTurnPage: enabled }));
   }, []);
 
   // Calculate annotation font size (70% of body font size)
@@ -259,5 +278,7 @@ export function useReadingSettings() {
     setDictMode,
     pageTurnRatio,
     setPageTurnRatio,
+    clickToTurnPage,
+    setClickToTurnPage,
   };
 }
