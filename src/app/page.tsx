@@ -10,12 +10,12 @@ import { VocabularyQuiz } from "@/components/VocabularyQuiz";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { ExportImportModal } from "@/components/ExportImportModal";
 import JSLibLoader from "@/components/JSLibLoader";
-import { useBookshelf, ProcessedContent, ProcessedSegment, ProcessedParagraph } from "@/hooks/useBookshelf";
+import { useBookshelf, ProcessedContent, ProcessedSegment, ProcessedParagraph, SentenceAnnotation } from "@/hooks/useBookshelf";
 import { useReadingSettings } from "@/hooks/useReadingSettings";
 import { lemmatize, getWordMeaning, getWordMeaningEn, findWordFamily, loadBuiltinDictionary, loadBuiltinDictionaryEn } from "@/lib/dictionary";
 //import { translateWord, translateWordEn } from "@/lib/translate";
 //import { forceReloadDictionary, lookupExternalDict, lookupExternalDictEn, loadExternalDictionaryEn, type DictLoadStatus } from "@/lib/dictLoader";
-import { translateWord, translateWordEn } from "@/lib/translate";
+import { translateWord, translateWordEn, translateSentence } from "@/lib/translate";
 import { forceReloadDictionary, lookupExternalDict, lookupExternalDictEn, loadExternalDictionaryEn, type DictLoadStatus } from "@/lib/dictLoader";
 
 
@@ -204,6 +204,8 @@ export default function Home() {
     mergeGlobalVocabulary,
     incrementCorrectCount,
     clearMasteredWords,
+    addSentenceAnnotation,
+    removeSentenceAnnotation,
   } = useBookshelf();
 
 
@@ -293,6 +295,16 @@ export default function Home() {
   const [dataManageOpen, setDataManageOpen] = useState(false);
   const [showQuiz, setShowQuiz] = useState(false);
   const [activeTab, setActiveTab] = useState<'bookshelf' | 'vocabulary'>('bookshelf');
+
+  // Sentence translation state
+  const [translatingSelection, setTranslatingSelection] = useState(false);
+  const [pendingSelection, setPendingSelection] = useState<{
+    text: string;
+    startParagraphIndex: number;
+    endParagraphIndex: number;
+    startCharIndex: number;
+    endCharIndex: number;
+  } | null>(null);
 
   // 清理可能残留的大数据（启动时一次性执行）
   useEffect(() => {
@@ -752,6 +764,60 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
     removeFromGlobalVocabulary(root);
     setSelectedWord(null);
   }, [removeFromGlobalVocabulary]);
+
+  // Handle text selection for sentence translation
+  const handleTextSelect = useCallback(
+    async (selection: {
+      text: string;
+      startParagraphIndex: number;
+      endParagraphIndex: number;
+      startCharIndex: number;
+      endCharIndex: number;
+    }) => {
+      if (!currentBook || translatingSelection) return;
+
+      const { text: selectedText, startParagraphIndex, endParagraphIndex, startCharIndex, endCharIndex } = selection;
+
+      // Store selection for translation
+      setPendingSelection(selection);
+      setTranslatingSelection(true);
+
+      try {
+        // Call translation API
+        const result = await translateSentence(selectedText, dictMode === 'en' ? 'en' : 'zh');
+
+        // Create sentence annotation
+        const annotation: SentenceAnnotation = {
+          id: `sa-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+          startParagraphIndex,
+          endParagraphIndex,
+          startCharIndex,
+          endCharIndex,
+          originalText: selectedText,
+          translation: result.translation,
+          createdAt: Date.now(),
+        };
+
+        // Add to book
+        addSentenceAnnotation(currentBook.id, annotation);
+      } catch (error) {
+        console.error('Sentence translation error:', error);
+      } finally {
+        setTranslatingSelection(false);
+        setPendingSelection(null);
+      }
+    },
+    [currentBook, translatingSelection, dictMode, addSentenceAnnotation]
+  );
+
+  // Handle remove sentence annotation
+  const handleRemoveSentenceAnnotation = useCallback(
+    (annotationId: string) => {
+      if (!currentBook) return;
+      removeSentenceAnnotation(currentBook.id, annotationId);
+    },
+    [currentBook, removeSentenceAnnotation]
+  );
 
 
   // Clear all annotations
@@ -1758,6 +1824,9 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
   initialParagraphText={currentParagraphText}
   initialScrollPercent={currentBook?.lastScrollPosition || 0}
   pageTurnRatio={pageTurnRatio}
+  onTextSelect={handleTextSelect}
+  sentenceAnnotations={currentBook?.sentenceAnnotations || []}
+  onRemoveSentenceAnnotation={handleRemoveSentenceAnnotation}
 />
 
         </div>

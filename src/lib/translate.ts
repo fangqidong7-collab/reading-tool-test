@@ -153,3 +153,45 @@ export async function translateWord(word: string): Promise<string> {
 export async function translateWordEn(word: string): Promise<string> {
   return requestTranslation(word, "en");
 }
+
+/**
+ * Translate sentence (English to Chinese or Chinese to English)
+ */
+export async function translateSentence(
+  text: string,
+  targetLang: "zh" | "en" = "zh"
+): Promise<{ translation: string; original: string }> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+    const params = new URLSearchParams({
+      text: text.trim(),
+      lang: targetLang,
+    });
+
+    const response = await fetch(`/api/translate?${params}`, {
+      method: "GET",
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      throw new Error("Sentence translation API error");
+    }
+
+    const data = await response.json();
+
+    return {
+      translation: data.translation || "未找到翻译",
+      original: data.original || text,
+    };
+  } catch (error) {
+    console.error("Sentence translation error:", error);
+    return {
+      translation: targetLang === "zh" ? "翻译失败" : "Translation failed",
+      original: text,
+    };
+  }
+}

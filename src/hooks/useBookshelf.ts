@@ -35,11 +35,24 @@ export interface BookmarkEntry {
   createdAt: number;
 }
 
+// Sentence Annotation - for AI translation of selected text
+export interface SentenceAnnotation {
+  id: string;
+  startParagraphIndex: number;
+  startCharIndex: number;
+  endParagraphIndex: number;
+  endCharIndex: number;
+  originalText: string;
+  translation: string;
+  createdAt: number;
+}
+
 export interface Book {
   id: string;
   title: string;
   content: string;
   annotations: Record<string, { root: string; meaning: string; pos: string; count: number }>;
+  sentenceAnnotations?: SentenceAnnotation[];
   createdAt: number;
   lastReadAt: number;
   isSample: boolean;
@@ -426,6 +439,37 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
     []
   );
 
+  // 添加句子标注
+  const addSentenceAnnotation = useCallback(
+    (bookId: string, annotation: SentenceAnnotation) => {
+      setBooks((prev) =>
+        prev.map((b) => {
+          if (b.id !== bookId) return b;
+          const existing = b.sentenceAnnotations || [];
+          return { ...b, sentenceAnnotations: [...existing, annotation] };
+        })
+      );
+    },
+    []
+  );
+
+  // 删除句子标注
+  const removeSentenceAnnotation = useCallback(
+    (bookId: string, annotationId: string) => {
+      setBooks((prev) =>
+        prev.map((b) => {
+          if (b.id !== bookId) return b;
+          const existing = b.sentenceAnnotations || [];
+          return {
+            ...b,
+            sentenceAnnotations: existing.filter((a) => a.id !== annotationId),
+          };
+        })
+      );
+    },
+    []
+  );
+
 
   // Open a book for reading
   const openBook = useCallback((id: string) => {
@@ -480,6 +524,8 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
     mergeGlobalVocabulary,
     incrementCorrectCount,
     clearMasteredWords,
+    addSentenceAnnotation,
+    removeSentenceAnnotation,
   };
 
 }

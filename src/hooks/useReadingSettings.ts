@@ -79,7 +79,7 @@ function loadSettingsFromStorage(): ReadingSettingsStorage {
       backgroundTheme: "cream",
       sidebarOpenByBook: {},
       dictMode: "zh",
-      pageTurnRatio: 0.9,
+      pageTurnRatio: 1,
     };
   }
 
@@ -98,7 +98,7 @@ function loadSettingsFromStorage(): ReadingSettingsStorage {
     backgroundTheme: "cream",
     sidebarOpenByBook: {},
     dictMode: "zh",
-    pageTurnRatio: 0.9,
+    pageTurnRatio: 1,
   };
 }
 
@@ -120,18 +120,18 @@ export function useReadingSettings() {
     backgroundTheme: "cream",
     sidebarOpenByBook: {},
     dictMode: "zh",
-    pageTurnRatio: 0.9,
+    pageTurnRatio: 1,
   });
   const [isLoaded, setIsLoaded] = useState(false);
   const [dictMode, setDictModeState] = useState<'zh' | 'en'>('zh');
-  const [pageTurnRatio, setPageTurnRatioState] = useState(0.9);
+  const [pageTurnRatio, setPageTurnRatioState] = useState(1);
 
   // Load settings on mount
   useEffect(() => {
     const loaded = loadSettingsFromStorage();
     setStorage(loaded);
     setDictModeState(loaded.dictMode || 'zh');
-    setPageTurnRatioState(loaded.pageTurnRatio ?? 0.9);
+    setPageTurnRatioState(loaded.pageTurnRatio ?? 1);
     const colors = getThemeColors(loaded.backgroundTheme);
     setSettings({
       ...colors,
@@ -214,7 +214,7 @@ export function useReadingSettings() {
       sidebarOpenByBook: {},
     }));
     setDictModeState('zh');
-    setPageTurnRatioState(0.9);
+    setPageTurnRatioState(1);
   }, []);
 
   // Set dictionary mode (zh for Chinese, en for English)

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useRef, useEffect, useState, forwardRef, useImperativeHandle } from "react";
-import { ProcessedContent } from "@/hooks/useBookshelf";
+import { ProcessedContent, SentenceAnnotation } from "@/hooks/useBookshelf";
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 // Layout constants
@@ -13,6 +13,91 @@ const PARAGRAPH_GAP = 16;
 const MOBILE_BREAKPOINT = 768;
 const MOBILE_TOP_GAP = 5;
 const MOBILE_BOTTOM_SAFE_ZONE = 60;
+const PAGE_TURN_EDGE_EPS = 3;
+
+/** Collect text line boxes from visible virtualized paragraphs (viewport-relative rects). */
+function gatherVisibleParagraphLineRects(
+  contentRoot: HTMLElement,
+  scrollEl: HTMLElement,
+  virtualIndices: readonly { index: number }[]
+): DOMRect[] {
+  const cRect = scrollEl.getBoundingClientRect();
+  const minLineHeight = 6;
+  const minWidth = 4;
+  const out: DOMRect[] = [];
+
+  for (const { index } of virtualIndices) {
+    const wrap = contentRoot.querySelector(`[data-index="${index}"]`);
+    if (!wrap) continue;
+    const paragraph = wrap.querySelector(".paragraph");
+    if (!paragraph) continue;
+
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    const list = range.getClientRects();
+    for (let i = 0; i < list.length; i++) {
+      const r = list[i];
+      if (r.height < minLineHeight || r.width < minWidth) continue;
+      if (r.bottom < cRect.top || r.top > cRect.bottom) continue;
+      out.push(r);
+    }
+  }
+  return out;
+}
+
+function computeSnappedPageScrollTop(
+  scrollEl: HTMLElement,
+  contentRoot: HTMLElement,
+  virtualIndices: readonly { index: number }[],
+  direction: "next" | "prev",
+  pageStepPx: number
+): number {
+  const S = scrollEl.scrollTop;
+  const maxS = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight);
+  const cRect = scrollEl.getBoundingClientRect();
+  const edge = PAGE_TURN_EDGE_EPS;
+  const rects = gatherVisibleParagraphLineRects(contentRoot, scrollEl, virtualIndices);
+
+  if (direction === "next") {
+    let crossingBottom: DOMRect | null = null;
+    for (const r of rects) {
+      if (r.top < cRect.bottom - edge && r.bottom > cRect.bottom - edge) {
+        if (!crossingBottom || r.top > crossingBottom.top) crossingBottom = r;
+      }
+    }
+
+    let T: number;
+    if (crossingBottom) {
+      const snapped = S + (crossingBottom.top - cRect.top);
+      T = snapped > S + 0.5 ? snapped : Math.min(S + pageStepPx, maxS);
+    } else {
+      T = Math.min(S + pageStepPx, maxS);
+    }
+    if (T <= S && maxS > S) {
+      T = Math.min(S + pageStepPx, maxS);
+    }
+    return Math.min(Math.max(0, T), maxS);
+  }
+
+  let crossingTop: DOMRect | null = null;
+  for (const r of rects) {
+    if (r.top < cRect.top + edge && r.bottom > cRect.top + edge) {
+      if (!crossingTop || r.top < crossingTop.top) crossingTop = r;
+    }
+  }
+
+  let T: number;
+  if (crossingTop) {
+    T = S - pageStepPx + (crossingTop.top - cRect.top);
+  } else {
+    T = S - pageStepPx;
+  }
+  T = Math.max(0, Math.min(T, maxS));
+  if (S > 0 && T >= S) {
+    T = Math.max(0, S - pageStepPx);
+  }
+  return T;
+}
 
 // Ref type
 export interface ReadingAreaRef {
@@ -50,6 +135,8 @@ interface ParagraphProps {
   isCurrentSearchResult?: boolean;
   highlightBg?: string;
   isDarkMode?: boolean;
+  sentenceAnnotations?: SentenceAnnotation[];
+  onRemoveSentenceAnnotation?: (id: string) => void;
 }
 
 const Paragraph = React.memo(({
@@ -63,6 +150,8 @@ const Paragraph = React.memo(({
   isCurrentSearchResult = false,
   highlightBg = "#FFEB3B",
   isDarkMode = false,
+  sentenceAnnotations = [],
+  onRemoveSentenceAnnotation,
 }: ParagraphProps) => {
   const handleClick = useCallback((e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
@@ -92,6 +181,52 @@ const Paragraph = React.memo(({
 
   // Build text content for search matching
   const fullText = paragraph.segments.map(s => s.text).join('');
+
+  // Compute segment character offsets
+  const segmentOffsets: number[] = [];
+  let charOffset = 0;
+  for (const seg of paragraph.segments) {
+    segmentOffsets.push(charOffset);
+    charOffset += seg.text.length;
+  }
+  const totalChars = charOffset;
+
+  // Find sentence annotations that affect this paragraph
+  const relevantSentenceAnnotations = sentenceAnnotations.filter(
+    (sa) => sa.startParagraphIndex <= pIndex && sa.endParagraphIndex >= pIndex
+  );
+
+  // Get sentence annotation for a given character position
+  const getSentenceAnnotationForChar = (charPos: number): SentenceAnnotation | null => {
+    for (const sa of relevantSentenceAnnotations) {
+      let rangeStart = 0;
+      let rangeEnd = totalChars;
+
+      if (sa.startParagraphIndex === pIndex) {
+        rangeStart = sa.startCharIndex;
+      }
+      if (sa.endParagraphIndex === pIndex) {
+        rangeEnd = sa.endCharIndex;
+      }
+
+      if (charPos >= rangeStart && charPos < rangeEnd) {
+        return sa;
+      }
+    }
+    return null;
+  };
+
+  // Check if a segment is the last segment of a sentence annotation
+  const isLastSegmentOfAnnotation = (segIndex: number, sa: SentenceAnnotation): boolean => {
+    if (sa.endParagraphIndex !== pIndex) return false;
+    const segStart = segmentOffsets[segIndex];
+    const segEnd = segStart + paragraph.segments[segIndex].text.length;
+    if (segIndex + 1 < paragraph.segments.length) {
+      const nextSegStart = segmentOffsets[segIndex + 1];
+      return nextSegStart >= sa.endCharIndex;
+    }
+    return true;
+  };
 
   // Get heading styles based on level
   const getHeadingStyles = (): React.CSSProperties => {
@@ -134,6 +269,14 @@ const Paragraph = React.memo(({
     }
   };
 
+  // Underline style for sentence annotations
+  const getUnderlineStyle = (): React.CSSProperties => ({
+    textDecoration: 'underline',
+    textDecorationColor: isDarkMode ? '#6ba3e0' : '#4a90d9',
+    textDecorationThickness: '2px',
+    textUnderlineOffset: '3px',
+  });
+
   return (
     <p 
       className={`paragraph ${isHeading ? 'heading-paragraph' : ''} ${isCurrentSearchResult ? 'search-highlight' : ''}`}
@@ -145,8 +288,40 @@ const Paragraph = React.memo(({
     >
       {paragraph.segments.map((segment, sIndex) => {
         const key = `${pIndex}-${sIndex}`;
+        const segCharStart = segmentOffsets[sIndex];
+        const matchedSA = getSentenceAnnotationForChar(segCharStart);
+        const hasUnderline = !!matchedSA;
+        const showTranslation = matchedSA && isLastSegmentOfAnnotation(sIndex, matchedSA);
+
         if (segment.type === "space" || segment.type === "punctuation") {
-          return <span key={key}>{segment.text}</span>;
+          return (
+            <React.Fragment key={key}>
+              <span style={hasUnderline ? getUnderlineStyle() : undefined}>
+                {segment.text}
+              </span>
+              {showTranslation && matchedSA && (
+                <span
+                  className="sentence-annotation"
+                  title={`点击删除翻译标注\n原文: ${matchedSA.originalText}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onRemoveSentenceAnnotation) {
+                      onRemoveSentenceAnnotation(matchedSA.id);
+                    }
+                  }}
+                  style={{
+                    color: annotationColor,
+                    fontSize: '0.75em',
+                    fontFamily: '"Microsoft YaHei", "微软雅黑", sans-serif',
+                    cursor: 'pointer',
+                    marginLeft: '2px',
+                  }}
+                >
+                  【{matchedSA.translation}】
+                </span>
+              )}
+            </React.Fragment>
+          );
         }
         
         const lemma = segment.lemma;
@@ -159,6 +334,7 @@ const Paragraph = React.memo(({
               className="word" 
               data-word={segment.text}
               data-lemma={lemma}
+              style={hasUnderline ? getUnderlineStyle() : undefined}
             >
               {segment.text}
             </span>
@@ -169,9 +345,31 @@ const Paragraph = React.memo(({
                   color: annotationColor,
                   fontSize: '0.7em',
                   fontFamily: '"Microsoft YaHei", "微软雅黑", sans-serif',
+                  ...(hasUnderline ? getUnderlineStyle() : {}),
                 }}
               >
                 ({annotation.meaning})
+              </span>
+            )}
+            {showTranslation && matchedSA && (
+              <span
+                className="sentence-annotation"
+                title={`点击删除翻译标注\n原文: ${matchedSA.originalText}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onRemoveSentenceAnnotation) {
+                    onRemoveSentenceAnnotation(matchedSA.id);
+                  }
+                }}
+                style={{
+                  color: annotationColor,
+                  fontSize: '0.75em',
+                  fontFamily: '"Microsoft YaHei", "微软雅黑", sans-serif',
+                  cursor: 'pointer',
+                  marginLeft: '2px',
+                }}
+              >
+                【{matchedSA.translation}】
               </span>
             )}
           </React.Fragment>
@@ -196,6 +394,8 @@ function paragraphPropsAreEqual(
     isCurrentSearchResult?: boolean;
     highlightBg?: string;
     isDarkMode?: boolean;
+    sentenceAnnotations?: SentenceAnnotation[];
+    onRemoveSentenceAnnotation?: (id: string) => void;
   },
   next: {
     paragraph: ProcessedContent[number];
@@ -208,6 +408,8 @@ function paragraphPropsAreEqual(
     isCurrentSearchResult?: boolean;
     highlightBg?: string;
     isDarkMode?: boolean;
+    sentenceAnnotations?: SentenceAnnotation[];
+    onRemoveSentenceAnnotation?: (id: string) => void;
   }
 ) {
   if (prev.pIndex !== next.pIndex) return false;
@@ -218,6 +420,8 @@ function paragraphPropsAreEqual(
   if (prev.highlightBg !== next.highlightBg) return false;
   if (prev.isDarkMode !== next.isDarkMode) return false;
   if (prev.onWordDoubleClick !== next.onWordDoubleClick) return false;
+  if (prev.sentenceAnnotations !== next.sentenceAnnotations) return false;
+  if (prev.onRemoveSentenceAnnotation !== next.onRemoveSentenceAnnotation) return false;
   
   const prevKeys = prev.annotations ? Object.keys(prev.annotations) : [];
   const nextKeys = next.annotations ? Object.keys(next.annotations) : [];
@@ -264,6 +468,9 @@ interface ReadingAreaProps {
   initialParagraphIndex?: number;
   initialParagraphText?: string;
   pageTurnRatio?: number;
+  onTextSelect?: (selection: { text: string; startParagraphIndex: number; endParagraphIndex: number; startCharIndex: number; endCharIndex: number }) => void;
+  sentenceAnnotations?: SentenceAnnotation[];
+  onRemoveSentenceAnnotation?: (id: string) => void;
 }
 
 export const ReadingArea = forwardRef(function ReadingArea({
@@ -293,11 +500,15 @@ export const ReadingArea = forwardRef(function ReadingArea({
   initialScrollPercent = 0,
   initialParagraphIndex = -1,
   initialParagraphText = "",
-  pageTurnRatio = 0.9,
+  pageTurnRatio = 1,
+  onTextSelect,
+  sentenceAnnotations = [],
+  onRemoveSentenceAnnotation,
 
 }: ReadingAreaProps, ref: React.Ref<ReadingAreaRef>) {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const selectionStartRef = useRef<{ paragraphIndex: number; charIndex: number } | null>(null);
   
   const [readProgress, setReadProgress] = useState(0);
   const [containerHeight, setContainerHeight] = useState(600);
@@ -311,6 +522,39 @@ export const ReadingArea = forwardRef(function ReadingArea({
     overscan: 20,
   });
 
+  const scrollReadingPage = useCallback(
+    (direction: "next" | "prev") => {
+      const el = containerRef.current;
+      const content = contentRef.current;
+      if (!el) return;
+
+      const pageStepPx = el.clientHeight * pageTurnRatio;
+      const maxS = Math.max(0, el.scrollHeight - el.clientHeight);
+
+      if (!processedContent?.length || !content) {
+        const delta = direction === "next" ? pageStepPx : -pageStepPx;
+        el.scrollTo({
+          top: Math.min(maxS, Math.max(0, el.scrollTop + delta)),
+          behavior: "smooth",
+        });
+        return;
+      }
+
+      const items = virtualizer.getVirtualItems();
+      if (items.length === 0) {
+        const delta = direction === "next" ? pageStepPx : -pageStepPx;
+        el.scrollTo({
+          top: Math.min(maxS, Math.max(0, el.scrollTop + delta)),
+          behavior: "smooth",
+        });
+        return;
+      }
+
+      const target = computeSnappedPageScrollTop(el, content, items, direction, pageStepPx);
+      el.scrollTo({ top: target, behavior: "smooth" });
+    },
+    [pageTurnRatio, processedContent, virtualizer]
+  );
 
   useEffect(() => {
     const calcHeight = () => {
@@ -336,18 +580,98 @@ export const ReadingArea = forwardRef(function ReadingArea({
       // VolumeUp / VolumeDown 是某些浏览器的旧键名
       if (e.key === 'AudioVolumeUp' || e.key === 'VolumeUp') {
         e.preventDefault();
-        const el = containerRef.current;
-        if (el) el.scrollBy({ top: -(containerHeight * pageTurnRatio), behavior: "smooth" });
+        scrollReadingPage("prev");
       } else if (e.key === 'AudioVolumeDown' || e.key === 'VolumeDown') {
         e.preventDefault();
-        const el = containerRef.current;
-        if (el) el.scrollBy({ top: containerHeight * pageTurnRatio, behavior: "smooth" });
+        scrollReadingPage("next");
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [containerHeight, pageTurnRatio]);
+  }, [scrollReadingPage]);
+
+  // 文本选择功能 - 句子翻译
+  const handleTextSelection = useCallback(() => {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || !processedContent) {
+      return;
+    }
+
+    const selectedText = selection.toString().trim();
+    if (!selectedText || selectedText.length < 3) {
+      return;
+    }
+
+    // 找到选中文本所在的段落范围
+    const range = selection.getRangeAt(0);
+    const startContainer = range.startContainer;
+    const endContainer = range.endContainer;
+
+    // 获取段落的 paragraph index
+    const getParagraphIndex = (node: Node): number => {
+      let parent = node.parentElement;
+      while (parent) {
+        const pElement = parent.closest('[data-paragraph-index]');
+        if (pElement) {
+          return parseInt(pElement.getAttribute('data-paragraph-index') || '0', 10);
+        }
+        parent = parent.parentElement;
+      }
+      return -1;
+    };
+
+    const startParagraphIndex = getParagraphIndex(startContainer);
+    const endParagraphIndex = getParagraphIndex(endContainer);
+
+    if (startParagraphIndex === -1 || endParagraphIndex === -1) {
+      return;
+    }
+
+    // 计算选中的字符位置（简化处理，实际可能需要更精确计算）
+    const getCharIndex = (node: Node, offset: number, paragraphIndex: number): number => {
+      if (paragraphIndex < 0 || paragraphIndex >= processedContent!.length) return 0;
+      const paragraph = processedContent![paragraphIndex];
+      const pElement = document.querySelector(`[data-paragraph-index="${paragraphIndex}"]`);
+      if (!pElement) return 0;
+
+      // 计算在段落内的相对字符位置
+      const preRange = document.createRange();
+      preRange.selectNodeContents(pElement);
+      preRange.setEnd(startContainer, offset);
+      return preRange.toString().length;
+    };
+
+    const startCharIndex = getCharIndex(startContainer, range.startOffset, startParagraphIndex);
+    const endCharIndex = getCharIndex(endContainer, range.endOffset, endParagraphIndex);
+
+    if (onTextSelect) {
+      onTextSelect({
+        text: selectedText,
+        startParagraphIndex: Math.min(startParagraphIndex, endParagraphIndex),
+        endParagraphIndex: Math.max(startParagraphIndex, endParagraphIndex),
+        startCharIndex: startParagraphIndex <= endParagraphIndex ? startCharIndex : endCharIndex,
+        endCharIndex: startParagraphIndex <= endParagraphIndex ? endCharIndex : startCharIndex,
+      });
+    }
+
+    // 清除选中
+    selection.removeAllRanges();
+  }, [processedContent, onTextSelect]);
+
+  // 添加文本选择监听
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleMouseUp = () => {
+      // 延迟执行，让 selection 状态稳定
+      setTimeout(handleTextSelection, 10);
+    };
+
+    container.addEventListener('mouseup', handleMouseUp);
+    return () => container.removeEventListener('mouseup', handleMouseUp);
+  }, [handleTextSelection]);
 
   // 计算滚动百分比
   const getScrollPercent = useCallback(() => {
@@ -455,10 +779,10 @@ const getFirstVisibleIndex = useCallback(() => {
       if (Math.abs(deltaX) > 50 && deltaTime < 800) {
         if (deltaX < 0) {
           // 左滑 → 下一页
-          el.scrollBy({ top: containerHeight * pageTurnRatio, behavior: "smooth" });
+          scrollReadingPage("next");
         } else {
           // 右滑 → 上一页
-          el.scrollBy({ top: -(containerHeight * pageTurnRatio), behavior: "smooth" });
+          scrollReadingPage("prev");
         }
         lastSwipeTimeRef.current = Date.now();
       }
@@ -472,7 +796,7 @@ const getFirstVisibleIndex = useCallback(() => {
       el.removeEventListener('touchmove', handleTouchMove);
       el.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [containerHeight, pageTurnRatio]);
+  }, [scrollReadingPage]);
 
   // 跳转到段落（滚动方式）
   const jumpToParagraph = useCallback((paragraphIndex: number) => {
@@ -681,11 +1005,9 @@ const getFirstVisibleIndex = useCallback(() => {
             const el = containerRef.current;
             if (!el) return;
             if (clickX < halfWidth) {
-              // 左半边 → 上一页
-              el.scrollBy({ top: -(containerHeight * pageTurnRatio), behavior: "smooth" });
+              scrollReadingPage("prev");
             } else {
-              // 右半边 → 下一页
-              el.scrollBy({ top: containerHeight * pageTurnRatio, behavior: "smooth" });
+              scrollReadingPage("next");
             }
           }}
           style={{
@@ -739,6 +1061,8 @@ const getFirstVisibleIndex = useCallback(() => {
                     }
                     highlightBg={highlightBg}
                     isDarkMode={isDarkMode}
+                    sentenceAnnotations={sentenceAnnotations}
+                    onRemoveSentenceAnnotation={onRemoveSentenceAnnotation}
                   />
                 </div>
               );

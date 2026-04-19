@@ -161,3 +161,55 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+// Sentence translation endpoint
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const text = searchParams.get('text');
+    const lang = searchParams.get('lang') || 'zh';
+
+    if (!text || typeof text !== 'string') {
+      return NextResponse.json({ error: 'Text is required' }, { status: 400 });
+    }
+
+    const cleanText = text.trim();
+    const isEnglishMode = lang === 'en';
+
+    let response;
+    if (isEnglishMode) {
+      // Translate to English
+      response = await llmClient.invoke([
+        {
+          role: 'user',
+          content: `Translate the following Chinese text to English. Only return the translation, nothing else:\n\n"${cleanText}"`,
+        },
+      ], {
+        model: 'doubao-seed-1-6-lite-251015',
+      });
+    } else {
+      // Translate to Chinese (default)
+      response = await llmClient.invoke([
+        {
+          role: 'user',
+          content: `翻译以下英文句子为中文，只返回翻译结果，不要原文，不要解释：\n\n"${cleanText}"`,
+        },
+      ], {
+        model: 'doubao-seed-1-6-lite-251015',
+      });
+    }
+
+    const translation = (response.content || '').trim().replace(/^["']|["']$/g, '');
+
+    return NextResponse.json({
+      translation: translation || '未找到翻译',
+      original: cleanText,
+    });
+  } catch (error) {
+    console.error('Sentence translation error:', error);
+    return NextResponse.json(
+      { error: 'Sentence translation failed' },
+      { status: 500 }
+    );
+  }
+}
