@@ -21,7 +21,11 @@
 │   └── start.sh            # 生产环境启动脚本
 ├── src/
 │   ├── app/                # 页面路由与布局
-│   │   └── api/translate/  # 翻译API
+│   │   ├── _home/          # 主视图组件（拆分自 page.tsx）
+│   │   │   ├── BookshelfHomeView.tsx  # 书架视图 JSX 封装
+│   │   │   └── ReadingHomeView.tsx    # 阅读视图 JSX 封装
+│   │   ├── api/translate/  # 翻译API
+│   │   └── page.tsx        # 主页面（精简后）
 │   ├── components/ui/      # Shadcn UI 组件库
 │   ├── hooks/              # 自定义 Hooks
 │   │   └── useBookshelf.ts # 书架管理Hook
@@ -29,7 +33,9 @@
 │   │   ├── utils.ts        # 通用工具函数 (cn)
 │   │   ├── dictionary.ts   # 词典查找、词根还原
 │   │   ├── translate.ts    # AI翻译客户端
-│   │   └── dictLoader.ts   # 外部词典加载器
+│   │   ├── dictLoader.ts   # 外部词典加载器
+│   │   ├── annotationText.ts # 标注文本处理工具（cleanTranslation, shortenTranslation）
+│   │   └── processBookContent.ts # 异步分词处理（processTextToSegmentsAsync）
 │   └── server.ts           # 自定义服务端入口
 ├── next.config.ts          # Next.js 配置
 ├── package.json            # 项目依赖管理

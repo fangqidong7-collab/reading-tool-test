@@ -11,10 +11,11 @@ import { SettingsPanel } from "@/components/SettingsPanel";
 import { ExportImportModal } from "@/components/ExportImportModal";
 import { SyncPanel } from "@/components/SyncPanel";
 import { DataBackupPanel } from "@/components/DataBackupPanel";
+import { BookshelfHomeView } from "@/app/_home/BookshelfHomeView";
 import { useSync } from "@/hooks/useSync";
 import { usePeriodicSync } from "@/hooks/usePeriodicSync";
 import JSLibLoader from "@/components/JSLibLoader";
-import { useBookshelf, ProcessedContent, ProcessedSegment, ProcessedParagraph, SentenceAnnotation } from "@/hooks/useBookshelf";
+import { useBookshelf, ProcessedContent, SentenceAnnotation } from "@/hooks/useBookshelf";
 import { useReadingSettings } from "@/hooks/useReadingSettings";
 import { lemmatize, getWordMeaning, getWordMeaningEn, findWordFamily, loadBuiltinDictionary, loadBuiltinDictionaryEn } from "@/lib/dictionary";
 //import { translateWord, translateWordEn } from "@/lib/translate";
@@ -23,167 +24,8 @@ import { translateWord, translateWordEn, translateSentence } from "@/lib/transla
 import { forceReloadDictionary, lookupExternalDict, lookupExternalDictEn, loadExternalDictionaryEn, type DictLoadStatus } from "@/lib/dictLoader";
 
 
-/**
- * Clean translation text - remove parts of speech and extra info
- */
-function cleanTranslation(text: string): string {
-  if (!text) return "";
-  
-  let cleaned = text;
-  
-  // Remove leading parts of speech like "n. " "v. " "adj. " etc.
-  // Common patterns: "n.", "v.", "adj.", "adv.", "prep.", "conj.", "pron.", "det.", "vi.", "vt.", "n.v.", etc.
-  cleaned = cleaned.replace(/^[a-z]+\.(?:\/[a-z]+\.)*\s*/gi, '');
-  
-  // Remove leading Chinese parts of speech
-  cleaned = cleaned.replace(/^(名词|动词|形容词|副词|介词|连词|代词|冠词|感叹词|数词|前缀|后缀)[;；\s]*/g, '');
-  
-  // Remove leading dots and colons
-  cleaned = cleaned.replace(/^[.。:：]+/, '');
-  
-  // Remove content in brackets like [计], [军], etc.
-  cleaned = cleaned.replace(/\[[^\]]+\]/g, '');
-  
-  // Remove multiple spaces
-  cleaned = cleaned.replace(/\s+/g, ' ');
-  
-  // Remove leading/trailing punctuation that might be left
-  cleaned = cleaned.replace(/^[，。、；：.!?,]+/, '').replace(/[，。、；：.!?,]+$/, '');
-  
-  return cleaned.trim();
-}
-
-/**
- * Shorten translation text - keep only 1-2 most concise meanings
- * This is used to prevent overly long annotations like "(会话说话交谈)"
- * @param text - The translation text
- * @param mode - 'zh' for Chinese mode, 'en' for English mode
- */
-function shortenTranslation(text: string, mode: 'zh' | 'en' = 'zh'): string {
-  if (!text) return mode === 'en' ? 'No definition' : '未知';
-  
-  // First, clean the text (remove POS tags, brackets, etc.)
-  let cleaned = text;
-  cleaned = cleaned.replace(/^[a-z]+\.(?:\/[a-z]+\.)*\s*/gi, '');
-  cleaned = cleaned.replace(/^(名词|动词|形容词|副词|介词|连词|代词|冠词|感叹词|数词|前缀|后缀)[;；\s]*/g, '');
-  cleaned = cleaned.replace(/^[.。:：]+/, '');
-  cleaned = cleaned.replace(/\[[^\]]+\]/g, '');
-  cleaned = cleaned.replace(/\s+/g, ' ');
-  cleaned = cleaned.replace(/^[，。、；：.!?,]+/, '').replace(/[，。、；：.!?,]+$/, '');
-  cleaned = cleaned.trim();
-  
-  if (!cleaned) return mode === 'en' ? 'No definition' : '未知';
-  
-  if (mode === 'en') {
-    // English mode: return full cleaned text without truncation
-    return cleaned || 'No definition';
-  }
-  
-  // Chinese mode (original logic)
-  // Split by various separators first
-  let items = cleaned.split(/[;；,，、/\n\\n]+/);
-  
-  // If only one item and it's all Chinese with no separators, smart split it
-  if (items.length === 1 && /^[\u4e00-\u9fff]+$/.test(items[0])) {
-    const str = items[0];
-    // Split by common word boundaries (2-4 chars each)
-    const newItems: string[] = [];
-    for (let i = 0; i < str.length; i += 2) {
-      newItems.push(str.substring(i, Math.min(i + 3, str.length)));
-    }
-    items = newItems;
-  }
-  
-  // Clean each item and filter: must have Chinese characters, max 6 chars each
-  items = items
-    .map(s => s.trim())
-    .filter(s => s.length > 0 && s.length <= 6)
-    .filter(s => /[\u4e00-\u9fff]/.test(s));
-  
-  // Take first 2 items
-  items = items.slice(0, 2);
-  
-  if (items.length === 0) {
-    // Fallback: be more lenient, just take first 2 parts and extract Chinese
-    const parts = cleaned.split(/[;；,，、/\n\\n]+/);
-    items = parts
-      .map(s => s.trim())
-      .filter(s => s.length > 0)
-      .slice(0, 2);
-    // Extract Chinese characters only, max 4 chars each
-    items = items.map(s => {
-      const chinese = s.replace(/[^\u4e00-\u9fff]/g, '');
-      return chinese.substring(0, 4);
-    }).filter(s => s.length > 0);
-  }
-  
-  return items.length > 0 ? items.join(',') : '未知';
-}
-
-// Process text into structured segments with lemmas
-// Handles EPUB heading markers like [H2]Chapter 1[/H2]
-async function processTextToSegmentsAsync(text: string | undefined | null): Promise<ProcessedContent> {
-  if (!text) return [];
-  
-  const rawParagraphs = text.split(/\n\n+/).filter(p => p.trim());
-  const result: ProcessedParagraph[] = [];
-  const CHUNK_SIZE = 100;
-  
-  for (let i = 0; i < rawParagraphs.length; i++) {
-    const trimmed = rawParagraphs[i].trim();
-    if (!trimmed) continue;
-    
-    const headingMatch = trimmed.match(/^\[H(\d)\]([\s\S]*?)\[\/H\d\]$/);
-    
-    if (headingMatch) {
-      const level = parseInt(headingMatch[1], 10);
-      const headingText = headingMatch[2].trim();
-      
-      if (headingText) {
-        const segments: ProcessedSegment[] = [];
-        const regex = /([a-zA-Z]+|[^a-zA-Z\s]+|\s+)/g;
-        let segMatch;
-        
-        while ((segMatch = regex.exec(headingText)) !== null) {
-          const token = segMatch[0];
-          if (/^\s+$/.test(token)) {
-            segments.push({ text: token, lemma: "", type: "space" });
-          } else if (/^[a-zA-Z]+$/.test(token)) {
-            segments.push({ text: token, lemma: lemmatize(token.toLowerCase()), type: "word" });
-          } else {
-            segments.push({ text: token, lemma: "", type: "punctuation" });
-          }
-        }
-        
-        result.push({ segments, headingLevel: level });
-      }
-    } else {
-      const segments: ProcessedSegment[] = [];
-      const regex = /([a-zA-Z]+|[^a-zA-Z\s]+|\s+)/g;
-      let segMatch;
-      
-      while ((segMatch = regex.exec(trimmed)) !== null) {
-        const token = segMatch[0];
-        if (/^\s+$/.test(token)) {
-          segments.push({ text: token, lemma: "", type: "space" });
-        } else if (/^[a-zA-Z]+$/.test(token)) {
-          segments.push({ text: token, lemma: lemmatize(token.toLowerCase()), type: "word" });
-        } else {
-          segments.push({ text: token, lemma: "", type: "punctuation" });
-        }
-      }
-      
-      result.push({ segments });
-    }
-    
-    if (i > 0 && i % CHUNK_SIZE === 0) {
-      await new Promise(resolve => setTimeout(resolve, 0));
-    }
-  }
-  
-  return result;
-}
-
+import { cleanTranslation, shortenTranslation } from "@/lib/annotationText";
+import { processTextToSegmentsAsync } from "@/lib/processBookContent";
 
 export default function Home() {
   const {
@@ -591,65 +433,64 @@ export default function Home() {
   }, []);
 
 
-  // Sync refs when currentBook changes
+  // Effect-book: sync book content/annotations and process on first open
   useEffect(() => {
-    if (currentBook) {
-      currentBookIdRef.current = currentBook.id;
-      
-      if (currentBookContentRef.current !== currentBook.content) {
-        currentBookContentRef.current = currentBook.content;
-        setText(currentBook.content);
-      }
-      if (JSON.stringify(currentBookAnnotationsRef.current) !== JSON.stringify(currentBook.annotations)) {
-        currentBookAnnotationsRef.current = currentBook.annotations;
-        setAnnotations(currentBook.annotations);
-      }
-      
-      // 只在第一次打开这本书时处理内容和恢复位置
-      if (lastProcessedBookIdRef.current !== currentBook.id) {
-        lastProcessedBookIdRef.current = currentBook.id;
-        
-        setLoading(true);
-
-        // 全局词汇不再在此处合并到书本标注，改为渲染时实时查询
-
-        console.log('打开书籍 lastScrollPosition:', currentBook.lastScrollPosition);
-
-        
-        const savedScrollPercent = currentBook.lastScrollPosition || 0;
-        const savedParagraphIndex = currentBook.lastParagraphIndex ?? -1;
-        
-        processTextToSegmentsAsync(currentBook.content).then((processed) => {
-          setProcessedContent(processed);
-          setLoading(false);
-          
-          // 提取保存索引处的段落文字作为锚点
-          let savedParagraphText = "";
-          if (savedParagraphIndex >= 0 && savedParagraphIndex < processed.length) {
-            savedParagraphText = processed[savedParagraphIndex].segments.map(s => s.text).join('').substring(0, 80);
-          }
-          setCurrentParagraphText(savedParagraphText);
-          
-          console.log('恢复位置数据: paragraphIndex=', savedParagraphIndex, ', scrollPercent=', savedScrollPercent, '%, text=', savedParagraphText.substring(0, 30));
-        });
-
-        setSidebarOpen(false);
-      }
-      
-    } else {
+    if (!currentBook) {
       currentBookIdRef.current = null;
       currentBookContentRef.current = "";
       currentBookAnnotationsRef.current = {};
       lastProcessedBookIdRef.current = null;
       setProcessedContent(null);
       setLoading(false);
-      setSidebarOpen(false);
+      return;
     }
-  }, [currentBook, getSidebarState, globalVocabulary, updateBookAnnotations]);
 
+    currentBookIdRef.current = currentBook.id;
 
+    if (currentBookContentRef.current !== currentBook.content) {
+      currentBookContentRef.current = currentBook.content;
+      setText(currentBook.content);
+    }
 
-  // Handle sidebar toggle with localStorage memory
+    // Annotations: compare by reference (immutable updates from useBookshelf)
+    if (currentBookAnnotationsRef.current !== currentBook.annotations) {
+      currentBookAnnotationsRef.current = currentBook.annotations;
+      setAnnotations(currentBook.annotations);
+    }
+
+    // Only process segments on first open (bookId change)
+    if (lastProcessedBookIdRef.current !== currentBook.id) {
+      lastProcessedBookIdRef.current = currentBook.id;
+      setLoading(true);
+
+      const savedScrollPercent = currentBook.lastScrollPosition || 0;
+      const savedParagraphIndex = currentBook.lastParagraphIndex ?? -1;
+
+      processTextToSegmentsAsync(currentBook.content).then((processed) => {
+        setProcessedContent(processed);
+        setLoading(false);
+
+        let savedParagraphText = "";
+        if (savedParagraphIndex >= 0 && savedParagraphIndex < processed.length) {
+          savedParagraphText = processed[savedParagraphIndex].segments
+            .map((s) => s.text)
+            .join("")
+            .substring(0, 80);
+        }
+        setCurrentParagraphText(savedParagraphText);
+      });
+    }
+  }, [currentBook?.id, currentBook?.content, currentBook?.annotations]);
+
+  // Effect-sidebar: restore sidebar open state when book changes
+  useEffect(() => {
+    if (!currentBook) {
+      setSidebarOpen(false);
+      return;
+    }
+    const shouldOpen = getSidebarState(currentBook.id);
+    setSidebarOpen(shouldOpen);
+  }, [currentBook?.id, getSidebarState]);  // Handle sidebar toggle with localStorage memory
   const handleSidebarToggle = useCallback(() => {
     const newState = !sidebarOpen;
     setSidebarOpen(newState);
@@ -1261,249 +1102,42 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
   // Bookshelf view (when no book is open)
   if (!currentBook) {
     return (
-      <>
-        <div className="bookshelf-page" style={{ backgroundColor }}>
-          {/* 主内容区域 */}
-          {activeTab === 'bookshelf' ? (
-            <Bookshelf
-              books={books}
-              getProgress={getProgress}
-              formatLastRead={formatLastRead}
-              onAddBook={addBook}
-              onDeleteBook={deleteBook}
-              onOpenBook={openBook}
-              onSyncClick={() => setSyncPanelOpen(true)}
-              onAddSuccess={() => {
-                // 检查是否已绑定同步码
-                if (syncCode) {
-                  setShowImportSyncTip(true);
-                  setTimeout(() => setShowImportSyncTip(false), 5000);
-                }
-              }}
-            />
-          ) : activeTab === 'vocabulary' ? (
-            <GlobalVocabularyPage
-              vocabulary={globalVocabulary}
-              onRemoveWord={removeFromGlobalVocabulary}
-              onClearAll={clearGlobalVocabulary}
-              onClearMastered={clearMasteredWords}
-              onStartQuiz={() => setShowQuiz(true)}
-              backgroundColor={backgroundColor}
-            />
-          ) : (
-            <DataBackupPanel
-              globalVocabulary={globalVocabulary}
-              onMergeGlobalVocabulary={mergeGlobalVocabulary}
-              books={books}
-              backgroundColor={backgroundColor}
-            />
-          )}
-
-          {/* 书籍导入成功后显示同步提示 */}
-          {showImportSyncTip && (
-            <div className="import-sync-tip">
-              请先在本机点「立即同步」，再在其它设备输入同步码。
-            </div>
-          )}
-
-          {/* 底部工具栏 */}
-          <div className="bottom-tab-bar">
-          <button
-            className={`tab-bar-item ${activeTab === 'bookshelf' ? 'active' : ''}`}
-            onClick={() => setActiveTab('bookshelf')}
-          >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-            </svg>
-            <span>书架</span>
-          </button>
-          <button
-            className={`tab-bar-item ${activeTab === 'vocabulary' ? 'active' : ''}`}
-            onClick={() => setActiveTab('vocabulary')}
-          >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M12 20h9" />
-              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-            </svg>
-            <span>词汇表</span>
-            {Object.keys(globalVocabulary).length > 0 && (
-              <span className="tab-bar-badge">{Object.keys(globalVocabulary).length}</span>
-            )}
-          </button>
-          <button
-            className={`tab-bar-item ${activeTab === 'backup' ? 'active' : ''}`}
-            onClick={() => setActiveTab('backup')}
-          >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
-            <span>数据备份</span>
-          </button>
-        </div>
-
-        <style jsx>{`
-          .bookshelf-page {
-            min-height: 100vh;
-            min-height: 100dvh;
-            padding-bottom: 70px;
-          }
-          .loading-screen {
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-          }
-          .loading-spinner {
-            width: 40px;
-            height: 40px;
-            border: 3px solid #e0e0e0;
-            border-top-color: #4a90d9;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-          }
-          @keyframes spin {
-            to {
-              transform: rotate(360deg);
-            }
-          }
-
-          .import-sync-tip {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            padding: 12px 16px;
-            background: linear-gradient(135deg, #fff3cd 0%, #ffeeba 100%);
-            border-bottom: 1px solid #ffc107;
-            color: #856404;
-            font-size: 13px;
-            text-align: center;
-            z-index: 100;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-          }
-          :global(.dark) .import-sync-tip {
-            background: linear-gradient(135deg, #3d3520 0%, #4a3d20 100%);
-            color: #f0d58c;
-            border-bottom-color: #8b7800;
-          }
-
-          .bottom-tab-bar {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            height: 60px;
-            background: white;
-            border-top: 1px solid #e8e8e8;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0;
-            z-index: 500;
-            padding-bottom: env(safe-area-inset-bottom, 0);
-            box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
-          }
-
-          .tab-bar-item {
-            flex: 1;
-            max-width: 160px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 3px;
-            padding: 8px 0;
-            background: none;
-            border: none;
-            cursor: pointer;
-            color: #999;
-            font-size: 11px;
-            font-weight: 500;
-            transition: color 0.15s ease;
-            position: relative;
-          }
-
-          .tab-bar-item:hover {
-            color: #666;
-          }
-
-          .tab-bar-item.active {
-            color: #4a90d9;
-          }
-
-          .tab-bar-item.active svg {
-            stroke: #4a90d9;
-          }
-
-          .tab-bar-badge {
-            position: absolute;
-            top: 4px;
-            right: calc(50% - 26px);
-            background: #e74c3c;
-            color: white;
-            font-size: 10px;
-            font-weight: 600;
-            min-width: 18px;
-            height: 18px;
-            border-radius: 9px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0 5px;
-          }
-
-          .tab-bar-badge-sync {
-            position: absolute;
-            top: 4px;
-            right: calc(50% - 22px);
-            width: 8px;
-            height: 8px;
-            background: #4CAF50;
-            border-radius: 50%;
-          }
-        `}</style>
-        </div>
-
-        {/* Modal 放在 bookshelf-page 外面，直接挂在 React 根节点下 */}
-        <ExportImportModal
-          open={dataManageOpen}
-          onOpenChange={setDataManageOpen}
-          globalVocabulary={globalVocabulary}
-          onMergeGlobalVocabulary={mergeGlobalVocabulary}
-          books={books}
-        />
-
-        {/* Quiz 弹窗 */}
-        {showQuiz && (
-          <VocabularyQuiz
-            vocabulary={globalVocabulary}
-            onCorrect={incrementCorrectCount}
-            onClose={() => setShowQuiz(false)}
-          />
-        )}
-
-        {/* 云同步面板 */}
-        <SyncPanel
-          isOpen={syncPanelOpen}
-          onClose={() => {
-            setSyncPanelOpen(false);
-            setSyncJustCreated(false);
-          }}
-          syncCode={syncCode}
-          syncing={syncing}
-          lastSyncAt={lastSyncAt}
-          syncError={syncError}
-          onCreateSync={handleCreateSync}
-          onBindCode={handleBindSync}
-          onSync={handleSync}
-          onUnbind={unbind}
-          isDarkMode={isDarkMode}
-          justCreated={syncJustCreated}
-        />
-      </>
+      <BookshelfHomeView
+        activeTab={activeTab as "bookshelf" | "vocabulary" | "backup"}
+        setActiveTab={setActiveTab}
+        dataManageOpen={dataManageOpen}
+        setDataManageOpen={setDataManageOpen}
+        syncPanelOpen={syncPanelOpen}
+        setSyncPanelOpen={setSyncPanelOpen}
+        setSyncJustCreated={setSyncJustCreated}
+        syncCode={syncCode}
+        syncing={syncing}
+        lastSyncAt={lastSyncAt}
+        syncError={syncError}
+        syncJustCreated={syncJustCreated}
+        showImportSyncTip={showImportSyncTip}
+        setShowImportSyncTip={setShowImportSyncTip}
+        showQuiz={showQuiz}
+        setShowQuiz={setShowQuiz}
+        backgroundColor={backgroundColor}
+        isDarkMode={isDarkMode}
+        books={books}
+        getProgress={getProgress}
+        formatLastRead={formatLastRead}
+        addBook={addBook}
+        deleteBook={deleteBook}
+        openBook={openBook}
+        globalVocabulary={globalVocabulary}
+        removeFromGlobalVocabulary={removeFromGlobalVocabulary}
+        clearGlobalVocabulary={clearGlobalVocabulary}
+        clearMasteredWords={clearMasteredWords}
+        mergeGlobalVocabulary={mergeGlobalVocabulary}
+        incrementCorrectCount={incrementCorrectCount}
+        handleCreateSync={handleCreateSync}
+        handleBindSync={handleBindSync}
+        handleSync={handleSync}
+        unbind={unbind}
+      />
     );
   }
 
