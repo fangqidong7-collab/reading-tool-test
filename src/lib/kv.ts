@@ -5,7 +5,7 @@
  *
  * Interface matches the original:
  *   kv.get(key)  → Promise<string | null>
- *   kv.set(key, value, options?)  → Promise<void>   (options.ex = TTL in seconds)
+ *   kv.set(key, value: string, options?)  → Promise<void>   (options.ex = TTL in seconds)
  *   kv.del(key)  → Promise<void>
  */
 
@@ -27,14 +27,23 @@ const useUpstash =
 async function createUpstashDriver() {
   const { Redis } = await import('@upstash/redis');
 
-  // Redis.fromEnv() reads UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN automatically
   const redis = Redis.fromEnv();
 
   return {
     async get(key: string): Promise<string | null> {
-      const v = await redis.get<string>(key);
+      const v: unknown = await redis.get(key);
       if (v === null || v === undefined) return null;
-      // @upstash/redis may return Uint8Array or unknown; coerce to string
+      if (typeof v === 'string') return v;
+      if (v instanceof Uint8Array) {
+        return new TextDecoder('utf-8').decode(v);
+      }
+      if (typeof v === 'object') {
+        try {
+          return JSON.stringify(v);
+        } catch {
+          return null;
+        }
+      }
       return String(v);
     },
 
@@ -53,12 +62,11 @@ async function createUpstashDriver() {
 const DATA_DIR = path.join(process.cwd(), '.sync-data');
 
 function ensureDataDir() {
-  // Only touch filesystem when we actually need it
   if (!fs.existsSync(DATA_DIR)) {
     try {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     } catch {
-      // In some read-only environments mkdir may fail silently — let later ops handle it
+      // ignore
     }
   }
 }
@@ -118,8 +126,6 @@ async function getDriver(): Promise<KVDriver> {
   return _driver;
 }
 
-// Synchronous stub so the module-level export is always valid before first await
-// We'll proxy calls through an async init
 const _stub: KVDriver = {
   async get(key: string)    { return (await getDriver()).get(key); },
   async set(key: string, value: string, options?: { ex?: number }) { return (await getDriver()).set(key, value, options); },
