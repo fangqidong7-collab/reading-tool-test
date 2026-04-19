@@ -18,7 +18,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ data: JSON.parse(data as string) });
   } catch (error) {
-    console.error('Pull sync error:', error);
+    if (process.env.NODE_ENV !== 'production') {
+      console.error('[sync/pull]', error);
+    }
     return NextResponse.json({ error: 'Pull failed' }, { status: 500 });
   }
 }

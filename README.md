@@ -347,12 +347,47 @@ export const useStore = create<Store>((set) => ({
 - **包管理器**: pnpm 9+
 - **TypeScript**: 5.x
 
+## 部署同步功能
+
+同步功能使用 KV 存储同步码与数据，支持两种驱动模式：
+
+### 本地开发（默认）
+
+无需配置，`.sync-data/` 目录存储在项目根目录，数据在本地浏览器间共享。
+
+### 线上部署（推荐 Upstash Redis）
+
+**生产环境必须使用远程 KV**，否则同步码生成会因文件系统只读而失败。
+
+#### 1. 创建 Upstash Redis 数据库
+
+访问 [https://console.upstash.com](https://console.upstash.com) → 创建 Redis 数据库 → 选择 **REST API** → 复制 **REST URL** 和 **REST Token**。
+
+#### 2. 配置环境变量
+
+在扣子部署平台（或 Vercel / 自建平台）的环境变量中添加：
+
+| 变量名 | 说明 |
+|--------|------|
+| `UPSTASH_REDIS_REST_URL` | Upstash 控制台 → REST URL |
+| `UPSTASH_REDIS_REST_TOKEN` | Upstash 控制台 → REST Token |
+| `KV_DRIVER` | 可选，显式指定驱动：`upstash` / `file` |
+
+**自动切换逻辑**：若 `UPSTASH_REDIS_REST_URL` 和 `UPSTASH_REDIS_REST_TOKEN` 均已设置，自动使用 Upstash；未设置则回退到本地文件 KV。
+
+#### 3. 同步数据说明
+
+- 同步码有效期 **90 天**，自动续期
+- 单条数据上限 **10 MB**，超过限制请删除部分书籍后重试
+- 同步数据不会写入项目 `.sync-data/` 目录（仅开发模式使用）
+
 ## 参考文档
 
 - [Next.js 官方文档](https://nextjs.org/docs)
 - [shadcn/ui 组件文档](https://ui.shadcn.com)
 - [Tailwind CSS 文档](https://tailwindcss.com/docs)
 - [React Hook Form](https://react-hook-form.com)
+- [Upstash Redis 文档](https://upstash.com/docs/redis/quickstart)
 
 ## 重要提示
 

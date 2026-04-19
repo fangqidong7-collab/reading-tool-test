@@ -70,7 +70,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, updatedAt: Date.now() });
   } catch (error) {
-    console.error('Push sync error:', error);
+    if (process.env.NODE_ENV !== 'production') {
+      console.error('[sync/push]', error);
+    }
     return NextResponse.json({ error: 'Push failed' }, { status: 500 });
   }
 }

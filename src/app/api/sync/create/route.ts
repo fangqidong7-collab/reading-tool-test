@@ -37,7 +37,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ syncCode });
   } catch (error) {
-    console.error('Create sync error:', error);
+    if (process.env.NODE_ENV !== 'production') {
+      console.error('[sync/create]', error);
+    }
     return NextResponse.json({ error: 'Failed to create sync' }, { status: 500 });
   }
 }
