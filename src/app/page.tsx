@@ -301,11 +301,6 @@ export default function Home() {
   const [showQuiz, setShowQuiz] = useState(false);
   const [activeTab, setActiveTab] = useState<'bookshelf' | 'vocabulary'>('bookshelf');
 
-  // 同步按钮点击（不切换 tab，只打开弹窗）
-  const handleSyncClick = useCallback(() => {
-    setSyncPanelOpen(true);
-  }, []);
-
   // Cloud sync state
   const [syncPanelOpen, setSyncPanelOpen] = useState(false);
   const {
@@ -318,6 +313,11 @@ export default function Home() {
     syncBoth,
     unbind,
   } = useSync();
+
+  // 同步按钮点击（不切换 tab，只打开弹窗）
+  const handleSyncClick = useCallback(() => {
+    setSyncPanelOpen(true);
+  }, []);
 
   // Build sync data from current state (不包含书籍内容，只同步元数据)
   const buildSyncData = useCallback(() => {
