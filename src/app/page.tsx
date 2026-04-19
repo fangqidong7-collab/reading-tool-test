@@ -306,6 +306,7 @@ export default function Home() {
     endParagraphIndex: number;
     startCharIndex: number;
     endCharIndex: number;
+    position: { x: number; y: number };
   } | null>(null);
 
   // 清理可能残留的大数据（启动时一次性执行）
@@ -767,50 +768,65 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
     setSelectedWord(null);
   }, [removeFromGlobalVocabulary]);
 
-  // Handle text selection for sentence translation
+  // Handle text selection for sentence translation - 只保存选区，不翻译
   const handleTextSelect = useCallback(
-    async (selection: {
+    (selection: {
       text: string;
       startParagraphIndex: number;
       endParagraphIndex: number;
       startCharIndex: number;
       endCharIndex: number;
     }) => {
-      if (!currentBook || translatingSelection) return;
+      // 获取选区在屏幕上的位置
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+      const rect = sel.getRangeAt(0).getBoundingClientRect();
 
-      const { text: selectedText, startParagraphIndex, endParagraphIndex, startCharIndex, endCharIndex } = selection;
-
-      // Store selection for translation
-      setPendingSelection(selection);
-      setTranslatingSelection(true);
-
-      try {
-        // Call translation API
-        const result = await translateSentence(selectedText, dictMode === 'en' ? 'en' : 'zh');
-
-        // Create sentence annotation
-        const annotation: SentenceAnnotation = {
-          id: `sa-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-          startParagraphIndex,
-          endParagraphIndex,
-          startCharIndex,
-          endCharIndex,
-          originalText: selectedText,
-          translation: result.translation,
-          createdAt: Date.now(),
-        };
-
-        // Add to book
-        addSentenceAnnotation(currentBook.id, annotation);
-      } catch (error) {
-        console.error('Sentence translation error:', error);
-      } finally {
-        setTranslatingSelection(false);
-        setPendingSelection(null);
-      }
+      setPendingSelection({
+        ...selection,
+        position: {
+          x: rect.left + rect.width / 2,
+          y: rect.top - 10,
+        },
+      });
     },
-    [currentBook, translatingSelection, dictMode, addSentenceAnnotation]
+    []
   );
+
+  // 点击「翻译标注」按钮后才执行翻译
+  const handleTranslateSentence = useCallback(async () => {
+    if (!pendingSelection || !currentBook) return;
+
+    setTranslatingSelection(true);
+    try {
+      const translation = await translateSentence(pendingSelection.text);
+
+      const annotation: SentenceAnnotation = {
+        id: `sa-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        startParagraphIndex: pendingSelection.startParagraphIndex,
+        startCharIndex: pendingSelection.startCharIndex,
+        endParagraphIndex: pendingSelection.endParagraphIndex,
+        endCharIndex: pendingSelection.endCharIndex,
+        originalText: pendingSelection.text,
+        translation,
+        createdAt: Date.now(),
+      };
+
+      addSentenceAnnotation(currentBook.id, annotation);
+    } catch (err) {
+      console.error("Sentence translation error:", err);
+    } finally {
+      setTranslatingSelection(false);
+      setPendingSelection(null);
+      window.getSelection()?.removeAllRanges();
+    }
+  }, [pendingSelection, currentBook, addSentenceAnnotation]);
+
+  // 关闭浮窗
+  const closePendingSelection = useCallback(() => {
+    setPendingSelection(null);
+    window.getSelection()?.removeAllRanges();
+  }, []);
 
   // Handle remove sentence annotation
   const handleRemoveSentenceAnnotation = useCallback(
@@ -1868,6 +1884,57 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
   accentColor={annotationColor}
 />
 
+      )}
+
+      {/* 句子翻译浮窗 */}
+      {pendingSelection && (
+        <>
+          <div
+            style={{
+              position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999,
+            }}
+            onClick={closePendingSelection}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              left: Math.max(10, Math.min(pendingSelection.position.x - 80, typeof window !== 'undefined' ? window.innerWidth - 180 : 300)),
+              top: Math.max(10, pendingSelection.position.y - 50),
+              zIndex: 1000,
+              backgroundColor: isDarkMode ? '#2a2a3e' : '#ffffff',
+              borderRadius: '8px',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.25)',
+              padding: '10px 14px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}
+          >
+            <button
+              onClick={handleTranslateSentence}
+              disabled={translatingSelection}
+              style={{
+                background: isDarkMode ? '#6ba3e0' : '#4a90d9',
+                color: '#fff', border: 'none', borderRadius: '6px',
+                padding: '8px 16px', fontSize: '13px',
+                cursor: translatingSelection ? 'wait' : 'pointer',
+                opacity: translatingSelection ? 0.7 : 1, whiteSpace: 'nowrap',
+              }}
+            >
+              {translatingSelection ? '翻译中...' : '翻译标注'}
+            </button>
+            <button
+              onClick={closePendingSelection}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                padding: '4px', color: isDarkMode ? '#888' : '#999',
+                fontSize: '16px', lineHeight: 1,
+              }}
+            >
+              x
+            </button>
+          </div>
+        </>
       )}
 
       {/* Loading Indicator */}

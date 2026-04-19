@@ -155,23 +155,24 @@ export async function translateWordEn(word: string): Promise<string> {
 }
 
 /**
- * Translate sentence (English to Chinese or Chinese to English)
+ * Translate an English sentence to Chinese
  */
-export async function translateSentence(
-  text: string,
-  targetLang: "zh" | "en" = "zh"
-): Promise<{ translation: string; original: string }> {
+export async function translateSentence(sentence: string): Promise<string> {
+  const trimmed = sentence.trim();
+  const cacheKey = `sentence:${trimmed}`;
+
+  if (translationCache[cacheKey]) {
+    return translationCache[cacheKey];
+  }
+
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-    const params = new URLSearchParams({
-      text: text.trim(),
-      lang: targetLang,
-    });
-
-    const response = await fetch(`/api/translate?${params}`, {
-      method: "GET",
+    const response = await fetch("/api/translate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "sentence", sentence: trimmed }),
       signal: controller.signal,
     });
 
@@ -182,16 +183,13 @@ export async function translateSentence(
     }
 
     const data = await response.json();
+    const translation = data.translation || "翻译失败";
 
-    return {
-      translation: data.translation || "未找到翻译",
-      original: data.original || text,
-    };
+    translationCache[cacheKey] = translation;
+    saveCacheToSession();
+    return translation;
   } catch (error) {
     console.error("Sentence translation error:", error);
-    return {
-      translation: targetLang === "zh" ? "翻译失败" : "Translation failed",
-      original: text,
-    };
+    return "翻译失败";
   }
 }

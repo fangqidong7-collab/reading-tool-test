@@ -105,15 +105,42 @@ function postProcessTranslationEn(translation: string, maxLength: number = 60): 
 
 export async function POST(request: NextRequest) {
   try {
-    const { word, lang } = await request.json();
-    
+    const body = await request.json();
+    const { word, lang, type, sentence } = body;
+
+    // ===== 句子翻译模式 =====
+    if (type === 'sentence' && sentence) {
+      const cleanText = sentence.trim();
+      if (!cleanText) {
+        return NextResponse.json({ error: 'Sentence is required' }, { status: 400 });
+      }
+
+      const response = await llmClient.invoke([
+        {
+          role: 'user',
+          content: `将以下英文句子翻译为简洁自然的中文，只返回翻译结果，不要解释：\n\n"${cleanText}"`,
+        },
+      ], {
+        model: 'doubao-seed-1-6-lite-251015',
+      });
+
+      let translation = (response.content || '').trim();
+      translation = translation.replace(/^["'"]|["'"]$/g, '').trim();
+      translation = translation.replace(/\*\*/g, '').replace(/\*/g, '').replace(/`/g, '').trim();
+
+      return NextResponse.json({
+        translation: translation || '翻译失败',
+      });
+    }
+
+    // ===== 以下是原有的单词翻译逻辑 =====
     if (!word || typeof word !== 'string') {
       return NextResponse.json({ error: 'Word is required' }, { status: 400 });
     }
-    
+
     const cleanWord = word.toLowerCase().trim();
     const isEnglishMode = lang === 'en';
-    
+
     let response;
     if (isEnglishMode) {
       // English definition mode
@@ -125,11 +152,11 @@ export async function POST(request: NextRequest) {
       ], {
         model: 'doubao-seed-1-6-lite-251015',
       });
-      
+
       const rawTranslation = response.content || '';
       const processedTranslation = postProcessTranslationEn(rawTranslation);
-      
-      return NextResponse.json({ 
+
+      return NextResponse.json({
         translation: processedTranslation || 'No definition found',
         raw: rawTranslation
       });
@@ -143,12 +170,12 @@ export async function POST(request: NextRequest) {
       ], {
         model: 'doubao-seed-1-6-lite-251015',
       });
-      
+
       // Post-process the translation
       const rawTranslation = response.content || '';
       const processedTranslation = postProcessTranslation(rawTranslation);
-      
-      return NextResponse.json({ 
+
+      return NextResponse.json({
         translation: processedTranslation || '未找到释义',
         raw: rawTranslation // Keep raw for debugging
       });
@@ -157,58 +184,6 @@ export async function POST(request: NextRequest) {
     console.error('Translation error:', error);
     return NextResponse.json(
       { error: 'Translation failed' },
-      { status: 500 }
-    );
-  }
-}
-
-// Sentence translation endpoint
-export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const text = searchParams.get('text');
-    const lang = searchParams.get('lang') || 'zh';
-
-    if (!text || typeof text !== 'string') {
-      return NextResponse.json({ error: 'Text is required' }, { status: 400 });
-    }
-
-    const cleanText = text.trim();
-    const isEnglishMode = lang === 'en';
-
-    let response;
-    if (isEnglishMode) {
-      // Translate to English
-      response = await llmClient.invoke([
-        {
-          role: 'user',
-          content: `Translate the following Chinese text to English. Only return the translation, nothing else:\n\n"${cleanText}"`,
-        },
-      ], {
-        model: 'doubao-seed-1-6-lite-251015',
-      });
-    } else {
-      // Translate to Chinese (default)
-      response = await llmClient.invoke([
-        {
-          role: 'user',
-          content: `翻译以下英文句子为中文，只返回翻译结果，不要原文，不要解释：\n\n"${cleanText}"`,
-        },
-      ], {
-        model: 'doubao-seed-1-6-lite-251015',
-      });
-    }
-
-    const translation = (response.content || '').trim().replace(/^["']|["']$/g, '');
-
-    return NextResponse.json({
-      translation: translation || '未找到翻译',
-      original: cleanText,
-    });
-  } catch (error) {
-    console.error('Sentence translation error:', error);
-    return NextResponse.json(
-      { error: 'Sentence translation failed' },
       { status: 500 }
     );
   }

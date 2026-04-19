@@ -599,55 +599,139 @@ export const ReadingArea = forwardRef(function ReadingArea({
     if (!selection || selection.isCollapsed || !selection.toString().trim()) return;
 
     const selectedText = selection.toString().trim();
-    // 2个单词及以上才触发
     if (selectedText.split(/\s+/).length < 2) return;
+    if (!processedContent) return;
 
     const range = selection.getRangeAt(0);
 
-    // 从 DOM 节点 + offset 计算所属段落索引和段落内字符偏移
-    const findParagraphInfo = (node: Node, offset: number): { paragraphIndex: number; charOffset: number } | null => {
-      // 找到所属的 .paragraph 元素
+    // 找到 node 所属的 .paragraph 元素和段落索引
+    const findParagraphEl = (node: Node): { el: HTMLElement; pIndex: number } | null => {
       let el: HTMLElement | null = node.nodeType === Node.TEXT_NODE ? node.parentElement : node as HTMLElement;
       while (el && !el.classList?.contains('paragraph')) {
         el = el.parentElement;
       }
       if (!el) return null;
-
       const pIndex = parseInt(el.getAttribute('data-paragraph-index') || '-1', 10);
       if (pIndex < 0) return null;
-
-      // 用 TreeWalker 遍历段落内所有文本节点，累加字符数
-      let charOffset = 0;
-      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
-      let textNode: Node | null;
-
-      while ((textNode = walker.nextNode())) {
-        if (textNode === node) {
-          // 找到目标文本节点，加上节点内 offset
-          charOffset += offset;
-          return { paragraphIndex: pIndex, charOffset };
-        }
-        charOffset += (textNode.textContent || '').length;
-      }
-
-      // 如果 node 不是文本节点（比如是元素节点），尝试取其第一个文本子节点
-      // 这种情况下 offset 表示子节点索引而非字符偏移
-      return { paragraphIndex: pIndex, charOffset };
+      return { el, pIndex };
     };
 
-    const startInfo = findParagraphInfo(range.startContainer, range.startOffset);
-    const endInfo = findParagraphInfo(range.endContainer, range.endOffset);
+    // 从一个 DOM 节点找到它对应的 segment 索引
+    const findSegmentIndex = (node: Node, paragraphEl: HTMLElement, pIndex: number): number => {
+      let targetEl: HTMLElement | null = node.nodeType === Node.TEXT_NODE ? node.parentElement : node as HTMLElement;
 
-    if (startInfo && endInfo && onTextSelect) {
+      // 如果落在 .annotation 上，它紧跟在对应的 .word 后面
+      if (targetEl?.classList?.contains('annotation')) {
+        let prev = targetEl.previousElementSibling;
+        while (prev && !prev.classList?.contains('word')) {
+          prev = prev.previousElementSibling;
+        }
+        if (prev) targetEl = prev as HTMLElement;
+      }
+
+      // 如果落在 .sentence-annotation 上，找前面最近的 .word 或普通 span
+      if (targetEl?.classList?.contains('sentence-annotation')) {
+        let prev = targetEl.previousElementSibling;
+        while (prev && prev.classList?.contains('sentence-annotation')) {
+          prev = prev.previousElementSibling;
+        }
+        if (prev) targetEl = prev as HTMLElement;
+      }
+
+      if (!targetEl) return 0;
+
+      const para = processedContent![pIndex];
+      if (!para) return 0;
+
+      // 如果是 .word 元素，通过 data-word + data-lemma 匹配
+      if (targetEl.classList?.contains('word')) {
+        const word = targetEl.getAttribute('data-word') || '';
+        const lemma = targetEl.getAttribute('data-lemma') || '';
+
+        // 计算这是第几个匹配的 word（处理重复单词）
+        const allWords = paragraphEl.querySelectorAll('.word');
+        let wordOccurrence = 0;
+        for (let i = 0; i < allWords.length; i++) {
+          if (allWords[i] === targetEl) break;
+          if (allWords[i].getAttribute('data-word') === word &&
+              allWords[i].getAttribute('data-lemma') === lemma) {
+            wordOccurrence++;
+          }
+        }
+
+        // 在 segments 中找到对应的 segment
+        let matchCount = 0;
+        for (let i = 0; i < para.segments.length; i++) {
+          const seg = para.segments[i];
+          if (seg.type === 'word' && seg.text === word && seg.lemma === lemma) {
+            if (matchCount === wordOccurrence) {
+              return i;
+            }
+            matchCount++;
+          }
+        }
+      }
+
+      // 对于 space/punctuation，遍历段落中所有非 .word 非 .annotation 非 .sentence-annotation 的 span
+      const childSpans: HTMLElement[] = [];
+      const walk = (el: HTMLElement) => {
+        for (const child of Array.from(el.children)) {
+          const c = child as HTMLElement;
+          if (c.classList?.contains('annotation') || c.classList?.contains('sentence-annotation')) continue;
+          if (c.classList?.contains('word') || c.tagName === 'SPAN') {
+            childSpans.push(c);
+          }
+        }
+      };
+      walk(paragraphEl);
+
+      for (let i = 0; i < childSpans.length; i++) {
+        if (childSpans[i] === targetEl || childSpans[i].contains(targetEl)) {
+          return Math.min(i, para.segments.length - 1);
+        }
+      }
+
+      return 0;
+    };
+
+    const startParaInfo = findParagraphEl(range.startContainer);
+    const endParaInfo = findParagraphEl(range.endContainer);
+
+    if (!startParaInfo || !endParaInfo) return;
+
+    const startSegIdx = findSegmentIndex(range.startContainer, startParaInfo.el, startParaInfo.pIndex);
+    const endSegIdx = findSegmentIndex(range.endContainer, endParaInfo.el, endParaInfo.pIndex);
+
+    // 根据 segment 索引计算字符偏移
+    const calcCharOffset = (pIndex: number, segIdx: number, isEnd: boolean): number => {
+      const para = processedContent![pIndex];
+      if (!para) return 0;
+      let offset = 0;
+      for (let i = 0; i < para.segments.length; i++) {
+        if (i === segIdx) {
+          if (isEnd) {
+            offset += para.segments[i].text.length;
+          }
+          break;
+        }
+        offset += para.segments[i].text.length;
+      }
+      return offset;
+    };
+
+    const startCharIndex = calcCharOffset(startParaInfo.pIndex, startSegIdx, false);
+    const endCharIndex = calcCharOffset(endParaInfo.pIndex, endSegIdx, true);
+
+    if (onTextSelect) {
       onTextSelect({
         text: selectedText,
-        startParagraphIndex: startInfo.paragraphIndex,
-        startCharIndex: startInfo.charOffset,
-        endParagraphIndex: endInfo.paragraphIndex,
-        endCharIndex: endInfo.charOffset,
+        startParagraphIndex: startParaInfo.pIndex,
+        startCharIndex,
+        endParagraphIndex: endParaInfo.pIndex,
+        endCharIndex,
       });
     }
-  }, [onTextSelect]);
+  }, [onTextSelect, processedContent]);
 
   // 添加文本选择监听
   useEffect(() => {
@@ -655,7 +739,6 @@ export const ReadingArea = forwardRef(function ReadingArea({
     if (!container) return;
 
     const handleMouseUp = () => {
-      // 延迟执行，让 selection 状态稳定
       setTimeout(handleTextSelection, 10);
     };
 
