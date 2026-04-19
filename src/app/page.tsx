@@ -10,6 +10,7 @@ import { VocabularyQuiz } from "@/components/VocabularyQuiz";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { ExportImportModal } from "@/components/ExportImportModal";
 import { SyncPanel } from "@/components/SyncPanel";
+import { DataBackupPanel } from "@/components/DataBackupPanel";
 import { useSync } from "@/hooks/useSync";
 import JSLibLoader from "@/components/JSLibLoader";
 import { useBookshelf, ProcessedContent, ProcessedSegment, ProcessedParagraph, SentenceAnnotation } from "@/hooks/useBookshelf";
@@ -300,10 +301,13 @@ export default function Home() {
   // Data management modal state
   const [dataManageOpen, setDataManageOpen] = useState(false);
   const [showQuiz, setShowQuiz] = useState(false);
-  const [activeTab, setActiveTab] = useState<'bookshelf' | 'vocabulary'>('bookshelf');
+  const [activeTab, setActiveTab] = useState<'bookshelf' | 'vocabulary' | 'backup'>('bookshelf');
 
   // Cloud sync state
   const [syncPanelOpen, setSyncPanelOpen] = useState(false);
+  const [syncJustCreated, setSyncJustCreated] = useState(false);
+  // 书籍导入成功后显示同步提示
+  const [showImportSyncTip, setShowImportSyncTip] = useState(false);
   const {
     syncCode,
     syncing,
@@ -355,6 +359,7 @@ export default function Home() {
     const code = await createSync(data);
     if (code) {
       console.log('已生成同步码:', code);
+      setSyncJustCreated(true);
     }
   }, [buildSyncData, createSync]);
 
@@ -1206,9 +1211,16 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
               onAddBook={addBook}
               onDeleteBook={deleteBook}
               onOpenBook={openBook}
-              onDataManageClick={() => setDataManageOpen(true)}
+              onSyncClick={() => setSyncPanelOpen(true)}
+              onAddSuccess={() => {
+                // 检查是否已绑定同步码
+                if (syncCode) {
+                  setShowImportSyncTip(true);
+                  setTimeout(() => setShowImportSyncTip(false), 5000);
+                }
+              }}
             />
-          ) : (
+          ) : activeTab === 'vocabulary' ? (
             <GlobalVocabularyPage
               vocabulary={globalVocabulary}
               onRemoveWord={removeFromGlobalVocabulary}
@@ -1217,6 +1229,20 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
               onStartQuiz={() => setShowQuiz(true)}
               backgroundColor={backgroundColor}
             />
+          ) : (
+            <DataBackupPanel
+              globalVocabulary={globalVocabulary}
+              onMergeGlobalVocabulary={mergeGlobalVocabulary}
+              books={books}
+              backgroundColor={backgroundColor}
+            />
+          )}
+
+          {/* 书籍导入成功后显示同步提示 */}
+          {showImportSyncTip && (
+            <div className="import-sync-tip">
+              请先在本机点「立即同步」，再在其它设备输入同步码。
+            </div>
           )}
 
           {/* 底部工具栏 */}
@@ -1245,16 +1271,15 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
             )}
           </button>
           <button
-            className="tab-bar-item"
-            onClick={handleSyncClick}
+            className={`tab-bar-item ${activeTab === 'backup' ? 'active' : ''}`}
+            onClick={() => setActiveTab('backup')}
           >
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9V3m0 18v-6m0-6a9 9 0 0 0 9-9" />
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
-            <span>同步</span>
-            {syncCode && (
-              <span className="tab-bar-badge-sync" />
-            )}
+            <span>数据备份</span>
           </button>
         </div>
 
@@ -1282,6 +1307,26 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
             to {
               transform: rotate(360deg);
             }
+          }
+
+          .import-sync-tip {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 12px 16px;
+            background: linear-gradient(135deg, #fff3cd 0%, #ffeeba 100%);
+            border-bottom: 1px solid #ffc107;
+            color: #856404;
+            font-size: 13px;
+            text-align: center;
+            z-index: 100;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+          }
+          :global(.dark) .import-sync-tip {
+            background: linear-gradient(135deg, #3d3520 0%, #4a3d20 100%);
+            color: #f0d58c;
+            border-bottom-color: #8b7800;
           }
 
           .bottom-tab-bar {
@@ -1382,7 +1427,10 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
         {/* 云同步面板 */}
         <SyncPanel
           isOpen={syncPanelOpen}
-          onClose={() => setSyncPanelOpen(false)}
+          onClose={() => {
+            setSyncPanelOpen(false);
+            setSyncJustCreated(false);
+          }}
           syncCode={syncCode}
           syncing={syncing}
           lastSyncAt={lastSyncAt}
@@ -1392,6 +1440,7 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
           onSync={handleSync}
           onUnbind={unbind}
           isDarkMode={isDarkMode}
+          justCreated={syncJustCreated}
         />
       </>
     );
@@ -1427,7 +1476,10 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
       {/* Cloud Sync Panel */}
       <SyncPanel
         isOpen={syncPanelOpen}
-        onClose={() => setSyncPanelOpen(false)}
+        onClose={() => {
+          setSyncPanelOpen(false);
+          setSyncJustCreated(false);
+        }}
         syncCode={syncCode}
         syncing={syncing}
         lastSyncAt={lastSyncAt}
@@ -1437,6 +1489,7 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
         onSync={handleSync}
         onUnbind={unbind}
         isDarkMode={isDarkMode}
+        justCreated={syncJustCreated}
       />
 
       {/* Left Drawer - TOC and Bookmarks */}

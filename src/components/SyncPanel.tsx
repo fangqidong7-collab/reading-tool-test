@@ -14,6 +14,7 @@ interface SyncPanelProps {
   onSync: () => void;
   onUnbind: () => void;
   isDarkMode?: boolean;
+  justCreated?: boolean;
 }
 
 export function SyncPanel({
@@ -28,6 +29,7 @@ export function SyncPanel({
   onSync,
   onUnbind,
   isDarkMode = false,
+  justCreated = false,
 }: SyncPanelProps) {
   const [inputCode, setInputCode] = useState("");
   const [copied, setCopied] = useState(false);
@@ -101,6 +103,22 @@ export function SyncPanel({
           {syncCode ? (
             /* ===== 已绑定状态 ===== */
             <>
+              {/* 提示文案 - 生成同步码成功后显示 */}
+              {justCreated && (
+                <div style={{
+                  padding: "12px 14px",
+                  marginBottom: 16,
+                  borderRadius: 8,
+                  backgroundColor: "#fff3cd",
+                  border: "1px solid #ffc107",
+                  color: "#856404",
+                  fontSize: 13,
+                  lineHeight: 1.5,
+                }}>
+                  请先在本机点「立即同步」，再在其它设备输入同步码。
+                </div>
+              )}
+
               <div style={{
                 textAlign: "center", padding: "20px 0",
                 backgroundColor: colors.cardBg, borderRadius: 12, marginBottom: 16,

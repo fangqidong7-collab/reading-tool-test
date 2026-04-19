@@ -9,7 +9,6 @@ import {
   Download,
   Check,
   AlertCircle,
-  X,
   FolderDown,
   FolderUp,
   BookOpen,
@@ -27,7 +26,6 @@ interface VocabExportData {
   type: "vocabulary-export";
   version: 1;
   exportedAt: string;
-  // 所有词汇打平在这里，不区分来源
   vocabulary: Record<string, VocabItem>;
   stats: {
     totalWords: number;
@@ -48,9 +46,7 @@ function downloadJSON(jsonStr: string, filename: string) {
   document.body.removeChild(a);
 }
 
-interface ExportImportModalProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+interface DataBackupPanelProps {
   globalVocabulary?: Record<string, VocabItem>;
   onMergeGlobalVocabulary?: (incoming: Record<string, VocabItem>) => void;
   books?: Array<{
@@ -61,18 +57,18 @@ interface ExportImportModalProps {
       { root: string; meaning: string; pos: string; count: number }
     >;
   }>;
+  backgroundColor?: string;
 }
 
 type ModalStatus = "idle" | "exporting" | "importing" | "success" | "error";
 type MainTab = "backup" | "vocab";
 
-export function ExportImportModal({
-  open,
-  onOpenChange,
+export function DataBackupPanel({
   globalVocabulary = {},
   onMergeGlobalVocabulary,
   books = [],
-}: ExportImportModalProps) {
+  backgroundColor = "#ffffff",
+}: DataBackupPanelProps) {
   const [mainTab, setMainTab] = useState<MainTab>("backup");
   const [activeTab, setActiveTab] = useState<"export" | "import">("export");
   const [vocabTab, setVocabTab] = useState<"export" | "import">("export");
@@ -87,7 +83,7 @@ export function ExportImportModal({
   };
 
   // =============================================
-  //  原有的数据备份逻辑（完全不动）
+  //  原有的数据备份逻辑
   // =============================================
 
   const handleExport = async () => {
@@ -166,22 +162,18 @@ export function ExportImportModal({
   };
 
   // =============================================
-  //  新增：词汇表导出/导入
+  //  词汇表导出/导入
   // =============================================
 
   const handleVocabExport = async () => {
     setStatus("exporting");
     setMessage("正在打包词汇表...");
     try {
-      // 先把全局词汇全部放入
       const allVocab: Record<string, VocabItem> = { ...globalVocabulary };
       const fromGlobal = Object.keys(globalVocabulary).length;
       let fromBooks = 0;
       const bookNames: string[] = [];
 
-      // 再把每本书里的标注词汇合并进来
-      // 书本中已存在于全局的词会被全局的覆盖（因为全局先放的），
-      // 但书本中有而全局没有的会被追加进去
       for (const book of books) {
         const bookAnnotations = book.annotations || {};
         const keys = Object.keys(bookAnnotations);
@@ -249,7 +241,6 @@ export function ExportImportModal({
 
       const incomingCount = Object.keys(data.vocabulary).length;
 
-      // 预计算合并结果
       let replaceCount = 0;
       let appendCount = 0;
       for (const root of Object.keys(data.vocabulary)) {
@@ -291,10 +282,6 @@ export function ExportImportModal({
     if (vocabFileInputRef.current) vocabFileInputRef.current.value = "";
   };
 
-  // =============================================
-
-  if (!open) return null;
-
   // 统计当前词汇情况
   const globalCount = Object.keys(globalVocabulary).length;
   const booksWithAnnotations = books.filter(
@@ -302,63 +289,249 @@ export function ExportImportModal({
   );
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        width: "100vw",
-        height: "100vh",
-        background: "rgba(0,0,0,0.5)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 9999,
-        padding: 20,
-      }}
-      onClick={() => onOpenChange(false)}
-    >
-      <div
-        style={{
-          background: "white",
-          borderRadius: 12,
-          width: "90%",
-          maxWidth: 420,
-          maxHeight: "90vh",
-          overflow: "hidden",
-          boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
-          position: "relative",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="modal-header">
-          <h2>数据管理</h2>
-          <button className="close-btn" onClick={() => onOpenChange(false)}>
-            <X size={20} />
-          </button>
-        </div>
+    <div className="data-backup-panel" style={{ backgroundColor }}>
+      <style jsx>{`
+        .data-backup-panel {
+          min-height: 100%;
+          padding: 16px;
+        }
 
-        {/* 顶级 Tab */}
-        <div className="main-tabs">
-          <button
-            className={`main-tab-btn ${mainTab === "backup" ? "active" : ""}`}
-            onClick={() => { setMainTab("backup"); resetStatus(); }}
-          >
-            <FolderDown size={16} />
-            数据备份
-          </button>
-          <button
-            className={`main-tab-btn ${mainTab === "vocab" ? "active" : ""}`}
-            onClick={() => { setMainTab("vocab"); resetStatus(); }}
-          >
-            <BookOpen size={16} />
-            词汇表
-          </button>
-        </div>
+        .panel-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 20px;
+        }
 
+        .panel-title {
+          margin: 0;
+          font-size: 20px;
+          font-weight: 600;
+          color: #333;
+        }
+
+        :global(.dark) .panel-title {
+          color: #e0e0e0;
+        }
+
+        .main-tabs {
+          display: flex;
+          padding: 8px;
+          gap: 8px;
+          background: #f5f5f5;
+          border-radius: 12px;
+          margin-bottom: 16px;
+        }
+
+        :global(.dark) .main-tabs {
+          background: #2a2a3e;
+        }
+
+        .main-tab-btn {
+          flex: 1;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          padding: 10px 16px;
+          background: transparent;
+          border: none;
+          border-radius: 8px;
+          cursor: pointer;
+          font-size: 14px;
+          font-weight: 500;
+          color: #666;
+          transition: all 0.2s;
+        }
+
+        .main-tab-btn:hover {
+          background: rgba(0, 0, 0, 0.05);
+        }
+
+        :global(.dark) .main-tab-btn {
+          color: #888;
+        }
+
+        :global(.dark) .main-tab-btn:hover {
+          background: rgba(255, 255, 255, 0.05);
+        }
+
+        .main-tab-btn.active {
+          background: white;
+          color: #4a90d9;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        :global(.dark) .main-tab-btn.active {
+          background: #1e1e2e;
+          color: #6ba3e0;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+        }
+
+        .content-section {
+          background: white;
+          border-radius: 12px;
+          padding: 20px;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+        }
+
+        :global(.dark) .content-section {
+          background: #1e1e2e;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+        }
+
+        .modal-tabs {
+          display: flex;
+          border-bottom: 1px solid #eee;
+          margin: -20px -20px 20px;
+        }
+
+        :global(.dark) .modal-tabs {
+          border-bottom-color: #333;
+        }
+
+        .tab-btn {
+          flex: 1;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          padding: 14px;
+          background: none;
+          border: none;
+          cursor: pointer;
+          font-size: 14px;
+          color: #666;
+          border-bottom: 2px solid transparent;
+          transition: all 0.2s;
+        }
+
+        .tab-btn:hover {
+          background: #f5f5f5;
+        }
+
+        :global(.dark) .tab-btn {
+          color: #888;
+        }
+
+        :global(.dark) .tab-btn:hover {
+          background: #2a2a3e;
+        }
+
+        .tab-btn.active {
+          color: #4a90d9;
+          border-bottom-color: #4a90d9;
+        }
+
+        :global(.dark) .tab-btn.active {
+          color: #6ba3e0;
+          border-bottom-color: #6ba3e0;
+        }
+
+        .section-icon {
+          color: #4a90d9;
+          margin-bottom: 16px;
+          display: flex;
+          justify-content: center;
+        }
+
+        :global(.dark) .section-icon {
+          color: #6ba3e0;
+        }
+
+        .section-desc {
+          margin: 0 0 8px;
+          font-size: 14px;
+          color: #333;
+          text-align: center;
+        }
+
+        :global(.dark) .section-desc {
+          color: #ccc;
+        }
+
+        .section-note {
+          margin: 0 0 20px;
+          font-size: 12px;
+          color: #888;
+          text-align: center;
+        }
+
+        .section-note.warning {
+          color: #e74c3c;
+          font-weight: 500;
+        }
+
+        .section-note.safe {
+          color: #27ae60;
+          font-weight: 500;
+        }
+
+        .action-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          width: 100%;
+          padding: 14px;
+          font-size: 15px;
+        }
+
+        .status-loading {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          color: #666;
+          font-size: 14px;
+          padding: 14px;
+        }
+
+        :global(.dark) .status-loading {
+          color: #888;
+        }
+
+        :global(.success-alert) {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          background: #d4edda;
+          border-color: #c3e6cb;
+          color: #155724;
+        }
+
+        :global(.dark) .success-alert {
+          background: #1e3a2f;
+          border-color: #2d5a47;
+          color: #8fbc8f;
+        }
+      `}</style>
+
+      {/* 页面标题 */}
+      <div className="panel-header">
+        <h2 className="panel-title">数据管理</h2>
+      </div>
+
+      {/* 顶级 Tab */}
+      <div className="main-tabs">
+        <button
+          className={`main-tab-btn ${mainTab === "backup" ? "active" : ""}`}
+          onClick={() => { setMainTab("backup"); resetStatus(); }}
+        >
+          <FolderDown size={16} />
+          数据备份
+        </button>
+        <button
+          className={`main-tab-btn ${mainTab === "vocab" ? "active" : ""}`}
+          onClick={() => { setMainTab("vocab"); resetStatus(); }}
+        >
+          <BookOpen size={16} />
+          词汇表
+        </button>
+      </div>
+
+      {/* 内容区域 */}
+      <div className="content-section">
         {/* ====== 数据备份 ====== */}
         {mainTab === "backup" && (
           <>
@@ -378,40 +551,38 @@ export function ExportImportModal({
                 导入数据
               </button>
             </div>
-            <div className="modal-content">
-              {activeTab === "export" ? (
-                <div className="export-section">
-                  <div className="section-icon"><FolderDown size={48} /></div>
-                  <p className="section-desc">导出所有书籍、标注、书签和阅读设置到本地文件。</p>
-                  <p className="section-note">导出的文件可以在其他设备上导入使用。</p>
-                  {status === "exporting" ? (
-                    <div className="status-loading"><Spinner /><span>{message}</span></div>
-                  ) : status === "success" ? (
-                    <Alert variant="default" className="success-alert"><Check size={16} /><AlertDescription>{message}</AlertDescription></Alert>
-                  ) : status === "error" ? (
-                    <Alert variant="destructive"><AlertCircle size={16} /><AlertDescription>{message}</AlertDescription></Alert>
-                  ) : (
-                    <Button onClick={handleExport} className="action-btn"><Download size={18} />导出全部数据</Button>
-                  )}
-                </div>
-              ) : (
-                <div className="import-section">
-                  <div className="section-icon"><FolderUp size={48} /></div>
-                  <p className="section-desc">从之前导出的备份文件导入数据。</p>
-                  <p className="section-note warning">警告：导入会覆盖当前所有数据！</p>
-                  <input ref={fileInputRef} type="file" accept=".json" style={{ display: "none" }} onChange={handleFileSelect} />
-                  {status === "importing" ? (
-                    <div className="status-loading"><Spinner /><span>{message}</span></div>
-                  ) : status === "success" ? (
-                    <Alert variant="default" className="success-alert"><Check size={16} /><AlertDescription>{message}</AlertDescription></Alert>
-                  ) : status === "error" ? (
-                    <Alert variant="destructive"><AlertCircle size={16} /><AlertDescription>{message}</AlertDescription></Alert>
-                  ) : (
-                    <Button onClick={handleImportClick} variant="outline" className="action-btn"><Upload size={18} />选择备份文件</Button>
-                  )}
-                </div>
-              )}
-            </div>
+            {activeTab === "export" ? (
+              <div className="export-section">
+                <div className="section-icon"><FolderDown size={48} /></div>
+                <p className="section-desc">导出所有书籍、标注、书签和阅读设置到本地文件。</p>
+                <p className="section-note">导出的文件可以在其他设备上导入使用。</p>
+                {status === "exporting" ? (
+                  <div className="status-loading"><Spinner /><span>{message}</span></div>
+                ) : status === "success" ? (
+                  <Alert variant="default" className="success-alert"><Check size={16} /><AlertDescription>{message}</AlertDescription></Alert>
+                ) : status === "error" ? (
+                  <Alert variant="destructive"><AlertCircle size={16} /><AlertDescription>{message}</AlertDescription></Alert>
+                ) : (
+                  <Button onClick={handleExport} className="action-btn"><Download size={18} />导出全部数据</Button>
+                )}
+              </div>
+            ) : (
+              <div className="import-section">
+                <div className="section-icon"><FolderUp size={48} /></div>
+                <p className="section-desc">从之前导出的备份文件导入数据。</p>
+                <p className="section-note warning">警告：导入会覆盖当前所有数据！</p>
+                <input ref={fileInputRef} type="file" accept=".json" style={{ display: "none" }} onChange={handleFileSelect} />
+                {status === "importing" ? (
+                  <div className="status-loading"><Spinner /><span>{message}</span></div>
+                ) : status === "success" ? (
+                  <Alert variant="default" className="success-alert"><Check size={16} /><AlertDescription>{message}</AlertDescription></Alert>
+                ) : status === "error" ? (
+                  <Alert variant="destructive"><AlertCircle size={16} /><AlertDescription>{message}</AlertDescription></Alert>
+                ) : (
+                  <Button onClick={handleImportClick} variant="outline" className="action-btn"><Upload size={18} />选择备份文件</Button>
+                )}
+              </div>
+            )}
           </>
         )}
 
@@ -434,117 +605,44 @@ export function ExportImportModal({
                 导入词汇
               </button>
             </div>
-            <div className="modal-content">
-              {vocabTab === "export" ? (
-                <div className="export-section">
-                  <div className="section-icon"><BookOpen size={48} /></div>
-                  <p className="section-desc">导出全局词汇和书本标注词汇，打包下载。</p>
-                  <p className="section-note">
-                    全局词汇 {globalCount} 个
-                    {booksWithAnnotations.length > 0 &&
-                      `，${booksWithAnnotations.length} 本书有标注`}
-                  </p>
-                  {status === "exporting" ? (
-                    <div className="status-loading"><Spinner /><span>{message}</span></div>
-                  ) : status === "success" ? (
-                    <Alert variant="default" className="success-alert"><Check size={16} /><AlertDescription>{message}</AlertDescription></Alert>
-                  ) : status === "error" ? (
-                    <Alert variant="destructive"><AlertCircle size={16} /><AlertDescription>{message}</AlertDescription></Alert>
-                  ) : (
-                    <Button onClick={handleVocabExport} className="action-btn"><Download size={18} />导出词汇表</Button>
-                  )}
-                </div>
-              ) : (
-                <div className="import-section">
-                  <div className="section-icon"><BookOpen size={48} /></div>
-                  <p className="section-desc">从词汇文件导入到全局词汇表。</p>
-                  <p className="section-note safe">安全合并：重复词更新释义，新词追加，不会丢失任何现有词汇。</p>
-                  <input ref={vocabFileInputRef} type="file" accept=".json" style={{ display: "none" }} onChange={handleVocabFileSelect} />
-                  {status === "importing" ? (
-                    <div className="status-loading"><Spinner /><span>{message}</span></div>
-                  ) : status === "success" ? (
-                    <Alert variant="default" className="success-alert"><Check size={16} /><AlertDescription>{message}</AlertDescription></Alert>
-                  ) : status === "error" ? (
-                    <Alert variant="destructive"><AlertCircle size={16} /><AlertDescription>{message}</AlertDescription></Alert>
-                  ) : (
-                    <Button onClick={handleVocabImportClick} variant="outline" className="action-btn"><Upload size={18} />选择词汇文件</Button>
-                  )}
-                </div>
-              )}
-            </div>
+            {vocabTab === "export" ? (
+              <div className="export-section">
+                <div className="section-icon"><BookOpen size={48} /></div>
+                <p className="section-desc">导出全局词汇和书本标注词汇，打包下载。</p>
+                <p className="section-note">
+                  全局词汇 {globalCount} 个
+                  {booksWithAnnotations.length > 0 &&
+                    `，${booksWithAnnotations.length} 本书有标注`}
+                </p>
+                {status === "exporting" ? (
+                  <div className="status-loading"><Spinner /><span>{message}</span></div>
+                ) : status === "success" ? (
+                  <Alert variant="default" className="success-alert"><Check size={16} /><AlertDescription>{message}</AlertDescription></Alert>
+                ) : status === "error" ? (
+                  <Alert variant="destructive"><AlertCircle size={16} /><AlertDescription>{message}</AlertDescription></Alert>
+                ) : (
+                  <Button onClick={handleVocabExport} className="action-btn"><Download size={18} />导出词汇表</Button>
+                )}
+              </div>
+            ) : (
+              <div className="import-section">
+                <div className="section-icon"><BookOpen size={48} /></div>
+                <p className="section-desc">从词汇文件导入到全局词汇表。</p>
+                <p className="section-note safe">安全合并：重复词更新释义，新词追加，不会丢失任何现有词汇。</p>
+                <input ref={vocabFileInputRef} type="file" accept=".json" style={{ display: "none" }} onChange={handleVocabFileSelect} />
+                {status === "importing" ? (
+                  <div className="status-loading"><Spinner /><span>{message}</span></div>
+                ) : status === "success" ? (
+                  <Alert variant="default" className="success-alert"><Check size={16} /><AlertDescription>{message}</AlertDescription></Alert>
+                ) : status === "error" ? (
+                  <Alert variant="destructive"><AlertCircle size={16} /><AlertDescription>{message}</AlertDescription></Alert>
+                ) : (
+                  <Button onClick={handleVocabImportClick} variant="outline" className="action-btn"><Upload size={18} />选择词汇文件</Button>
+                )}
+              </div>
+            )}
           </>
         )}
-
-        <style jsx>{`
-          .modal-header {
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 16px 20px; border-bottom: 1px solid #eee;
-          }
-          :global(.dark) .modal-header { border-bottom-color: #333; }
-          .modal-header h2 { margin: 0; font-size: 18px; font-weight: 600; }
-          .close-btn {
-            background: none; border: none; cursor: pointer; padding: 4px;
-            color: #666; display: flex; align-items: center; justify-content: center; border-radius: 4px;
-          }
-          .close-btn:hover { background: #f0f0f0; }
-          :global(.dark) .close-btn { color: #888; }
-          :global(.dark) .close-btn:hover { background: #333; }
-
-          .main-tabs { display: flex; padding: 8px 16px 0; gap: 8px; }
-          .main-tab-btn {
-            flex: 1; display: flex; align-items: center; justify-content: center;
-            gap: 6px; padding: 8px 12px;
-            background: #f5f5f5; border: 1px solid #e0e0e0;
-            border-radius: 8px 8px 0 0; cursor: pointer;
-            font-size: 13px; font-weight: 500; color: #666; transition: all 0.2s;
-          }
-          .main-tab-btn:hover { background: #eee; }
-          .main-tab-btn.active {
-            background: white; color: #4a90d9;
-            border-bottom-color: white; font-weight: 600;
-          }
-          :global(.dark) .main-tab-btn { background: #2a2a3e; border-color: #333; color: #888; }
-          :global(.dark) .main-tab-btn.active { background: #1e1e2e; color: #6ba3e0; border-bottom-color: #1e1e2e; }
-
-          .modal-tabs { display: flex; border-bottom: 1px solid #eee; }
-          :global(.dark) .modal-tabs { border-bottom-color: #333; }
-          .tab-btn {
-            flex: 1; display: flex; align-items: center; justify-content: center;
-            gap: 8px; padding: 12px; background: none; border: none;
-            cursor: pointer; font-size: 14px; color: #666;
-            border-bottom: 2px solid transparent; transition: all 0.2s;
-          }
-          .tab-btn:hover { background: #f5f5f5; }
-          :global(.dark) .tab-btn { color: #888; }
-          :global(.dark) .tab-btn:hover { background: #2a2a3e; }
-          .tab-btn.active { color: #4a90d9; border-bottom-color: #4a90d9; }
-          :global(.dark) .tab-btn.active { color: #6ba3e0; border-bottom-color: #6ba3e0; }
-
-          .modal-content { padding: 24px 20px; }
-          .export-section, .import-section {
-            display: flex; flex-direction: column; align-items: center; text-align: center;
-          }
-          .section-icon { color: #4a90d9; margin-bottom: 16px; }
-          :global(.dark) .section-icon { color: #6ba3e0; }
-          .section-desc { margin: 0 0 8px; font-size: 14px; color: #333; }
-          :global(.dark) .section-desc { color: #ccc; }
-          .section-note { margin: 0 0 20px; font-size: 12px; color: #888; }
-          .section-note.warning { color: #e74c3c; font-weight: 500; }
-          .section-note.safe { color: #27ae60; font-weight: 500; }
-          .action-btn {
-            display: flex; align-items: center; gap: 8px;
-            width: 100%; padding: 12px; font-size: 14px;
-          }
-          .status-loading {
-            display: flex; align-items: center; gap: 8px; color: #666; font-size: 14px;
-          }
-          :global(.dark) .status-loading { color: #888; }
-          :global(.success-alert) {
-            display: flex; align-items: center; gap: 8px;
-            background: #d4edda; border-color: #c3e6cb; color: #155724;
-          }
-          :global(.dark) .success-alert { background: #1e3a2f; border-color: #2d5a47; color: #8fbc8f; }
-        `}</style>
       </div>
     </div>
   );
