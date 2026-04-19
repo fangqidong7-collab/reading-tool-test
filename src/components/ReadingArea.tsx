@@ -596,70 +596,58 @@ export const ReadingArea = forwardRef(function ReadingArea({
   // 文本选择功能 - 句子翻译
   const handleTextSelection = useCallback(() => {
     const selection = window.getSelection();
-    if (!selection || selection.isCollapsed || !processedContent) {
-      return;
-    }
+    if (!selection || selection.isCollapsed || !selection.toString().trim()) return;
 
     const selectedText = selection.toString().trim();
-    if (!selectedText || selectedText.length < 3) {
-      return;
-    }
+    // 2个单词及以上才触发
+    if (selectedText.split(/\s+/).length < 2) return;
 
-    // 找到选中文本所在的段落范围
     const range = selection.getRangeAt(0);
-    const startContainer = range.startContainer;
-    const endContainer = range.endContainer;
 
-    // 获取段落的 paragraph index
-    const getParagraphIndex = (node: Node): number => {
-      let parent = node.parentElement;
-      while (parent) {
-        const pElement = parent.closest('[data-paragraph-index]');
-        if (pElement) {
-          return parseInt(pElement.getAttribute('data-paragraph-index') || '0', 10);
-        }
-        parent = parent.parentElement;
+    // 从 DOM 节点 + offset 计算所属段落索引和段落内字符偏移
+    const findParagraphInfo = (node: Node, offset: number): { paragraphIndex: number; charOffset: number } | null => {
+      // 找到所属的 .paragraph 元素
+      let el: HTMLElement | null = node.nodeType === Node.TEXT_NODE ? node.parentElement : node as HTMLElement;
+      while (el && !el.classList?.contains('paragraph')) {
+        el = el.parentElement;
       }
-      return -1;
+      if (!el) return null;
+
+      const pIndex = parseInt(el.getAttribute('data-paragraph-index') || '-1', 10);
+      if (pIndex < 0) return null;
+
+      // 用 TreeWalker 遍历段落内所有文本节点，累加字符数
+      let charOffset = 0;
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+      let textNode: Node | null;
+
+      while ((textNode = walker.nextNode())) {
+        if (textNode === node) {
+          // 找到目标文本节点，加上节点内 offset
+          charOffset += offset;
+          return { paragraphIndex: pIndex, charOffset };
+        }
+        charOffset += (textNode.textContent || '').length;
+      }
+
+      // 如果 node 不是文本节点（比如是元素节点），尝试取其第一个文本子节点
+      // 这种情况下 offset 表示子节点索引而非字符偏移
+      return { paragraphIndex: pIndex, charOffset };
     };
 
-    const startParagraphIndex = getParagraphIndex(startContainer);
-    const endParagraphIndex = getParagraphIndex(endContainer);
+    const startInfo = findParagraphInfo(range.startContainer, range.startOffset);
+    const endInfo = findParagraphInfo(range.endContainer, range.endOffset);
 
-    if (startParagraphIndex === -1 || endParagraphIndex === -1) {
-      return;
-    }
-
-    // 计算选中的字符位置（简化处理，实际可能需要更精确计算）
-    const getCharIndex = (node: Node, offset: number, paragraphIndex: number): number => {
-      if (paragraphIndex < 0 || paragraphIndex >= processedContent!.length) return 0;
-      const paragraph = processedContent![paragraphIndex];
-      const pElement = document.querySelector(`[data-paragraph-index="${paragraphIndex}"]`);
-      if (!pElement) return 0;
-
-      // 计算在段落内的相对字符位置
-      const preRange = document.createRange();
-      preRange.selectNodeContents(pElement);
-      preRange.setEnd(startContainer, offset);
-      return preRange.toString().length;
-    };
-
-    const startCharIndex = getCharIndex(startContainer, range.startOffset, startParagraphIndex);
-    const endCharIndex = getCharIndex(endContainer, range.endOffset, endParagraphIndex);
-
-    if (onTextSelect) {
+    if (startInfo && endInfo && onTextSelect) {
       onTextSelect({
         text: selectedText,
-        startParagraphIndex: Math.min(startParagraphIndex, endParagraphIndex),
-        endParagraphIndex: Math.max(startParagraphIndex, endParagraphIndex),
-        startCharIndex: startParagraphIndex <= endParagraphIndex ? startCharIndex : endCharIndex,
-        endCharIndex: startParagraphIndex <= endParagraphIndex ? endCharIndex : startCharIndex,
+        startParagraphIndex: startInfo.paragraphIndex,
+        startCharIndex: startInfo.charOffset,
+        endParagraphIndex: endInfo.paragraphIndex,
+        endCharIndex: endInfo.charOffset,
       });
     }
-
-    // 清除选中
-    selection.removeAllRanges();
-  }, [processedContent, onTextSelect]);
+  }, [onTextSelect]);
 
   // 添加文本选择监听
   useEffect(() => {
@@ -987,6 +975,12 @@ const getFirstVisibleIndex = useCallback(() => {
           ref={containerRef}
           className="reading-container"
           onClick={(e) => {
+            // ===== 如果有文字被选中，不翻页 =====
+            const selection = window.getSelection();
+            if (selection && !selection.isCollapsed && selection.toString().trim().length > 0) {
+              return;
+            }
+
             // 滑动翻页后的防误触
             if (Date.now() - lastSwipeTimeRef.current < 400) return;
 
