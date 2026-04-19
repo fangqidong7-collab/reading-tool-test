@@ -1191,6 +1191,15 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
     }
   }, []);
 
+  // Scroll to sentence in text
+  const scrollToSentence = useCallback((annotation: SentenceAnnotation) => {
+    readingAreaRef.current?.jumpToSearchResult({
+      paragraphIndex: annotation.startParagraphIndex,
+      charIndex: annotation.startCharIndex,
+    });
+    setSidebarOpen(false);
+  }, []);
+
   // Get word annotation
   const getWordAnnotation = useCallback(
     (word: string) => {
@@ -2176,6 +2185,9 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
           onClose={() => setSidebarOpen(false)}
           onClearAll={clearAllAnnotations}
           onWordClick={scrollToWord}
+          sentenceAnnotations={currentBook?.sentenceAnnotations ?? []}
+          onSentenceClick={scrollToSentence}
+          onRemoveSentence={handleRemoveSentenceAnnotation}
           isDarkMode={isDarkMode}
           sidebarBg={sidebarBg}
           headerBg={headerBg}
