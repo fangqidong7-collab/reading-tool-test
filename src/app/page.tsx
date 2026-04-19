@@ -204,6 +204,7 @@ export default function Home() {
     removeFromGlobalVocabulary,
     clearGlobalVocabulary,
     mergeGlobalVocabulary,
+    mergeBooksFromRemote,
     incrementCorrectCount,
     clearMasteredWords,
     addSentenceAnnotation,
@@ -319,7 +320,7 @@ export default function Home() {
     setSyncPanelOpen(true);
   }, []);
 
-  // Build sync data from current state (不包含书籍内容，只同步元数据)
+  // Build sync data from current state
   const buildSyncData = useCallback(() => {
     return {
       vocabulary: globalVocabulary,
@@ -343,6 +344,8 @@ export default function Home() {
         };
         return acc;
       }, {}),
+      // 同步完整书籍内容（不含 processedContent）
+      books: books.map(({ processedContent, ...rest }) => rest),
     };
   }, [globalVocabulary, books]);
 
@@ -404,8 +407,12 @@ export default function Home() {
           }
         });
       }
+      // 合并远端书籍列表（upsert + 智能合并）
+      if (remoteData.books && mergeBooksFromRemote) {
+        mergeBooksFromRemote(remoteData.books as import("@/hooks/useBookshelf").Book[]);
+      }
     }
-  }, [bindSyncCode, globalVocabulary, addToGlobalVocabulary, books, updateScrollPosition, mergeBookProgress]);
+  }, [bindSyncCode, globalVocabulary, addToGlobalVocabulary, books, updateScrollPosition, mergeBookProgress, mergeBooksFromRemote]);
 
   // Handle sync - bidirectional sync (push local then pull merged result)
   const handleSync = useCallback(async () => {
@@ -444,7 +451,12 @@ export default function Home() {
         }
       }
     }
-  }, [syncBoth, buildSyncData, books, mergeGlobalVocabulary, mergeBookProgress]);
+
+    // 用服务端合并后的书籍列表更新本地
+    if (remoteData.books && mergeBooksFromRemote) {
+      mergeBooksFromRemote(remoteData.books as import("@/hooks/useBookshelf").Book[]);
+    }
+  }, [syncBoth, buildSyncData, books, mergeGlobalVocabulary, mergeBookProgress, mergeBooksFromRemote]);
 
   // Sentence translation state
   const [translatingSelection, setTranslatingSelection] = useState(false);

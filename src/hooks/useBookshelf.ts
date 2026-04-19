@@ -500,6 +500,116 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
     );
   }, []);
 
+  // 从远端合并书籍列表（upsert + 智能合并）
+  // incoming: 来自云端的 Book[]，可能有 content（必有），无 processedContent
+  const mergeBooksFromRemote = useCallback(
+    (incoming: Book[]) => {
+      if (!Array.isArray(incoming) || incoming.length === 0) return;
+
+      setBooks((prev) => {
+        // 用 Map 以 id 为 key，便于高效查找
+        const booksMap = new Map<string, Book>();
+        
+        // 先放入当前列表（本地书籍）
+        for (const book of prev) {
+          booksMap.set(book.id, book);
+        }
+
+        // 遍历远端书籍，合并到 Map
+        for (const remoteBook of incoming) {
+          const existing = booksMap.get(remoteBook.id);
+
+          if (!existing) {
+            // 本地不存在该书：插入（去掉 processedContent 避免脏缓存）
+            booksMap.set(remoteBook.id, {
+              ...remoteBook,
+              processedContent: undefined,
+            });
+          } else if (existing.isSample) {
+            // 本地示例书，跳过远端同 id 覆盖
+            // 保持本地示例书不变
+          } else {
+            // 本地已存在该书（非示例）：智能合并
+            const merged: Book = { ...existing };
+
+            // content：优先保留「非空且更长」的字符串
+            const remoteContent = remoteBook.content || '';
+            const localContent = existing.content || '';
+            merged.content = remoteContent.length >= localContent.length
+              ? remoteContent
+              : localContent;
+
+            // lastScrollPosition / lastParagraphIndex：取数值较大的
+            merged.lastScrollPosition = Math.max(
+              remoteBook.lastScrollPosition ?? 0,
+              existing.lastScrollPosition ?? 0
+            );
+            merged.lastParagraphIndex = Math.max(
+              remoteBook.lastParagraphIndex ?? 0,
+              existing.lastParagraphIndex ?? 0
+            );
+
+            // lastReadAt：取 Math.max
+            merged.lastReadAt = Math.max(
+              remoteBook.lastReadAt || 0,
+              existing.lastReadAt || 0
+            );
+
+            // annotations：取并集合并
+            merged.annotations = {
+              ...(existing.annotations || {}),
+              ...(remoteBook.annotations || {}),
+            };
+
+            // sentenceAnnotations：按 id 去重追加
+            if (remoteBook.sentenceAnnotations && remoteBook.sentenceAnnotations.length > 0) {
+              const existingIds = new Set((existing.sentenceAnnotations || []).map(s => s.id));
+              const newAnnotations = remoteBook.sentenceAnnotations.filter(s => !existingIds.has(s.id));
+              merged.sentenceAnnotations = [
+                ...(existing.sentenceAnnotations || []),
+                ...newAnnotations,
+              ];
+            }
+
+            // bookmarks：按 id 去重追加
+            if (remoteBook.bookmarks && remoteBook.bookmarks.length > 0) {
+              const existingIds = new Set((existing.bookmarks || []).map(b => b.id));
+              const newBookmarks = remoteBook.bookmarks.filter(b => !existingIds.has(b.id));
+              merged.bookmarks = [
+                ...(existing.bookmarks || []),
+                ...newBookmarks,
+              ];
+            }
+
+            // title：远端非空则覆盖空字段
+            if (remoteBook.title && !existing.title) {
+              merged.title = remoteBook.title;
+            }
+
+            // tableOfContents：远端非空则覆盖空字段
+            if (remoteBook.tableOfContents && !existing.tableOfContents) {
+              merged.tableOfContents = remoteBook.tableOfContents;
+            }
+
+            booksMap.set(existing.id, merged);
+          }
+        }
+
+        // 转换回数组
+        let result = Array.from(booksMap.values());
+        // 按 lastReadAt 排序，非示例书在前，示例书在最后
+        result.sort((a, b) => {
+          if (a.isSample && !b.isSample) return 1;
+          if (!a.isSample && b.isSample) return -1;
+          return b.lastReadAt - a.lastReadAt;
+        });
+
+        return result;
+      });
+    },
+    []
+  );
+
   // 添加句子标注
   const addSentenceAnnotation = useCallback(
     (bookId: string, annotation: SentenceAnnotation) => {
@@ -588,6 +698,7 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
     addSentenceAnnotation,
     removeSentenceAnnotation,
     mergeBookProgress,
+    mergeBooksFromRemote,
   };
 
 }

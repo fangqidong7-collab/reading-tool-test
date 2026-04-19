@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
+import type { Book } from "@/hooks/useBookshelf";
 
 const SYNC_CODE_KEY = "english-reader-sync-code";
 const LAST_SYNC_KEY = "english-reader-last-sync";
@@ -8,6 +9,7 @@ const LAST_SYNC_KEY = "english-reader-last-sync";
 export interface SyncData {
   vocabulary: Record<string, unknown>;
   bookProgress: Record<string, unknown>;
+  books?: Book[];
 }
 
 export function useSync() {
@@ -140,6 +142,7 @@ export function useSync() {
   const syncBoth = useCallback(async (localData: {
     vocabulary: Record<string, unknown>;
     bookProgress: Record<string, unknown>;
+    books?: Book[];
   }) => {
     if (!syncCode) return null;
     setSyncing(true);
