@@ -1340,6 +1340,21 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
             onClose={() => setShowQuiz(false)}
           />
         )}
+
+        {/* 云同步面板 */}
+        <SyncPanel
+          isOpen={syncPanelOpen}
+          onClose={() => setSyncPanelOpen(false)}
+          syncCode={syncCode}
+          syncing={syncing}
+          lastSyncAt={lastSyncAt}
+          syncError={syncError}
+          onCreateSync={handleCreateSync}
+          onBindCode={handleBindSync}
+          onSync={handleSync}
+          onUnbind={unbind}
+          isDarkMode={isDarkMode}
+        />
       </>
     );
   }
