@@ -309,8 +309,7 @@ export default function Home() {
     syncError,
     createSync,
     bindSyncCode,
-    pushData,
-    pullData,
+    syncBoth,
     unbind,
   } = useSync();
 
@@ -374,44 +373,38 @@ export default function Home() {
     }
   }, [bindSyncCode, globalVocabulary, addToGlobalVocabulary, books, updateScrollPosition]);
 
-  // Handle push data to cloud
-  const handlePushData = useCallback(async () => {
-    const data = buildSyncData();
-    const success = await pushData(data);
-    if (success) {
-      console.log('数据已上传');
-    }
-  }, [buildSyncData, pushData]);
+  // Handle sync - bidirectional sync (push local then pull merged result)
+  const handleSync = useCallback(async () => {
+    const remoteData = await syncBoth(buildSyncData());
+    if (!remoteData) return;
 
-  // Handle pull data from cloud
-  const handlePullData = useCallback(async () => {
-    const remoteData = await pullData();
-    if (remoteData) {
-      // Similar merge logic as handleBindSync
-      if (remoteData.vocabulary) {
-        Object.entries(remoteData.vocabulary).forEach(([word, info]) => {
-          const existing = globalVocabulary[word];
-          const infoObj = info as { root?: string; meaning?: string; pos?: string; count?: number } | undefined;
-          const existingCount = existing?.correctCount || 0;
-          const remoteCount = infoObj?.count || 0;
-          if (!existing || remoteCount > existingCount) {
-            addToGlobalVocabulary(
-              infoObj?.root || word,
-              infoObj?.meaning || '',
-              infoObj?.pos || ''
-            );
-          }
-        });
-      }
-      if (remoteData.bookProgress) {
-        Object.entries(remoteData.bookProgress as Record<string, { scrollPosition?: number; paragraphIndex?: number }>).forEach(([bookId, progress]) => {
-          if (progress) {
+    // 用服务端合并后的数据覆盖本地
+    if (remoteData.vocabulary) {
+      mergeGlobalVocabulary(remoteData.vocabulary);
+    }
+
+    if (remoteData.bookProgress) {
+      for (const [bookId, progress] of Object.entries(remoteData.bookProgress) as [string, {
+        scrollPosition?: number;
+        paragraphIndex?: number;
+        annotations?: Record<string, { root: string; meaning: string; pos: string; count?: number }>;
+        bookmarks?: unknown[];
+      }][]) {
+        const localBook = books.find(b => b.id === bookId);
+        if (localBook && progress) {
+          // 进度取较大值
+          if ((progress.scrollPosition ?? 0) > (localBook.lastScrollPosition ?? 0)) {
             updateScrollPosition(bookId, progress.scrollPosition ?? 0, progress.paragraphIndex ?? 0);
           }
-        });
+          // 合并标注
+          if (progress.annotations) {
+            const merged = { ...localBook.annotations, ...progress.annotations } as Record<string, { root: string; meaning: string; pos: string; count: number }>;
+            updateBookAnnotations(bookId, merged);
+          }
+        }
       }
     }
-  }, [pullData, globalVocabulary, addToGlobalVocabulary, updateScrollPosition]);
+  }, [syncBoth, buildSyncData, books, mergeGlobalVocabulary, updateScrollPosition, updateBookAnnotations]);
 
   // Sentence translation state
   const [translatingSelection, setTranslatingSelection] = useState(false);
@@ -1352,8 +1345,7 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
         syncError={syncError}
         onCreateSync={handleCreateSync}
         onBindCode={handleBindSync}
-        onPush={handlePushData}
-        onPull={handlePullData}
+        onSync={handleSync}
         onUnbind={unbind}
         isDarkMode={isDarkMode}
       />

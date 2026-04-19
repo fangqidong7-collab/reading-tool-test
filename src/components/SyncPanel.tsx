@@ -11,8 +11,7 @@ interface SyncPanelProps {
   syncError: string | null;
   onCreateSync: () => void;
   onBindCode: (code: string) => void;
-  onPush: () => void;
-  onPull: () => void;
+  onSync: () => void;
   onUnbind: () => void;
   isDarkMode?: boolean;
 }
@@ -26,8 +25,7 @@ export function SyncPanel({
   syncError,
   onCreateSync,
   onBindCode,
-  onPush,
-  onPull,
+  onSync,
   onUnbind,
   isDarkMode = false,
 }: SyncPanelProps) {
@@ -132,24 +130,16 @@ export function SyncPanel({
                 )}
               </div>
 
-              <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
-                <button onClick={onPush} disabled={syncing} style={{
-                  flex: 1, padding: "12px 0", border: "none", borderRadius: 8,
-                  backgroundColor: colors.accent, color: "#fff",
-                  fontSize: 14, fontWeight: 500, cursor: syncing ? "wait" : "pointer",
-                  opacity: syncing ? 0.6 : 1,
-                }}>
-                  {syncing ? "同步中..." : "上传数据 ↑"}
-                </button>
-                <button onClick={onPull} disabled={syncing} style={{
-                  flex: 1, padding: "12px 0", border: `1px solid ${colors.accent}`,
-                  borderRadius: 8, backgroundColor: "transparent",
-                  color: colors.accent, fontSize: 14, fontWeight: 500,
-                  cursor: syncing ? "wait" : "pointer", opacity: syncing ? 0.6 : 1,
-                }}>
-                  {syncing ? "同步中..." : "下载数据 ↓"}
-                </button>
-              </div>
+              {/* 单按钮双向同步 */}
+              <button onClick={onSync} disabled={syncing} style={{
+                width: "100%", padding: "14px 0", border: "none", borderRadius: 8,
+                backgroundColor: colors.accent, color: "#fff",
+                fontSize: 15, fontWeight: 600, cursor: syncing ? "wait" : "pointer",
+                opacity: syncing ? 0.6 : 1,
+                marginBottom: 12,
+              }}>
+                {syncing ? "同步中..." : "立即同步"}
+              </button>
 
               <button onClick={onUnbind} style={{
                 width: "100%", padding: "10px 0", border: `1px solid ${colors.border}`,

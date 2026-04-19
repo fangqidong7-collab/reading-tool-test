@@ -136,6 +136,45 @@ export function useSync() {
     }
   }, [syncCode]);
 
+  // 双向同步：先推本地数据，再拉远端合并结果
+  const syncBoth = useCallback(async (localData: {
+    vocabulary: Record<string, unknown>;
+    bookProgress: Record<string, unknown>;
+  }) => {
+    if (!syncCode) return null;
+    setSyncing(true);
+    setSyncError(null);
+    try {
+      // 第一步：推送本地数据（服务端会智能合并）
+      const pushRes = await fetch('/api/sync/push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ syncCode, data: localData }),
+      });
+      if (!pushRes.ok) throw new Error('同步上传失败');
+
+      // 第二步：拉取合并后的数据
+      const pullRes = await fetch('/api/sync/pull', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ syncCode }),
+      });
+      if (!pullRes.ok) throw new Error('同步下载失败');
+
+      const result = await pullRes.json();
+      const now = Date.now();
+      setLastSyncAt(now);
+      localStorage.setItem(LAST_SYNC_KEY, String(now));
+      return result.data; // 返回合并后的完整数据
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '同步失败';
+      setSyncError(msg);
+      return null;
+    } finally {
+      setSyncing(false);
+    }
+  }, [syncCode]);
+
   // 解绑同步码
   const unbind = useCallback(() => {
     setSyncCode(null);
@@ -154,6 +193,7 @@ export function useSync() {
     bindSyncCode,
     pushData,
     pullData,
+    syncBoth,
     unbind,
   };
 }
