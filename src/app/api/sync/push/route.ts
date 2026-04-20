@@ -190,49 +190,60 @@ function mergeBookProgressData(remote: BookProgress, local: BookProgress): BookP
   return merged;
 }
 
+function normalizeBookTitle(title: string | undefined): string {
+  return (title || '').trim().toLowerCase();
+}
+
 // 合并书籍列表
-// 策略：按 bookId 匹配，相同则合并；找不到按 title 回退匹配，合并后双份存储
-// 合并时：基础字段（title, author 等）取一方（优先本地有内容的），标注/书签取并集
+// - 先按 bookId 合并；余下按「规范化标题」配对，合并为一条并采用远端 bookId（同步源以创建端为准）
+// - 避免出现「同一本书因 id 不同而被存两条」导致设备上多出一本的情况
 function mergeBooks(remoteBooks: Book[], localBooks: Book[]): Book[] {
-  const result: Book[] = [];
   const usedLocal = new Set<string>();
   const usedRemote = new Set<string>();
-  const titleMatched: Array<{ localBook: Book; remoteBook: Book; merged: Book }> = [];
+  const result: Book[] = [];
 
-  // 1. 按 bookId 精确匹配
+  // 1. bookId 完全一致 → 合并为一条
   for (const localBook of localBooks) {
-    const remoteBook = remoteBooks.find(b => b.id === localBook.id);
+    const remoteBook = remoteBooks.find((b) => b.id === localBook.id);
     if (remoteBook) {
-      const merged = mergeTwoBooks(remoteBook, localBook);
-      result.push(merged);
+      result.push(mergeTwoBooks(remoteBook, localBook));
       usedLocal.add(localBook.id);
       usedRemote.add(remoteBook.id);
-      titleMatched.push({ localBook, remoteBook, merged });
-    } else {
-      // 本地有但远端没有，保留
-      result.push(localBook);
-      usedLocal.add(localBook.id);
     }
   }
 
-  // 2. 远端有但本地没有的，按 title 回退匹配
-  for (const remoteBook of remoteBooks) {
-    if (usedRemote.has(remoteBook.id)) continue;
+  const remainingLocal = localBooks.filter((b) => !usedLocal.has(b.id));
+  const remainingRemote = remoteBooks.filter((b) => !usedRemote.has(b.id));
 
-    const localBook = localBooks.find(b => b.title === remoteBook.title && !usedLocal.has(b.id));
+  const titlePairedLocal = new Set<string>();
+
+  // 2. 剩余条目按标题配对：一本本地 + 一本远端 → 仅保留一条（id 用远端）
+  for (const remoteBook of remainingRemote) {
+    const nt = normalizeBookTitle(remoteBook.title);
+    const localBook = remainingLocal.find(
+      (l) =>
+        !titlePairedLocal.has(l.id) &&
+        normalizeBookTitle(l.title) === nt
+    );
     if (localBook) {
-      // 按 title 匹配成功，合并后双份存储
       const merged = mergeTwoBooks(remoteBook, localBook);
-      // 用本地的 bookId 存一份
-      result.push({ ...merged, id: localBook.id });
-      usedLocal.add(localBook.id);
-      // 用远端的 bookId 也存一份
       result.push({ ...merged, id: remoteBook.id });
+      titlePairedLocal.add(localBook.id);
       usedRemote.add(remoteBook.id);
-    } else {
-      // 远端有但本地没有，直接添加
+    }
+  }
+
+  // 3. 仍未配对的本地书
+  for (const localBook of remainingLocal) {
+    if (!titlePairedLocal.has(localBook.id)) {
+      result.push(localBook);
+    }
+  }
+
+  // 4. 仍未配对的远端书
+  for (const remoteBook of remainingRemote) {
+    if (!usedRemote.has(remoteBook.id)) {
       result.push(remoteBook);
-      usedRemote.add(remoteBook.id);
     }
   }
 

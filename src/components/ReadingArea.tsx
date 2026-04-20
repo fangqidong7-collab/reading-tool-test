@@ -12,8 +12,57 @@ const MOBILE_READING_PADDING_HORIZONTAL = 12;
 const PARAGRAPH_GAP = 16;
 const MOBILE_BREAKPOINT = 768;
 const MOBILE_TOP_GAP = 5;
-const MOBILE_BOTTOM_SAFE_ZONE = 60;
+/** Extra space above bottom safe area so text does not sit under the progress % badge */
+const MOBILE_BOTTOM_SAFE_ZONE = 88;
 const PAGE_TURN_EDGE_EPS = 3;
+
+/** Keep selection endpoints on plain-text spans (.word / punctuation), not .annotation overlays */
+function clampSelectionBoundaryToPlainSpan(
+  paragraphEl: HTMLElement,
+  node: Node,
+  offset: number
+): { node: Node; offset: number } {
+  let el: HTMLElement | null =
+    node.nodeType === Node.TEXT_NODE ? node.parentElement : (node as HTMLElement);
+  while (el && el !== paragraphEl) {
+    if (el.classList?.contains("annotation") || el.classList?.contains("sentence-annotation")) {
+      const prev = el.previousElementSibling;
+      if (prev?.classList?.contains("word")) {
+        const tn = prev.firstChild;
+        if (tn && tn.nodeType === Node.TEXT_NODE) {
+          const len = tn.textContent?.length ?? 0;
+          return { node: tn, offset: len };
+        }
+      }
+      break;
+    }
+    el = el.parentElement;
+  }
+  return { node, offset };
+}
+
+/** Character offset in paragraph plain text (matches processed segments joined), using data-char-start spans */
+function plainCharOffsetFromBoundary(
+  paragraphEl: HTMLElement,
+  boundaryNode: Node,
+  boundaryOffset: number
+): number | null {
+  const { node, offset } = clampSelectionBoundaryToPlainSpan(paragraphEl, boundaryNode, boundaryOffset);
+  let scan: HTMLElement | null =
+    node.nodeType === Node.TEXT_NODE ? node.parentElement : (node as HTMLElement);
+  while (scan && scan !== paragraphEl) {
+    const ds = scan.getAttribute("data-char-start");
+    if (ds !== null) {
+      const base = parseInt(ds, 10);
+      const r = document.createRange();
+      r.setStart(scan, 0);
+      r.setEnd(node, offset);
+      return base + r.toString().length;
+    }
+    scan = scan.parentElement;
+  }
+  return null;
+}
 
 /** Collect text line boxes from visible virtualized paragraphs (viewport-relative rects). */
 function gatherVisibleParagraphLineRects(
@@ -296,7 +345,11 @@ const Paragraph = React.memo(({
         if (segment.type === "space" || segment.type === "punctuation") {
           return (
             <React.Fragment key={key}>
-              <span style={hasUnderline ? getUnderlineStyle() : undefined}>
+              <span
+                style={hasUnderline ? getUnderlineStyle() : undefined}
+                data-char-start={segCharStart}
+                data-char-end={segCharStart + segment.text.length}
+              >
                 {segment.text}
               </span>
               {showTranslation && matchedSA && (
@@ -334,6 +387,8 @@ const Paragraph = React.memo(({
               className="word" 
               data-word={segment.text}
               data-lemma={lemma}
+              data-char-start={segCharStart}
+              data-char-end={segCharStart + segment.text.length}
               style={hasUnderline ? getUnderlineStyle() : undefined}
             >
               {segment.text}
@@ -510,8 +565,6 @@ export const ReadingArea = forwardRef(function ReadingArea({
 }: ReadingAreaProps, ref: React.Ref<ReadingAreaRef>) {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  const selectionStartRef = useRef<{ paragraphIndex: number; charIndex: number } | null>(null);
-  
   const [readProgress, setReadProgress] = useState(0);
   const [containerHeight, setContainerHeight] = useState(600);
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
@@ -593,134 +646,57 @@ export const ReadingArea = forwardRef(function ReadingArea({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [scrollReadingPage]);
 
-  // 文本选择功能 - 句子翻译
+  // 文本选择功能 - 句子翻译（偏移量与 processedContent 段落纯文本一致，避免整段被选满）
   const handleTextSelection = useCallback(() => {
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || !selection.toString().trim()) return;
+
+    const container = containerRef.current;
+    if (!container) return;
 
     const selectedText = selection.toString().trim();
     if (selectedText.split(/\s+/).length < 2) return;
     if (!processedContent) return;
 
     const range = selection.getRangeAt(0);
+    if (!container.contains(range.commonAncestorContainer)) return;
 
-    // 找到 node 所属的 .paragraph 元素和段落索引
     const findParagraphEl = (node: Node): { el: HTMLElement; pIndex: number } | null => {
       let el: HTMLElement | null = node.nodeType === Node.TEXT_NODE ? node.parentElement : node as HTMLElement;
-      while (el && !el.classList?.contains('paragraph')) {
+      while (el && !el.classList?.contains("paragraph")) {
         el = el.parentElement;
       }
       if (!el) return null;
-      const pIndex = parseInt(el.getAttribute('data-paragraph-index') || '-1', 10);
+      const pIndex = parseInt(el.getAttribute("data-paragraph-index") || "-1", 10);
       if (pIndex < 0) return null;
       return { el, pIndex };
     };
 
-    // 从一个 DOM 节点找到它对应的 segment 索引
-    const findSegmentIndex = (node: Node, paragraphEl: HTMLElement, pIndex: number): number => {
-      let targetEl: HTMLElement | null = node.nodeType === Node.TEXT_NODE ? node.parentElement : node as HTMLElement;
-
-      // 如果落在 .annotation 上，它紧跟在对应的 .word 后面
-      if (targetEl?.classList?.contains('annotation')) {
-        let prev = targetEl.previousElementSibling;
-        while (prev && !prev.classList?.contains('word')) {
-          prev = prev.previousElementSibling;
-        }
-        if (prev) targetEl = prev as HTMLElement;
-      }
-
-      // 如果落在 .sentence-annotation 上，找前面最近的 .word 或普通 span
-      if (targetEl?.classList?.contains('sentence-annotation')) {
-        let prev = targetEl.previousElementSibling;
-        while (prev && prev.classList?.contains('sentence-annotation')) {
-          prev = prev.previousElementSibling;
-        }
-        if (prev) targetEl = prev as HTMLElement;
-      }
-
-      if (!targetEl) return 0;
-
-      const para = processedContent![pIndex];
-      if (!para) return 0;
-
-      // 如果是 .word 元素，通过 data-word + data-lemma 匹配
-      if (targetEl.classList?.contains('word')) {
-        const word = targetEl.getAttribute('data-word') || '';
-        const lemma = targetEl.getAttribute('data-lemma') || '';
-
-        // 计算这是第几个匹配的 word（处理重复单词）
-        const allWords = paragraphEl.querySelectorAll('.word');
-        let wordOccurrence = 0;
-        for (let i = 0; i < allWords.length; i++) {
-          if (allWords[i] === targetEl) break;
-          if (allWords[i].getAttribute('data-word') === word &&
-              allWords[i].getAttribute('data-lemma') === lemma) {
-            wordOccurrence++;
-          }
-        }
-
-        // 在 segments 中找到对应的 segment
-        let matchCount = 0;
-        for (let i = 0; i < para.segments.length; i++) {
-          const seg = para.segments[i];
-          if (seg.type === 'word' && seg.text === word && seg.lemma === lemma) {
-            if (matchCount === wordOccurrence) {
-              return i;
-            }
-            matchCount++;
-          }
-        }
-      }
-
-      // 对于 space/punctuation，遍历段落中所有非 .word 非 .annotation 非 .sentence-annotation 的 span
-      const childSpans: HTMLElement[] = [];
-      const walk = (el: HTMLElement) => {
-        for (const child of Array.from(el.children)) {
-          const c = child as HTMLElement;
-          if (c.classList?.contains('annotation') || c.classList?.contains('sentence-annotation')) continue;
-          if (c.classList?.contains('word') || c.tagName === 'SPAN') {
-            childSpans.push(c);
-          }
-        }
-      };
-      walk(paragraphEl);
-
-      for (let i = 0; i < childSpans.length; i++) {
-        if (childSpans[i] === targetEl || childSpans[i].contains(targetEl)) {
-          return Math.min(i, para.segments.length - 1);
-        }
-      }
-
-      return 0;
-    };
-
     const startParaInfo = findParagraphEl(range.startContainer);
     const endParaInfo = findParagraphEl(range.endContainer);
-
     if (!startParaInfo || !endParaInfo) return;
 
-    const startSegIdx = findSegmentIndex(range.startContainer, startParaInfo.el, startParaInfo.pIndex);
-    const endSegIdx = findSegmentIndex(range.endContainer, endParaInfo.el, endParaInfo.pIndex);
+    let startCharIndex = plainCharOffsetFromBoundary(
+      startParaInfo.el,
+      range.startContainer,
+      range.startOffset
+    );
+    let endCharIndex = plainCharOffsetFromBoundary(
+      endParaInfo.el,
+      range.endContainer,
+      range.endOffset
+    );
 
-    // 根据 segment 索引计算字符偏移
-    const calcCharOffset = (pIndex: number, segIdx: number, isEnd: boolean): number => {
-      const para = processedContent![pIndex];
-      if (!para) return 0;
-      let offset = 0;
-      for (let i = 0; i < para.segments.length; i++) {
-        if (i === segIdx) {
-          if (isEnd) {
-            offset += para.segments[i].text.length;
-          }
-          break;
-        }
-        offset += para.segments[i].text.length;
-      }
-      return offset;
-    };
+    if (startCharIndex === null || endCharIndex === null) return;
 
-    const startCharIndex = calcCharOffset(startParaInfo.pIndex, startSegIdx, false);
-    const endCharIndex = calcCharOffset(endParaInfo.pIndex, endSegIdx, true);
+    if (
+      startParaInfo.pIndex === endParaInfo.pIndex &&
+      endCharIndex < startCharIndex
+    ) {
+      const t = startCharIndex;
+      startCharIndex = endCharIndex;
+      endCharIndex = t;
+    }
 
     if (onTextSelect) {
       onTextSelect({
@@ -733,17 +709,37 @@ export const ReadingArea = forwardRef(function ReadingArea({
     }
   }, [onTextSelect, processedContent]);
 
-  // 添加文本选择监听
+  // 文本选择：桌面 mouseup + 移动端 touchend / selectionchange（长划选时无 mouseup）
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    const handleMouseUp = () => {
+    const run = () => {
       setTimeout(handleTextSelection, 10);
     };
 
-    container.addEventListener('mouseup', handleMouseUp);
-    return () => container.removeEventListener('mouseup', handleMouseUp);
+    let selectionDebounce: ReturnType<typeof setTimeout> | null = null;
+    const onSelectionChange = () => {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || !sel.rangeCount) return;
+      const r = sel.getRangeAt(0);
+      if (!container.contains(r.commonAncestorContainer)) return;
+      if (selectionDebounce) clearTimeout(selectionDebounce);
+      selectionDebounce = setTimeout(() => {
+        selectionDebounce = null;
+        handleTextSelection();
+      }, 120);
+    };
+
+    container.addEventListener("mouseup", run);
+    container.addEventListener("touchend", run, { passive: true });
+    document.addEventListener("selectionchange", onSelectionChange);
+    return () => {
+      container.removeEventListener("mouseup", run);
+      container.removeEventListener("touchend", run);
+      document.removeEventListener("selectionchange", onSelectionChange);
+      if (selectionDebounce) clearTimeout(selectionDebounce);
+    };
   }, [handleTextSelection]);
 
   // 计算滚动百分比
@@ -1209,6 +1205,13 @@ const getFirstVisibleIndex = useCallback(() => {
             color: ${annotationColor};
             font-size: 0.7em;
             font-family: "Microsoft YaHei", "微软雅黑", sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+          }
+
+          .reader-content :global(.sentence-annotation) {
+            user-select: none;
+            -webkit-user-select: none;
           }
 
           @media (max-width: 768px) {

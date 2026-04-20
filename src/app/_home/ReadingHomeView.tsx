@@ -824,7 +824,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
           {loading && (
             <div className="loading-overlay">
               <div className="loading-spinner"></div>
-              <div style={{ color: "#666", fontSize: "14px" }}>正在处理文本...</div>
+              <div style={{ color: "#666", fontSize: "14px" }}>正在准备阅读...</div>
             </div>
           )}
           <ReadingArea
@@ -985,14 +985,6 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
             </button>
           </div>
         </>
-      )}
-
-      {/* Loading Indicator */}
-      {loading && (
-        <div className="loading-overlay">
-          <div className="loading-spinner"></div>
-          <span style={{ color: isDarkMode ? "#ccc" : "#666" }}>正在标注...</span>
-        </div>
       )}
 
       <style jsx>{`
