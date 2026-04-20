@@ -448,6 +448,7 @@ export default function Home() {
 
     // Only process segments on first open (bookId change)
     if (lastProcessedBookIdRef.current !== currentBook.id) {
+      setProcessedContent(null);
       lastProcessedBookIdRef.current = currentBook.id;
       setLoading(true);
 

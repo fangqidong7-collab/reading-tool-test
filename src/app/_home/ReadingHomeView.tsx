@@ -820,65 +820,65 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
       {/* Main Content */}
       <main className="main-content" style={{ backgroundColor }}>
         <div ref={containerRef} className="reading-container">
-          {/* Loading overlay */}
-          {loading && (
-            <div className="loading-overlay">
+          {loading ? (
+            <div className="reading-loading-fullscreen" style={{ backgroundColor }}>
               <div className="loading-spinner"></div>
-              <div style={{ color: "#666", fontSize: "14px" }}>正在处理文本...</div>
+              <div style={{ color: isDarkMode ? "#aaa" : "#666", fontSize: "14px" }}>正在处理文本...</div>
             </div>
-          )}
-          <ReadingArea
-            ref={readingAreaRef}
-            text={text}
-            processedContent={processedContent}
-            annotations={mergedAnnotationsForRender}
-            onWordClick={handleWordClick}
-            onWordDoubleClick={handleWordDoubleClick}
-            getWordAnnotation={getWordAnnotation}
-            isClickable={isClickable}
-            fontSize={fontSize}
-            lineHeight={lineHeight}
-            textColor={textColor}
-            backgroundColor={backgroundColor}
-            annotationColor={annotationColor}
-            highlightBg={highlightBg}
-            highlightBgHover={highlightBgHover}
-            isDarkMode={isDarkMode}
-            headerVisible={true}
-            searchQuery={searchQuery}
-            searchResults={searchResults}
-            currentSearchIndex={currentSearchIndex}
-            bookId={currentBook?.id || ""}
-            onProgressChange={(percent) => {
-              setCurrentScrollPercent(percent);
-            }}
-            onParagraphIndexChange={(index) => {
-              setCurrentParagraphIndex(index);
-              if (processedContent && index >= 0 && index < processedContent.length) {
-                const paraText = processedContent[index].segments.map((s) => s.text).join("").substring(0, 80);
-                setCurrentParagraphText(paraText);
-              }
-              if (currentBook?.tableOfContents && currentBook.tableOfContents.length > 0) {
-                let chapterName = "";
-                for (let i = currentBook.tableOfContents.length - 1; i >= 0; i--) {
-                  const toc = currentBook.tableOfContents[i];
-                  if (toc.paragraphIndex !== undefined && toc.paragraphIndex <= index) {
-                    chapterName = toc.title;
-                    break;
-                  }
+          ) : (
+            <ReadingArea
+              ref={readingAreaRef}
+              text={text}
+              processedContent={processedContent}
+              annotations={mergedAnnotationsForRender}
+              onWordClick={handleWordClick}
+              onWordDoubleClick={handleWordDoubleClick}
+              getWordAnnotation={getWordAnnotation}
+              isClickable={isClickable}
+              fontSize={fontSize}
+              lineHeight={lineHeight}
+              textColor={textColor}
+              backgroundColor={backgroundColor}
+              annotationColor={annotationColor}
+              highlightBg={highlightBg}
+              highlightBgHover={highlightBgHover}
+              isDarkMode={isDarkMode}
+              headerVisible={true}
+              searchQuery={searchQuery}
+              searchResults={searchResults}
+              currentSearchIndex={currentSearchIndex}
+              bookId={currentBook?.id || ""}
+              onProgressChange={(percent) => {
+                setCurrentScrollPercent(percent);
+              }}
+              onParagraphIndexChange={(index) => {
+                setCurrentParagraphIndex(index);
+                if (processedContent && index >= 0 && index < processedContent.length) {
+                  const paraText = processedContent[index].segments.map((s) => s.text).join("").substring(0, 80);
+                  setCurrentParagraphText(paraText);
                 }
-                setCurrentChapterTitle(chapterName);
-              }
-            }}
-            initialParagraphIndex={currentBook?.lastParagraphIndex ?? -1}
-            initialParagraphText={currentParagraphText}
-            initialScrollPercent={currentBook?.lastScrollPosition || 0}
-            pageTurnRatio={pageTurnRatio}
-            onTextSelect={handleTextSelect}
-            sentenceAnnotations={currentBook?.sentenceAnnotations || []}
-            onRemoveSentenceAnnotation={handleRemoveSentenceAnnotation}
-            clickToTurnPage={clickToTurnPage}
-          />
+                if (currentBook?.tableOfContents && currentBook.tableOfContents.length > 0) {
+                  let chapterName = "";
+                  for (let i = currentBook.tableOfContents.length - 1; i >= 0; i--) {
+                    const toc = currentBook.tableOfContents[i];
+                    if (toc.paragraphIndex !== undefined && toc.paragraphIndex <= index) {
+                      chapterName = toc.title;
+                      break;
+                    }
+                  }
+                  setCurrentChapterTitle(chapterName);
+                }
+              }}
+              initialParagraphIndex={currentBook?.lastParagraphIndex ?? -1}
+              initialParagraphText={currentParagraphText}
+              initialScrollPercent={currentBook?.lastScrollPosition || 0}
+              pageTurnRatio={pageTurnRatio}
+              onTextSelect={handleTextSelect}
+              sentenceAnnotations={currentBook?.sentenceAnnotations || []}
+              onRemoveSentenceAnnotation={handleRemoveSentenceAnnotation}
+              clickToTurnPage={clickToTurnPage}
+            />
+          )}
         </div>
 
         {/* Sidebar */}
@@ -985,14 +985,6 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
             </button>
           </div>
         </>
-      )}
-
-      {/* Loading Indicator */}
-      {loading && (
-        <div className="loading-overlay">
-          <div className="loading-spinner"></div>
-          <span style={{ color: isDarkMode ? "#ccc" : "#666" }}>正在标注...</span>
-        </div>
       )}
 
       <style jsx>{`
@@ -1138,16 +1130,16 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
           overflow-y: auto;
         }
 
-        .loading-overlay {
-          position: fixed;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
+        .reading-loading-fullscreen {
+          flex: 1;
+          min-height: 0;
+          height: 100%;
+          width: 100%;
           display: flex;
           flex-direction: column;
           align-items: center;
+          justify-content: center;
           gap: 12px;
-          z-index: 200;
         }
 
         .loading-spinner {

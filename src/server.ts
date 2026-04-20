@@ -25,11 +25,10 @@ app.prepare().then(() => {
     console.error(err);
     process.exit(1);
   });
-  server.listen(port, () => {
-    console.log(
-      `> Server listening at http://${hostname}:${port} as ${
-        dev ? 'development' : process.env.COZE_PROJECT_ENV
-      }`,
-    );
+  const listenHost = process.env.LISTEN_HOST ?? '0.0.0.0';
+  server.listen(port, listenHost, () => {
+    const mode = dev ? 'development' : process.env.COZE_PROJECT_ENV;
+    console.log(`> Server listening on http://${listenHost}:${port} as ${mode}`);
+    console.log(`> Dev UI (this machine): http://${hostname}:${port}`);
   });
 });

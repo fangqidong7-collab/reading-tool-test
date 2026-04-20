@@ -159,7 +159,7 @@ rt {
   .header,
   .sidebar,
   .sidebar-toggle,
-  .loading-overlay {
+  .reading-loading-fullscreen {
     display: none !important;
   }
   
