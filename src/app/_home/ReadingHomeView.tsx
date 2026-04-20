@@ -1125,9 +1125,13 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
           position: relative;
         }
 
+        /* 仅外层包裹，滚动只发生在 ReadingArea 内部，避免双滚动条 */
         .reading-container {
-          height: 100%;
-          overflow-y: auto;
+          flex: 1;
+          min-height: 0;
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
         }
 
         .reading-loading-fullscreen {

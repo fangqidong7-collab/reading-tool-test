@@ -2,6 +2,7 @@
 
 import React, { useCallback, useRef, useEffect, useState, forwardRef, useImperativeHandle } from "react";
 import { ProcessedContent, SentenceAnnotation } from "@/hooks/useBookshelf";
+import { useVirtualizer } from "@tanstack/react-virtual";
 
 // Layout constants
 const HEADER_HEIGHT = 56;
@@ -13,19 +14,20 @@ const MOBILE_TOP_GAP = 5;
 const MOBILE_BOTTOM_SAFE_ZONE = 60;
 const PAGE_TURN_EDGE_EPS = 3;
 
-/** 收集当前视口内段落文字行的 ClientRect（便于点击翻页按行对齐）。全文非虚拟列表，仅遍历与视口相交的段落。 */
-function gatherVisibleParagraphLineRects(contentRoot: HTMLElement, scrollEl: HTMLElement): DOMRect[] {
+/** 收集当前虚拟列表可见段落的文字行框（用于点击翻页对齐）。 */
+function gatherVisibleParagraphLineRects(
+  contentRoot: HTMLElement,
+  scrollEl: HTMLElement,
+  virtualIndices: readonly { index: number }[]
+): DOMRect[] {
   const cRect = scrollEl.getBoundingClientRect();
   const minLineHeight = 6;
   const minWidth = 4;
   const out: DOMRect[] = [];
 
-  const wraps = contentRoot.querySelectorAll<HTMLElement>("[data-index]");
-  for (let w = 0; w < wraps.length; w++) {
-    const wrap = wraps[w];
-    const wRect = wrap.getBoundingClientRect();
-    if (wRect.bottom < cRect.top || wRect.top > cRect.bottom) continue;
-
+  for (const { index } of virtualIndices) {
+    const wrap = contentRoot.querySelector(`[data-index="${index}"]`);
+    if (!wrap) continue;
     const paragraph = wrap.querySelector(".paragraph");
     if (!paragraph) continue;
 
@@ -42,24 +44,10 @@ function gatherVisibleParagraphLineRects(contentRoot: HTMLElement, scrollEl: HTM
   return out;
 }
 
-/** 将指定段落滚到阅读容器顶部（对齐原 virtual scrollToIndex align:start） */
-function scrollParagraphIndexIntoView(
-  container: HTMLElement,
-  contentRoot: HTMLElement,
-  paragraphIndex: number,
-  behavior: ScrollBehavior = "auto"
-): void {
-  const wrap = contentRoot.querySelector<HTMLElement>(`[data-index="${paragraphIndex}"]`);
-  if (!wrap) return;
-  const cRect = container.getBoundingClientRect();
-  const wRect = wrap.getBoundingClientRect();
-  const top = container.scrollTop + (wRect.top - cRect.top);
-  container.scrollTo({ top: Math.max(0, top), behavior });
-}
-
 function computeSnappedPageScrollTop(
   scrollEl: HTMLElement,
   contentRoot: HTMLElement,
+  virtualIndices: readonly { index: number }[],
   direction: "next" | "prev",
   pageStepPx: number
 ): number {
@@ -67,7 +55,7 @@ function computeSnappedPageScrollTop(
   const maxS = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight);
   const cRect = scrollEl.getBoundingClientRect();
   const edge = PAGE_TURN_EDGE_EPS;
-  const rects = gatherVisibleParagraphLineRects(contentRoot, scrollEl);
+  const rects = gatherVisibleParagraphLineRects(contentRoot, scrollEl, virtualIndices);
 
   if (direction === "next") {
     let crossingBottom: DOMRect | null = null;
@@ -437,18 +425,16 @@ function paragraphPropsAreEqual(
   if (prev.onWordDoubleClick !== next.onWordDoubleClick) return false;
   if (prev.sentenceAnnotations !== next.sentenceAnnotations) return false;
   if (prev.onRemoveSentenceAnnotation !== next.onRemoveSentenceAnnotation) return false;
-  
-  const prevKeys = prev.annotations ? Object.keys(prev.annotations) : [];
-  const nextKeys = next.annotations ? Object.keys(next.annotations) : [];
-  
-  if (prevKeys.length !== nextKeys.length) return false;
-  
-  for (const key of nextKeys) {
-    if (!prev.annotations?.[key] || prev.annotations[key] !== next.annotations?.[key]) {
-      return false;
-    }
-  }
-  
+
+  if (prev.paragraph !== next.paragraph) return false;
+
+  /**
+   * 全文 annotations 是一个大 Map，若按 key 逐项比较，标注上千时每个段落 memo 都会对上千 key 做一次 O(n)，
+   * 虚拟列表一趟渲染 ≈ O(可见段数 × 标注数)，手机会直接卡死。
+   * 引用由上层 useMemo（mergedAnnotationsForRender）保持稳定，仅在真实增删改时换新对象。
+   */
+  if (prev.annotations !== next.annotations) return false;
+
   return true;
 }
 
@@ -532,6 +518,13 @@ export const ReadingArea = forwardRef(function ReadingArea({
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const lastSwipeTimeRef = useRef(0);
 
+  const virtualizer = useVirtualizer({
+    count: processedContent ? processedContent.length : 0,
+    getScrollElement: () => containerRef.current,
+    estimateSize: () => 80,
+    overscan: 24,
+  });
+
   const scrollReadingPage = useCallback(
     (direction: "next" | "prev") => {
       const el = containerRef.current;
@@ -550,10 +543,20 @@ export const ReadingArea = forwardRef(function ReadingArea({
         return;
       }
 
-      const target = computeSnappedPageScrollTop(el, content, direction, pageStepPx);
+      const items = virtualizer.getVirtualItems();
+      if (items.length === 0) {
+        const delta = direction === "next" ? pageStepPx : -pageStepPx;
+        el.scrollTo({
+          top: Math.min(maxS, Math.max(0, el.scrollTop + delta)),
+          behavior: "smooth",
+        });
+        return;
+      }
+
+      const target = computeSnappedPageScrollTop(el, content, items, direction, pageStepPx);
       el.scrollTo({ top: target, behavior: "smooth" });
     },
-    [pageTurnRatio, processedContent]
+    [pageTurnRatio, processedContent, virtualizer]
   );
 
   useEffect(() => {
@@ -780,27 +783,18 @@ export const ReadingArea = forwardRef(function ReadingArea({
     return parseFloat(((el.scrollTop / (el.scrollHeight - el.clientHeight)) * 100).toFixed(4));
   }, []);
   const getFirstVisibleIndex = useCallback(() => {
-    const container = containerRef.current;
-    const root = contentRef.current;
-    if (!container || !root) return 0;
+    if (!containerRef.current) return 0;
+    const scrollTop = containerRef.current.scrollTop;
+    const items = virtualizer.getVirtualItems();
+    if (items.length === 0) return 0;
 
-    const cRect = container.getBoundingClientRect();
-    const wraps = root.querySelectorAll<HTMLElement>("[data-index]");
-    let last = 0;
-
-    for (let i = 0; i < wraps.length; i++) {
-      const wrap = wraps[i];
-      const idx = parseInt(wrap.getAttribute("data-index") || "-1", 10);
-      if (idx < 0) continue;
-      const r = wrap.getBoundingClientRect();
-      last = idx;
-      if (r.bottom > cRect.top + 2) {
-        return idx;
+    for (const item of items) {
+      if (item.start + item.size > scrollTop) {
+        return item.index;
       }
     }
-
-    return last;
-  }, []);
+    return items[0].index;
+  }, [virtualizer]);
 
 
 
@@ -905,13 +899,11 @@ export const ReadingArea = forwardRef(function ReadingArea({
 
   // 跳转到段落（滚动方式）
   const jumpToParagraph = useCallback((paragraphIndex: number) => {
-    const container = containerRef.current;
-    const root = contentRef.current;
-    if (!container || !root) return;
+    if (!containerRef.current) return;
     if (paragraphIndex >= 0 && processedContent && paragraphIndex < processedContent.length) {
-      scrollParagraphIndexIntoView(container, root, paragraphIndex, "smooth");
+      virtualizer.scrollToIndex(paragraphIndex, { align: "start" });
     }
-  }, [processedContent]);
+  }, [processedContent, virtualizer]);
 
 
   // 添加书签
@@ -1015,24 +1007,16 @@ export const ReadingArea = forwardRef(function ReadingArea({
       }
 
       if (targetIndex >= 0) {
-        const el = containerRef.current;
-        const root = contentRef.current;
-        if (el && root) {
-          scrollParagraphIndexIntoView(el, root, targetIndex, "auto");
-          console.log('ReadingArea 段落恢复 第1次:', targetIndex);
+        virtualizer.scrollToIndex(targetIndex, { align: "start" });
+        console.log("ReadingArea 段落恢复 第1次:", targetIndex);
 
-          const corrections = [300, 700, 1500];
-          corrections.forEach((delay) => {
-            setTimeout(() => {
-              const c = containerRef.current;
-              const r = contentRef.current;
-              if (c && r) {
-                scrollParagraphIndexIntoView(c, r, targetIndex, "auto");
-                console.log(`ReadingArea 段落修正(${delay}ms):`, targetIndex);
-              }
-            }, delay);
-          });
-        }
+        const corrections = [300, 700, 1500];
+        corrections.forEach((delay) => {
+          setTimeout(() => {
+            virtualizer.scrollToIndex(targetIndex, { align: "start" });
+            console.log(`ReadingArea 段落修正(${delay}ms):`, targetIndex);
+          }, delay);
+        });
       } else if (initialScrollPercent > 0) {
         // 回退到百分比
         const el = containerRef.current;
@@ -1047,7 +1031,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
 
     setTimeout(doRestore, 200);
 
-  }, [initialParagraphIndex, initialParagraphText, initialScrollPercent, processedContent]);
+  }, [initialParagraphIndex, initialParagraphText, initialScrollPercent, processedContent, virtualizer]);
 
   useEffect(() => {
     hasRestoredRef.current = false;
@@ -1073,10 +1057,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
       el.scrollTop = maxScroll * ratio;
     },
     restoreByParagraphIndex: (index: number) => {
-      const el = containerRef.current;
-      const root = contentRef.current;
-      if (!el || !root) return;
-      scrollParagraphIndexIntoView(el, root, index, "auto");
+      virtualizer.scrollToIndex(index, { align: "start" });
     },
   }));
 
@@ -1153,35 +1134,53 @@ export const ReadingArea = forwardRef(function ReadingArea({
             touchAction: "pan-y",
           }}
         >
-          <div ref={contentRef} className="reader-content" style={{ width: "100%", position: "relative" }}>
-            {processedContent.map((paragraph, pIndex) => (
-              <div
-                key={pIndex}
-                data-index={pIndex}
-                style={{
-                  paddingLeft: `${currentHorizPadding}px`,
-                  paddingRight: `${currentHorizPadding}px`,
-                }}
-              >
-                <MemoizedParagraph
-                  paragraph={paragraph}
-                  pIndex={pIndex}
-                  onWordClick={onWordClick}
-                  onWordDoubleClick={onWordDoubleClick}
-                  annotations={annotations}
-                  annotationColor={annotationColor}
-                  searchQuery={searchQuery}
-                  isCurrentSearchResult={
-                    searchResults.length > 0 &&
-                    searchResults[currentSearchIndex]?.paragraphIndex === pIndex
-                  }
-                  highlightBg={highlightBg}
-                  isDarkMode={isDarkMode}
-                  sentenceAnnotations={sentenceAnnotations}
-                  onRemoveSentenceAnnotation={onRemoveSentenceAnnotation}
-                />
-              </div>
-            ))}
+          <div
+            ref={contentRef}
+            className="reader-content"
+            style={{
+              height: `${virtualizer.getTotalSize()}px`,
+              width: "100%",
+              position: "relative",
+            }}
+          >
+            {virtualizer.getVirtualItems().map((virtualRow) => {
+              const pIndex = virtualRow.index;
+              const paragraph = processedContent[pIndex];
+              return (
+                <div
+                  key={pIndex}
+                  data-index={pIndex}
+                  ref={virtualizer.measureElement}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    transform: `translateY(${virtualRow.start}px)`,
+                    paddingLeft: `${currentHorizPadding}px`,
+                    paddingRight: `${currentHorizPadding}px`,
+                  }}
+                >
+                  <MemoizedParagraph
+                    paragraph={paragraph}
+                    pIndex={pIndex}
+                    onWordClick={onWordClick}
+                    onWordDoubleClick={onWordDoubleClick}
+                    annotations={annotations}
+                    annotationColor={annotationColor}
+                    searchQuery={searchQuery}
+                    isCurrentSearchResult={
+                      searchResults.length > 0 &&
+                      searchResults[currentSearchIndex]?.paragraphIndex === pIndex
+                    }
+                    highlightBg={highlightBg}
+                    isDarkMode={isDarkMode}
+                    sentenceAnnotations={sentenceAnnotations}
+                    onRemoveSentenceAnnotation={onRemoveSentenceAnnotation}
+                  />
+                </div>
+              );
+            })}
           </div>
 
         </div>
