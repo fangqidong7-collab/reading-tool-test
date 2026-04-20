@@ -525,7 +525,8 @@ export const ReadingArea = forwardRef(function ReadingArea({
     count: processedContent ? processedContent.length : 0,
     getScrollElement: () => containerRef.current,
     estimateSize: () => 80,
-    overscan: 20,
+    /** 选区跨多段时须保持 DOM 挂载，过小会导致 Range 指向已卸载节点，浏览器会把选区拉到后文尽头 */
+    overscan: 48,
   });
 
   const scrollReadingPage = useCallback(
@@ -1238,17 +1239,9 @@ const getFirstVisibleIndex = useCallback(() => {
             user-select: text;
           }
 
-          .reader-content :global(.annotation),
-          .reader-content :global(.sentence-annotation) {
-            -webkit-user-select: none;
-            user-select: none;
-          }
-
           .reader-content :global(.word) {
             cursor: pointer;
             transition: color 0.15s;
-            -webkit-user-select: text;
-            user-select: text;
           }
 
           .reader-content :global(.word:hover) {
