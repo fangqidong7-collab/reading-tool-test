@@ -5,30 +5,71 @@ import { ProcessedContent, SentenceAnnotation } from "@/hooks/useBookshelf";
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 // Layout constants
-const HEADER_HEIGHT = 56;
-const MOBILE_HEADER_HEIGHT = 48;
 const READING_PADDING_HORIZONTAL = 32;
 const MOBILE_READING_PADDING_HORIZONTAL = 12;
-const PARAGRAPH_GAP = 16;
 const MOBILE_BREAKPOINT = 768;
-const MOBILE_TOP_GAP = 5;
-const MOBILE_BOTTOM_SAFE_ZONE = 60;
-const PAGE_TURN_EDGE_EPS = 3;
+const VIEWPORT_TRIM_EPS = 2;
+/** 左下角进度条占位，与正文分栏排版，避免 fixed 遮挡主文 */
+const READING_PROGRESS_FOOTER_PADDING_Y = 8;
 
-/** Collect text line boxes from visible virtualized paragraphs (viewport-relative rects). */
-function gatherVisibleParagraphLineRects(
+/** 至少两个「词」才允许整句翻译（选单字/单词不弹出） */
+const MIN_WORDS_FOR_SENTENCE_TRANSLATE = 2;
+
+/** 统计选区内词数：优先 Intl.Segmenter（中英日等均按语言分词）；否则拉丁按空格，中日韩按字计词 */
+function countWordsInSelection(text: string): number {
+  const t = text.trim();
+  if (!t) return 0;
+
+  if (typeof Intl !== "undefined" && "Segmenter" in Intl) {
+    try {
+      const segmenter = new Intl.Segmenter(undefined, { granularity: "word" });
+      let n = 0;
+      for (const seg of segmenter.segment(t)) {
+        if (seg.isWordLike && seg.segment.trim().length > 0) {
+          n++;
+        }
+      }
+      return n;
+    } catch {
+      /* 继续走降级 */
+    }
+  }
+
+  const cjkCount = (t.match(/[\u3000-\u303f\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff]/g) || []).length;
+  const withoutCjk = t.replace(/[\u3000-\u303f\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff]+/g, " ").trim();
+  const latinWords = withoutCjk.length === 0 ? 0 : withoutCjk.split(/\s+/).filter(Boolean).length;
+  return cjkCount + latinWords;
+}
+
+function selectionLongEnoughForSentenceTranslate(text: string): boolean {
+  return countWordsInSelection(text) >= MIN_WORDS_FOR_SENTENCE_TRANSLATE;
+}
+
+function rectsCrossViewportTop(r: DOMRect, cRect: DOMRect): boolean {
+  return r.bottom > cRect.top && r.top < cRect.top;
+}
+
+/** 底边切开一行：该行有一部分在视口内、有一部分在视口下 */
+function rectsCrossViewportBottom(r: DOMRect, cRect: DOMRect): boolean {
+  return r.bottom > cRect.bottom && r.top < cRect.bottom;
+}
+
+/** 主文行框（过滤词后释义等小碎片），视口坐标；扫描已挂载段落，不依赖 virtualizer.getVirtualItems()，避免边缘段漏测 */
+function gatherMainTextLineRects(
   contentRoot: HTMLElement,
   scrollEl: HTMLElement,
-  virtualIndices: readonly { index: number }[]
+  minMainLineHeight: number
 ): DOMRect[] {
   const cRect = scrollEl.getBoundingClientRect();
-  const minLineHeight = 6;
   const minWidth = 4;
+  /** 略放宽，避免字号/缩放/DPR 下行高略小于估算导致整行被过滤 */
+  const minH = Math.max(6, minMainLineHeight - 8);
   const out: DOMRect[] = [];
 
-  for (const { index } of virtualIndices) {
-    const wrap = contentRoot.querySelector(`[data-index="${index}"]`);
-    if (!wrap) continue;
+  const wraps = contentRoot.querySelectorAll("[data-index]");
+  for (let w = 0; w < wraps.length; w++) {
+    const wrap = wraps[w];
+    if (!(wrap instanceof HTMLElement)) continue;
     const paragraph = wrap.querySelector(".paragraph");
     if (!paragraph) continue;
 
@@ -37,7 +78,7 @@ function gatherVisibleParagraphLineRects(
     const list = range.getClientRects();
     for (let i = 0; i < list.length; i++) {
       const r = list[i];
-      if (r.height < minLineHeight || r.width < minWidth) continue;
+      if (r.height < minH || r.width < minWidth) continue;
       if (r.bottom < cRect.top || r.top > cRect.bottom) continue;
       out.push(r);
     }
@@ -45,58 +86,62 @@ function gatherVisibleParagraphLineRects(
   return out;
 }
 
-function computeSnappedPageScrollTop(
+/** 顶边切开一行时，略减小 scrollTop，使该行从行首完整显示 */
+function trimHalfLineAtTop(
   scrollEl: HTMLElement,
   contentRoot: HTMLElement,
-  virtualIndices: readonly { index: number }[],
-  direction: "next" | "prev",
-  pageStepPx: number
-): number {
-  const S = scrollEl.scrollTop;
-  const maxS = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight);
+  minMainLineHeight: number
+): void {
   const cRect = scrollEl.getBoundingClientRect();
-  const edge = PAGE_TURN_EDGE_EPS;
-  const rects = gatherVisibleParagraphLineRects(contentRoot, scrollEl, virtualIndices);
-
-  if (direction === "next") {
-    let crossingBottom: DOMRect | null = null;
-    for (const r of rects) {
-      if (r.top < cRect.bottom - edge && r.bottom > cRect.bottom - edge) {
-        if (!crossingBottom || r.top > crossingBottom.top) crossingBottom = r;
-      }
-    }
-
-    let T: number;
-    if (crossingBottom) {
-      const snapped = S + (crossingBottom.top - cRect.top);
-      T = snapped > S + 0.5 ? snapped : Math.min(S + pageStepPx, maxS);
-    } else {
-      T = Math.min(S + pageStepPx, maxS);
-    }
-    if (T <= S && maxS > S) {
-      T = Math.min(S + pageStepPx, maxS);
-    }
-    return Math.min(Math.max(0, T), maxS);
-  }
-
-  let crossingTop: DOMRect | null = null;
+  const rects = gatherMainTextLineRects(contentRoot, scrollEl, minMainLineHeight);
+  let minTop = Infinity;
   for (const r of rects) {
-    if (r.top < cRect.top + edge && r.bottom > cRect.top + edge) {
-      if (!crossingTop || r.top < crossingTop.top) crossingTop = r;
-    }
+    if (!rectsCrossViewportTop(r, cRect)) continue;
+    minTop = Math.min(minTop, r.top);
   }
+  if (minTop === Infinity) return;
+  const overlap = cRect.top - minTop;
+  if (overlap <= VIEWPORT_TRIM_EPS) return;
+  scrollEl.scrollTop = Math.max(0, scrollEl.scrollTop - overlap);
+}
 
-  let T: number;
-  if (crossingTop) {
-    T = S - pageStepPx + (crossingTop.top - cRect.top);
-  } else {
-    T = S - pageStepPx;
+/**
+ * 视口底部若有半截行：略减小 scrollTop，把该行整体移到视口下方（当前屏以完整行结束），
+ * 该行会在下一页顶边对齐时出现——与「向下滚动凑齐最后一行」不同，不会破坏页顶整行。
+ */
+function trimHalfLineOffBottomForNextPage(
+  scrollEl: HTMLElement,
+  contentRoot: HTMLElement,
+  minMainLineHeight: number
+): void {
+  const cRect = scrollEl.getBoundingClientRect();
+  const rects = gatherMainTextLineRects(contentRoot, scrollEl, minMainLineHeight);
+  let lineTopScreen = Infinity;
+  for (const r of rects) {
+    if (!rectsCrossViewportBottom(r, cRect)) continue;
+    lineTopScreen = Math.min(lineTopScreen, r.top);
   }
-  T = Math.max(0, Math.min(T, maxS));
-  if (S > 0 && T >= S) {
-    T = Math.max(0, S - pageStepPx);
+  if (lineTopScreen === Infinity) return;
+  const overlapHide = cRect.bottom - lineTopScreen;
+  if (overlapHide <= VIEWPORT_TRIM_EPS) return;
+  scrollEl.scrollTop = Math.max(0, scrollEl.scrollTop - overlapHide);
+}
+
+/**
+ * 翻页后：先保证页顶整行；再把页底半截行裁掉（整行留给下一页）。
+ * 两者交替直到稳定，避免先裁底又破坏顶或反之。
+ */
+function trimAfterPageTurnPreferTop(
+  scrollEl: HTMLElement,
+  contentRoot: HTMLElement,
+  minMainLineHeight: number
+): void {
+  for (let i = 0; i < 10; i++) {
+    const before = scrollEl.scrollTop;
+    trimHalfLineAtTop(scrollEl, contentRoot, minMainLineHeight);
+    trimHalfLineOffBottomForNextPage(scrollEl, contentRoot, minMainLineHeight);
+    if (Math.abs(scrollEl.scrollTop - before) < 0.5) break;
   }
-  return T;
 }
 
 // Ref type
@@ -467,7 +512,6 @@ interface ReadingAreaProps {
   initialScrollPercent?: number;
   initialParagraphIndex?: number;
   initialParagraphText?: string;
-  pageTurnRatio?: number;
   onTextSelect?: (selection: { text: string; startParagraphIndex: number; endParagraphIndex: number; startCharIndex: number; endCharIndex: number }) => void;
   sentenceAnnotations?: SentenceAnnotation[];
   onRemoveSentenceAnnotation?: (id: string) => void;
@@ -501,7 +545,6 @@ export const ReadingArea = forwardRef(function ReadingArea({
   initialScrollPercent = 0,
   initialParagraphIndex = -1,
   initialParagraphText = "",
-  pageTurnRatio = 1,
   onTextSelect,
   sentenceAnnotations = [],
   onRemoveSentenceAnnotation,
@@ -511,68 +554,61 @@ export const ReadingArea = forwardRef(function ReadingArea({
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const selectionStartRef = useRef<{ paragraphIndex: number; charIndex: number } | null>(null);
+  /** 触摸开始时 scrollTop，用于区分「正在滚动」与「点选文字」 */
+  const touchStartScrollTopRef = useRef(0);
   
   const [readProgress, setReadProgress] = useState(0);
-  const [containerHeight, setContainerHeight] = useState(600);
-  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const lastSwipeTimeRef = useRef(0);
+  const lastProgrammaticPageTurnAt = useRef(0);
 
   const virtualizer = useVirtualizer({
     count: processedContent ? processedContent.length : 0,
     getScrollElement: () => containerRef.current,
     estimateSize: () => 80,
-    overscan: 20,
+    /** 上滑时多预渲染几段，减少量高变化时视口跳变 */
+    overscan: 32,
   });
 
+  /**
+   * 整页翻动：先按可视高度 ± 一页（auto），再 trim 顶边整行 + 底边半截移出（裁底不留半行，留给下一页）。
+   */
   const scrollReadingPage = useCallback(
     (direction: "next" | "prev") => {
       const el = containerRef.current;
-      const content = contentRef.current;
       if (!el) return;
 
-      const pageStepPx = el.clientHeight * pageTurnRatio;
-      const maxS = Math.max(0, el.scrollHeight - el.clientHeight);
+      const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+      if (now - lastProgrammaticPageTurnAt.current < 220) return;
+      lastProgrammaticPageTurnAt.current = now;
 
-      if (!processedContent?.length || !content) {
-        const delta = direction === "next" ? pageStepPx : -pageStepPx;
-        el.scrollTo({
-          top: Math.min(maxS, Math.max(0, el.scrollTop + delta)),
-          behavior: "smooth",
-        });
-        return;
+      const pageH = el.clientHeight;
+      if (pageH <= 0) return;
+
+      const maxS = Math.max(0, el.scrollHeight - pageH);
+      const S = el.scrollTop;
+
+      if (direction === "next") {
+        el.scrollTo({ top: Math.min(S + pageH, maxS), behavior: "auto" });
+      } else {
+        el.scrollTo({ top: Math.max(S - pageH, 0), behavior: "auto" });
       }
 
-      const items = virtualizer.getVirtualItems();
-      if (items.length === 0) {
-        const delta = direction === "next" ? pageStepPx : -pageStepPx;
-        el.scrollTo({
-          top: Math.min(maxS, Math.max(0, el.scrollTop + delta)),
-          behavior: "smooth",
+      const minMain = Math.max(12, Math.round(fontSize * Math.min(lineHeight, 3) * 0.58));
+      const runTrim = () => {
+        const scrollEl = containerRef.current;
+        const root = contentRef.current;
+        if (!scrollEl || !root || !processedContent?.length) return;
+        trimAfterPageTurnPreferTop(scrollEl, root, minMain);
+      };
+      // 多等一帧：虚拟列表测量/挂载与 scroll 对齐后再量行框，减少漏检
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(runTrim);
         });
-        return;
-      }
-
-      const target = computeSnappedPageScrollTop(el, content, items, direction, pageStepPx);
-      el.scrollTo({ top: target, behavior: "smooth" });
+      });
     },
-    [pageTurnRatio, processedContent, virtualizer]
+    [fontSize, lineHeight, processedContent, virtualizer]
   );
-
-  useEffect(() => {
-    const calcHeight = () => {
-      const mobile = window.innerWidth <= MOBILE_BREAKPOINT;
-      const headerH = mobile ? MOBILE_HEADER_HEIGHT : HEADER_HEIGHT;
-      const PAGER_HEIGHT = 0;
-      const h = mobile
-        ? window.innerHeight - headerH - MOBILE_TOP_GAP - MOBILE_BOTTOM_SAFE_ZONE - PAGER_HEIGHT
-        : window.innerHeight - headerH - PAGER_HEIGHT;
-      setContainerHeight(Math.max(h, 200));
-    };
-
-    calcHeight();
-    window.addEventListener('resize', calcHeight);
-    return () => window.removeEventListener('resize', calcHeight);
-  }, []);
 
   // 音量键翻页
   useEffect(() => {
@@ -599,7 +635,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
     if (!selection || selection.isCollapsed || !selection.toString().trim()) return;
 
     const selectedText = selection.toString().trim();
-    if (selectedText.split(/\s+/).length < 2) return;
+    if (!selectionLongEnoughForSentenceTranslate(selectedText)) return;
     if (!processedContent) return;
 
     const range = selection.getRangeAt(0);
@@ -733,17 +769,53 @@ export const ReadingArea = forwardRef(function ReadingArea({
     }
   }, [onTextSelect, processedContent]);
 
-  // 添加文本选择监听
+  // 文本选择：桌面 mouseup；触摸设备依赖 selectionchange / touchend（mouseup 不会触发）
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    const handleMouseUp = () => {
+    const scheduleSelection = () => {
       setTimeout(handleTextSelection, 10);
     };
 
-    container.addEventListener('mouseup', handleMouseUp);
-    return () => container.removeEventListener('mouseup', handleMouseUp);
+    const handleMouseUp = () => {
+      scheduleSelection();
+    };
+
+    let selDebounce: ReturnType<typeof setTimeout> | undefined;
+    const handleSelectionChange = () => {
+      clearTimeout(selDebounce);
+      selDebounce = setTimeout(() => {
+        const sel = window.getSelection();
+        if (!sel || sel.isCollapsed || !container.contains(sel.anchorNode)) return;
+        if (!container.contains(sel.focusNode)) return;
+        handleTextSelection();
+      }, 140);
+    };
+
+    const handleTouchStartSelection = () => {
+      touchStartScrollTopRef.current = container.scrollTop;
+    };
+
+    const handleTouchEndSelection = () => {
+      if (Math.abs(container.scrollTop - touchStartScrollTopRef.current) > 14) {
+        return;
+      }
+      setTimeout(handleTextSelection, 80);
+    };
+
+    container.addEventListener("mouseup", handleMouseUp);
+    container.addEventListener("touchstart", handleTouchStartSelection, { passive: true });
+    container.addEventListener("touchend", handleTouchEndSelection, { passive: true });
+    document.addEventListener("selectionchange", handleSelectionChange);
+
+    return () => {
+      clearTimeout(selDebounce);
+      container.removeEventListener("mouseup", handleMouseUp);
+      container.removeEventListener("touchstart", handleTouchStartSelection);
+      container.removeEventListener("touchend", handleTouchEndSelection);
+      document.removeEventListener("selectionchange", handleSelectionChange);
+    };
   }, [handleTextSelection]);
 
   // 计算滚动百分比
@@ -772,22 +844,33 @@ const getFirstVisibleIndex = useCallback(() => {
 
 
 
-  // 监听滚动，更新进度
+  // 监听滚动，更新进度（节流父组件回调与进度 state，减轻上滑时丢帧、乱跳）
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
 
     let ticking = false;
+    let lastHeavyEmit = 0;
+    let lastProgressUi = 0;
+    const HEAVY_MS = 110;
+
     const onScroll = () => {
       if (!ticking) {
         requestAnimationFrame(() => {
           const percent = getScrollPercent();
-          setReadProgress(percent);
-          if (onProgressChange) {
-            onProgressChange(percent);
+          const now = Date.now();
+          if (now - lastProgressUi >= HEAVY_MS) {
+            lastProgressUi = now;
+            setReadProgress(percent);
           }
-          if (onParagraphIndexChange) {
-            onParagraphIndexChange(getFirstVisibleIndex());
+          if (now - lastHeavyEmit >= HEAVY_MS) {
+            lastHeavyEmit = now;
+            if (onProgressChange) {
+              onProgressChange(percent);
+            }
+            if (onParagraphIndexChange) {
+              onParagraphIndexChange(getFirstVisibleIndex());
+            }
           }
           ticking = false;
         });
@@ -800,8 +883,13 @@ const getFirstVisibleIndex = useCallback(() => {
     return () => el.removeEventListener('scroll', onScroll);
   }, [getScrollPercent, onProgressChange, onParagraphIndexChange, getFirstVisibleIndex]);
 
-  // 手势翻页
+  /**
+   * 滑动模式下的左右滑翻页；点击翻页模式下不注册（避免误判纵向为横向、preventDefault 卡住滚动）。
+   * 轴向判定偏纵向：拇指上滑常有斜向分量，误判为横向会阻断原生滚动导致卡顿、抖动。
+   */
   useEffect(() => {
+    if (clickToTurnPage) return;
+
     const el = containerRef.current;
     if (!el) return;
 
@@ -809,6 +897,14 @@ const getFirstVisibleIndex = useCallback(() => {
     let startY = 0;
     let startTime = 0;
     let direction: 'none' | 'horizontal' | 'vertical' = 'none';
+
+    const AXIS_THRESHOLD = 12;
+    /** 纵向位移需明显大于横向才视为上下浏览（放宽误触横向） */
+    const VERTICAL_DOMINANCE = 2.35;
+    /** 判定为横向翻页需横向明显大于纵向 */
+    const HORIZONTAL_DOMINANCE = 1.42;
+    /** 只有横向位移足够大才 preventDefault，避免轻微斜滑锁死滚动 */
+    const PREVENT_DEFAULT_MIN_AX = 30;
 
     const handleTouchStart = (e: TouchEvent) => {
       const touch = e.touches[0];
@@ -819,42 +915,46 @@ const getFirstVisibleIndex = useCallback(() => {
     };
 
     const handleTouchMove = (e: TouchEvent) => {
-      if (direction === 'vertical') return; // 已判定为垂直滚动，不干预
+      if (direction === 'vertical') return;
 
       const touch = e.touches[0];
       const deltaX = touch.clientX - startX;
       const deltaY = touch.clientY - startY;
+      const ax = Math.abs(deltaX);
+      const ay = Math.abs(deltaY);
 
-      // 首次判定方向（移动超过 10px 时）
-      if (direction === 'none' && (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10)) {
-        if (Math.abs(deltaX) > Math.abs(deltaY)) {
-          direction = 'horizontal';
-        } else {
+      if (direction === 'none' && (ax > AXIS_THRESHOLD || ay > AXIS_THRESHOLD)) {
+        if (ay > ax * VERTICAL_DOMINANCE) {
           direction = 'vertical';
           return;
         }
+        if (ax > ay * HORIZONTAL_DOMINANCE) {
+          direction = 'horizontal';
+        } else {
+          direction = 'vertical';
+        }
       }
 
-      // 水平滑动时阻止默认滚动
-      if (direction === 'horizontal') {
+      if (
+        direction === 'horizontal' &&
+        ax > PREVENT_DEFAULT_MIN_AX &&
+        ax > ay
+      ) {
         e.preventDefault();
       }
     };
 
     const handleTouchEnd = (e: TouchEvent) => {
-      if (direction !== 'horizontal') return; // 只处理水平滑动
+      if (direction !== 'horizontal') return;
 
       const touch = e.changedTouches[0];
       const deltaX = touch.clientX - startX;
       const deltaTime = Date.now() - startTime;
 
-      // 水平滑动 > 50px 且时间 < 800ms
       if (Math.abs(deltaX) > 50 && deltaTime < 800) {
         if (deltaX < 0) {
-          // 左滑 → 下一页
           scrollReadingPage("next");
         } else {
-          // 右滑 → 上一页
           scrollReadingPage("prev");
         }
         lastSwipeTimeRef.current = Date.now();
@@ -869,7 +969,7 @@ const getFirstVisibleIndex = useCallback(() => {
       el.removeEventListener('touchmove', handleTouchMove);
       el.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [scrollReadingPage]);
+  }, [scrollReadingPage, clickToTurnPage]);
 
   // 跳转到段落（滚动方式）
   const jumpToParagraph = useCallback((paragraphIndex: number) => {
@@ -1047,13 +1147,15 @@ const getFirstVisibleIndex = useCallback(() => {
         className="reading-wrapper" 
         style={{ 
           backgroundColor,
-          height: "100vh",
+          flex: 1,
+          minHeight: 0,
+          width: "100%",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
         }}
       >
-        {/* 阅读容器 - 滚动模式 */}
+        {/* 阅读容器 - 唯一纵向滚动层；高度随父级 flex 分配，与 clientHeight 一致 */}
         <div 
           ref={containerRef}
           className="reading-container"
@@ -1087,16 +1189,15 @@ const getFirstVisibleIndex = useCallback(() => {
             if (!rect) return;
             const clickX = e.clientX - rect.left;
             const halfWidth = rect.width / 2;
-            const el = containerRef.current;
-            if (!el) return;
             if (clickX < halfWidth) {
-              el.scrollBy({ top: -(containerHeight * pageTurnRatio), behavior: "smooth" });
+              scrollReadingPage("prev");
             } else {
-              el.scrollBy({ top: containerHeight * pageTurnRatio, behavior: "smooth" });
+              scrollReadingPage("next");
             }
           }}
           style={{
-            height: containerHeight,
+            flex: 1,
+            minHeight: 0,
             overflowY: "auto",
             overflowX: "hidden",
             position: "relative",
@@ -1156,31 +1257,40 @@ const getFirstVisibleIndex = useCallback(() => {
 
         </div>
 
-        {/* 左下角阅读进度 */}
-        <div style={{
-          position: "fixed",
-          bottom: 12,
-          left: 16,
-          backgroundColor: isDarkMode ? "rgba(30,30,46,0.85)" : "rgba(255,255,255,0.85)",
-          color: isDarkMode ? "#888" : "#999",
-          fontSize: "12px",
-          padding: "4px 8px",
-          borderRadius: "4px",
-          zIndex: 100,
-          pointerEvents: "none",
-          backdropFilter: "blur(4px)",
-        }}>
-          {readProgress.toFixed(2)}%
+        {/* 左下角阅读进度（排在正文下方，不占正文滚动层，避免遮挡） */}
+        <div
+          style={{
+            flexShrink: 0,
+            paddingLeft: 16,
+            paddingRight: 16,
+            paddingTop: READING_PROGRESS_FOOTER_PADDING_Y,
+            paddingBottom: 12,
+            pointerEvents: "none",
+          }}
+        >
+          <span
+            style={{
+              display: "inline-block",
+              backgroundColor: isDarkMode ? "rgba(30,30,46,0.85)" : "rgba(255,255,255,0.85)",
+              color: isDarkMode ? "#888" : "#999",
+              fontSize: "12px",
+              padding: "4px 8px",
+              borderRadius: "4px",
+              backdropFilter: "blur(4px)",
+            }}
+          >
+            {readProgress.toFixed(2)}%
+          </span>
         </div>
 
         <style jsx>{`
           .reading-wrapper {
-            height: 100vh;
             position: relative;
           }
 
           .reading-container {
             flex: 1;
+            min-height: 0;
           }
 
           .reader-content {
@@ -1211,11 +1321,6 @@ const getFirstVisibleIndex = useCallback(() => {
             font-family: "Microsoft YaHei", "微软雅黑", sans-serif;
           }
 
-          @media (max-width: 768px) {
-            .reading-wrapper {
-              height: 100dvh !important;
-            }
-          }
         `}</style>
       </div>
     );

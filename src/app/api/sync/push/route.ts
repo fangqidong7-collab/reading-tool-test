@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server';
 import { kv } from '@/lib/kv';
+import { canonicalBookId, normalizeBookTitle } from '@/lib/syncMerge';
+import { parseJsonBodyWithOptionalGzip } from '@/lib/syncServerBody';
+
+/** 大包合并 + 写 KV 耗时较长；部署在 Vercel 等平台时可拉长单次允许执行时间 */
+export const maxDuration = 120;
 
 // 同步数据结构
 interface VocabEntry {
@@ -30,6 +35,8 @@ interface Book {
   coverColor?: string;
   themeColor?: string;
   addedAt?: number;
+  /** 客户端上传的正文 */
+  content?: string;
   lastReadAt?: number;
   lastScrollPosition?: number;
   lastParagraphIndex?: number;
@@ -46,7 +53,11 @@ interface SyncData {
 
 export async function POST(request: Request) {
   try {
-    const { syncCode, data } = await request.json();
+    const parsed = (await parseJsonBodyWithOptionalGzip(request)) as {
+      syncCode?: string;
+      data?: SyncData;
+    };
+    const { syncCode, data } = parsed;
 
     if (!syncCode || !data) {
       return NextResponse.json({ error: 'syncCode and data required' }, { status: 400 });
@@ -63,12 +74,16 @@ export async function POST(request: Request) {
     const existingData: SyncData = JSON.parse(existing as string);
     const merged = mergeData(existingData, data);
 
-    await kv.set(key, JSON.stringify({
-      ...merged,
-      updatedAt: Date.now(),
-    }), { ex: 90 * 24 * 60 * 60 });
+    const updatedAt = Date.now();
+    const stored = { ...merged, updatedAt };
+    await kv.set(key, JSON.stringify(stored), { ex: 90 * 24 * 60 * 60 });
 
-    return NextResponse.json({ success: true, updatedAt: Date.now() });
+    // 一次往返返回合并结果，客户端无需再 pull（减一半请求，降低超时概率）
+    return NextResponse.json({
+      success: true,
+      updatedAt,
+      data: stored,
+    });
   } catch (error) {
     if (process.env.NODE_ENV !== 'production') {
       console.error('[sync/push]', error);
@@ -83,7 +98,7 @@ export async function POST(request: Request) {
 // - 标注（annotations）：取并集合并
 // - 句子标注（sentenceAnnotations）：按 id 去重取并集
 // - 书签（bookmarks）：按 id 去重取并集
-// - 当同一本书在两端有不同 bookId 时（通过 title 匹配），合并后用两个 bookId 都存储
+// - 当同一本书在两端有不同 bookId 时（通过 title 匹配），进度仍写入双方 id 便于客户端按 id 查找；书籍列表只保留一条合并记录（canonical id）
 function mergeData(remote: SyncData, local: SyncData): SyncData {
   // 1. 合并词汇表（并集，保留 correctCount 较大的）
   const mergedVocab: Record<string, VocabEntry> = { ...(remote.vocabulary || {}) };
@@ -98,26 +113,27 @@ function mergeData(remote: SyncData, local: SyncData): SyncData {
     }
   }
 
-  // 2. 建立远端的 title → bookId 映射，用于 title 回退匹配
+  // 2. 建立远端规范化书名 → bookId 映射，用于 title 回退匹配
   const remoteTitleMap: Record<string, string> = {};
   if (remote.bookProgress) {
     for (const [bid, progress] of Object.entries(remote.bookProgress)) {
       if (progress.title) {
-        remoteTitleMap[progress.title] = bid;
+        remoteTitleMap[normalizeBookTitle(progress.title)] = bid;
       }
     }
   }
 
   // 3. 合并阅读进度
   const mergedProgress: Record<string, BookProgress> = { ...(remote.bookProgress || {}) };
-  // 记录哪些 bookId 是通过 title 匹配发现的，用于双份存储
+  // 记录哪些 bookId 是通过 title 匹配发现的，用于双份存储进度（书籍列表已不再双份）
   const titleMatchedPairs: Array<{ localId: string; remoteId: string; mergedData: BookProgress }> = [];
 
   for (const [localBookId, localProgress] of Object.entries(local.bookProgress || {})) {
     if (!mergedProgress[localBookId]) {
       // 本地有，远端没有，尝试按 title 查找
-      if (localProgress.title && remoteTitleMap[localProgress.title]) {
-        const remoteBookId = remoteTitleMap[localProgress.title];
+      const nt = localProgress.title ? normalizeBookTitle(localProgress.title) : '';
+      if (nt && remoteTitleMap[nt]) {
+        const remoteBookId = remoteTitleMap[nt];
         const remoteProgress = mergedProgress[remoteBookId];
         if (remoteProgress) {
           // 两者都有，按 title 匹配成功，合并数据
@@ -136,10 +152,12 @@ function mergeData(remote: SyncData, local: SyncData): SyncData {
     }
   }
 
-  // 4. 对 title 匹配的对，用远端 bookId 也存一份（双份存储）
-  // 这样设备 A pull 时用自己的 bookId 能找到，设备 B pull 时用自己的 bookId 也能找到
+  // 4. title 匹配的进度：双方 bookId + canonical id 均指向同一份合并结果，便于各设备用本地 id 命中
   for (const pair of titleMatchedPairs) {
     mergedProgress[pair.remoteId] = pair.mergedData;
+    mergedProgress[pair.localId] = pair.mergedData;
+    const cid = canonicalBookId(pair.localId, pair.remoteId);
+    mergedProgress[cid] = pair.mergedData;
   }
 
   // 5. 合并书籍完整内容
@@ -191,46 +209,50 @@ function mergeBookProgressData(remote: BookProgress, local: BookProgress): BookP
 }
 
 // 合并书籍列表
-// 策略：按 bookId 匹配，相同则合并；找不到按 title 回退匹配，合并后双份存储
-// 合并时：基础字段（title, author 等）取一方（优先本地有内容的），标注/书签取并集
+// 策略：先 id 精确合并；再同书名不同 id 合并为一条（canonical id），避免书架出现两本相同书
 function mergeBooks(remoteBooks: Book[], localBooks: Book[]): Book[] {
   const result: Book[] = [];
   const usedLocal = new Set<string>();
   const usedRemote = new Set<string>();
-  const titleMatched: Array<{ localBook: Book; remoteBook: Book; merged: Book }> = [];
 
-  // 1. 按 bookId 精确匹配
+  // 1. bookId 完全一致
   for (const localBook of localBooks) {
-    const remoteBook = remoteBooks.find(b => b.id === localBook.id);
+    const remoteBook = remoteBooks.find((b) => b.id === localBook.id);
     if (remoteBook) {
-      const merged = mergeTwoBooks(remoteBook, localBook);
-      result.push(merged);
+      result.push(mergeTwoBooks(remoteBook, localBook));
       usedLocal.add(localBook.id);
       usedRemote.add(remoteBook.id);
-      titleMatched.push({ localBook, remoteBook, merged });
-    } else {
-      // 本地有但远端没有，保留
+    }
+  }
+
+  // 2. 书名相同但 id 不同（两台设备各生成过 uuid）
+  for (const remoteBook of remoteBooks) {
+    if (usedRemote.has(remoteBook.id)) continue;
+    const localBook = localBooks.find(
+      (b) =>
+        !usedLocal.has(b.id) &&
+        normalizeBookTitle(b.title) === normalizeBookTitle(remoteBook.title)
+    );
+    if (localBook) {
+      const merged = mergeTwoBooks(remoteBook, localBook);
+      const cid = canonicalBookId(remoteBook.id, localBook.id);
+      result.push({ ...merged, id: cid });
+      usedLocal.add(localBook.id);
+      usedRemote.add(remoteBook.id);
+    }
+  }
+
+  // 3. 仅存在于本地的书
+  for (const localBook of localBooks) {
+    if (!usedLocal.has(localBook.id)) {
       result.push(localBook);
       usedLocal.add(localBook.id);
     }
   }
 
-  // 2. 远端有但本地没有的，按 title 回退匹配
+  // 4. 仅存在于远端的书
   for (const remoteBook of remoteBooks) {
-    if (usedRemote.has(remoteBook.id)) continue;
-
-    const localBook = localBooks.find(b => b.title === remoteBook.title && !usedLocal.has(b.id));
-    if (localBook) {
-      // 按 title 匹配成功，合并后双份存储
-      const merged = mergeTwoBooks(remoteBook, localBook);
-      // 用本地的 bookId 存一份
-      result.push({ ...merged, id: localBook.id });
-      usedLocal.add(localBook.id);
-      // 用远端的 bookId 也存一份
-      result.push({ ...merged, id: remoteBook.id });
-      usedRemote.add(remoteBook.id);
-    } else {
-      // 远端有但本地没有，直接添加
+    if (!usedRemote.has(remoteBook.id)) {
       result.push(remoteBook);
       usedRemote.add(remoteBook.id);
     }
@@ -241,10 +263,18 @@ function mergeBooks(remoteBooks: Book[], localBooks: Book[]): Book[] {
 
 // 合并两本书的内容
 function mergeTwoBooks(remote: Book, local: Book): Book {
+  const lc = local.content ?? "";
+  const rc = remote.content ?? "";
+  /** 增量同步可能省略 content：空的一侧沿用另一侧正文 */
+  let mergedContent: string;
+  if (!lc) mergedContent = rc;
+  else if (!rc) mergedContent = lc;
+  else mergedContent = lc.length >= rc.length ? lc : rc;
   // 基础字段优先取本地（用户可能对 title 有修改）
   const merged: Book = {
     ...remote,
     ...local,
+    content: mergedContent,
     // paragraphs 取较长的（内容更完整）
     paragraphs: (local.paragraphs?.length || 0) >= (remote.paragraphs?.length || 0)
       ? local.paragraphs

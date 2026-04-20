@@ -2,6 +2,51 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { idbGet, idbSet } from "@/lib/storage";
+import { normalizeBookTitle } from "@/lib/syncMerge";
+
+/** 合并两本「同一书架位」的书籍字段（同步拉取用） */
+function mergeShelfBooks(existing: Book, remoteBook: Book): Book {
+  const merged: Book = { ...existing };
+  const remoteContent = remoteBook.content || "";
+  const localContent = existing.content || "";
+  merged.content =
+    remoteContent.length >= localContent.length ? remoteContent : localContent;
+  merged.lastScrollPosition = Math.max(
+    remoteBook.lastScrollPosition ?? 0,
+    existing.lastScrollPosition ?? 0
+  );
+  merged.lastParagraphIndex = Math.max(
+    remoteBook.lastParagraphIndex ?? 0,
+    existing.lastParagraphIndex ?? 0
+  );
+  merged.lastReadAt = Math.max(remoteBook.lastReadAt || 0, existing.lastReadAt || 0);
+  merged.annotations = {
+    ...(existing.annotations || {}),
+    ...(remoteBook.annotations || {}),
+  };
+  if (remoteBook.sentenceAnnotations && remoteBook.sentenceAnnotations.length > 0) {
+    const existingIds = new Set((existing.sentenceAnnotations || []).map((s) => s.id));
+    const newAnnotations = remoteBook.sentenceAnnotations.filter(
+      (s) => !existingIds.has(s.id)
+    );
+    merged.sentenceAnnotations = [
+      ...(existing.sentenceAnnotations || []),
+      ...newAnnotations,
+    ];
+  }
+  if (remoteBook.bookmarks && remoteBook.bookmarks.length > 0) {
+    const existingIds = new Set((existing.bookmarks || []).map((b) => b.id));
+    const newBookmarks = remoteBook.bookmarks.filter((b) => !existingIds.has(b.id));
+    merged.bookmarks = [...(existing.bookmarks || []), ...newBookmarks];
+  }
+  if (remoteBook.title && !existing.title) {
+    merged.title = remoteBook.title;
+  }
+  if (remoteBook.tableOfContents && !existing.tableOfContents) {
+    merged.tableOfContents = remoteBook.tableOfContents;
+  }
+  return merged;
+}
 
 // Processed content segment type
 export interface ProcessedSegment {
@@ -517,82 +562,46 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
 
         // 遍历远端书籍，合并到 Map
         for (const remoteBook of incoming) {
-          const existing = booksMap.get(remoteBook.id);
+          let existing = booksMap.get(remoteBook.id);
+
+          // 服务端已合并为 canonical id，本地仍可能留有「同书名、旧 uuid」的一条
+          if (!existing) {
+            const dup = [...booksMap.values()].find(
+              (b) =>
+                !b.isSample &&
+                !remoteBook.isSample &&
+                normalizeBookTitle(b.title) === normalizeBookTitle(remoteBook.title)
+            );
+            if (dup) {
+              existing = dup;
+              const merged = mergeShelfBooks(existing, remoteBook);
+              merged.id = remoteBook.id;
+              booksMap.delete(dup.id);
+              booksMap.set(merged.id, {
+                ...merged,
+                processedContent: undefined,
+              });
+              continue;
+            }
+          }
 
           if (!existing) {
-            // 本地不存在该书：插入（去掉 processedContent 避免脏缓存）
             booksMap.set(remoteBook.id, {
               ...remoteBook,
               processedContent: undefined,
             });
-          } else if (existing.isSample) {
-            // 本地示例书，跳过远端同 id 覆盖
-            // 保持本地示例书不变
-          } else {
-            // 本地已存在该书（非示例）：智能合并
-            const merged: Book = { ...existing };
-
-            // content：优先保留「非空且更长」的字符串
-            const remoteContent = remoteBook.content || '';
-            const localContent = existing.content || '';
-            merged.content = remoteContent.length >= localContent.length
-              ? remoteContent
-              : localContent;
-
-            // lastScrollPosition / lastParagraphIndex：取数值较大的
-            merged.lastScrollPosition = Math.max(
-              remoteBook.lastScrollPosition ?? 0,
-              existing.lastScrollPosition ?? 0
-            );
-            merged.lastParagraphIndex = Math.max(
-              remoteBook.lastParagraphIndex ?? 0,
-              existing.lastParagraphIndex ?? 0
-            );
-
-            // lastReadAt：取 Math.max
-            merged.lastReadAt = Math.max(
-              remoteBook.lastReadAt || 0,
-              existing.lastReadAt || 0
-            );
-
-            // annotations：取并集合并
-            merged.annotations = {
-              ...(existing.annotations || {}),
-              ...(remoteBook.annotations || {}),
-            };
-
-            // sentenceAnnotations：按 id 去重追加
-            if (remoteBook.sentenceAnnotations && remoteBook.sentenceAnnotations.length > 0) {
-              const existingIds = new Set((existing.sentenceAnnotations || []).map(s => s.id));
-              const newAnnotations = remoteBook.sentenceAnnotations.filter(s => !existingIds.has(s.id));
-              merged.sentenceAnnotations = [
-                ...(existing.sentenceAnnotations || []),
-                ...newAnnotations,
-              ];
-            }
-
-            // bookmarks：按 id 去重追加
-            if (remoteBook.bookmarks && remoteBook.bookmarks.length > 0) {
-              const existingIds = new Set((existing.bookmarks || []).map(b => b.id));
-              const newBookmarks = remoteBook.bookmarks.filter(b => !existingIds.has(b.id));
-              merged.bookmarks = [
-                ...(existing.bookmarks || []),
-                ...newBookmarks,
-              ];
-            }
-
-            // title：远端非空则覆盖空字段
-            if (remoteBook.title && !existing.title) {
-              merged.title = remoteBook.title;
-            }
-
-            // tableOfContents：远端非空则覆盖空字段
-            if (remoteBook.tableOfContents && !existing.tableOfContents) {
-              merged.tableOfContents = remoteBook.tableOfContents;
-            }
-
-            booksMap.set(existing.id, merged);
+            continue;
           }
+
+          if (existing.isSample) {
+            continue;
+          }
+
+          const merged = mergeShelfBooks(existing, remoteBook);
+          booksMap.set(existing.id, {
+            ...merged,
+            processedContent: undefined,
+          });
         }
 
         // 转换回数组

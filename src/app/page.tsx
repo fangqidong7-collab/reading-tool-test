@@ -7,7 +7,13 @@ import { ReadingHomeView } from "@/app/_home/ReadingHomeView";
 import { useSync } from "@/hooks/useSync";
 import { usePeriodicSync } from "@/hooks/usePeriodicSync";
 import JSLibLoader from "@/components/JSLibLoader";
-import { useBookshelf, ProcessedContent, SentenceAnnotation } from "@/hooks/useBookshelf";
+import { useBookshelf, ProcessedContent, SentenceAnnotation, type Book } from "@/hooks/useBookshelf";
+import {
+  buildIncrementalBookPayload,
+  hashBooksToMap,
+  loadBookHashMap,
+  saveBookHashMap,
+} from "@/lib/syncIncrementalClient";
 import { useReadingSettings } from "@/hooks/useReadingSettings";
 import { lemmatize, getWordMeaning, getWordMeaningEn, findWordFamily, loadBuiltinDictionary, loadBuiltinDictionaryEn } from "@/lib/dictionary";
 import { translateWord, translateWordEn, translateSentence } from "@/lib/translate";
@@ -69,8 +75,6 @@ export default function Home() {
     resetToDefault,
     dictMode,
     setDictMode,
-    pageTurnRatio,
-    setPageTurnRatio,
     clickToTurnPage,
     setClickToTurnPage,
   } = useReadingSettings();
@@ -184,15 +188,32 @@ export default function Home() {
     };
   }, [globalVocabulary, books]);
 
+  /** gzip + 增量正文（与上次指纹一致的书省略正文上传） */
+  const prepareSyncPayload = useCallback(async () => {
+    const base = buildSyncData();
+    const prev = syncCode ? loadBookHashMap(syncCode) : null;
+    const { booksOut, contentHashes } = await buildIncrementalBookPayload(
+      base.books as Book[],
+      prev
+    );
+    return {
+      payload: { ...base, books: booksOut },
+      contentHashes,
+    };
+  }, [buildSyncData, syncCode]);
+
   // Handle create sync - push current local data to cloud
   const handleCreateSync = useCallback(async () => {
-    const data = buildSyncData();
-    const code = await createSync(data);
+    const { payload, contentHashes } = await prepareSyncPayload();
+    const code = await createSync(payload);
+    if (code && contentHashes) {
+      saveBookHashMap(code, contentHashes);
+    }
     if (code) {
       console.log('已生成同步码:', code);
       setSyncJustCreated(true);
     }
-  }, [buildSyncData, createSync]);
+  }, [prepareSyncPayload, createSync]);
 
   // Handle bind existing sync code - pull data from cloud and merge
   const handleBindSync = useCallback(async (code: string) => {
@@ -247,17 +268,36 @@ export default function Home() {
       if (remoteData.books && mergeBooksFromRemote) {
         mergeBooksFromRemote(remoteData.books as import("@/hooks/useBookshelf").Book[]);
       }
+      if (remoteData.books?.length) {
+        try {
+          const hashes = await hashBooksToMap(
+            (remoteData.books as Book[]).map((b) => ({
+              id: b.id,
+              content: b.content ?? "",
+            }))
+          );
+          saveBookHashMap(code.toUpperCase(), hashes);
+        } catch {
+          /* 指纹写入失败不影响绑定 */
+        }
+      }
     }
   }, [bindSyncCode, globalVocabulary, addToGlobalVocabulary, books, updateScrollPosition, mergeBookProgress, mergeBooksFromRemote]);
 
-  // Handle sync - bidirectional sync (push local then pull merged result)
+  // Handle sync - bidirectional sync（单次 push 返回合并结果 + 增量正文 + gzip）
   const handleSync = useCallback(async () => {
-    const remoteData = await syncBoth(buildSyncData());
+    const { payload, contentHashes } = await prepareSyncPayload();
+    const remoteData = await syncBoth(payload);
     if (!remoteData) return;
+    if (syncCode && contentHashes) {
+      saveBookHashMap(syncCode, contentHashes);
+    }
 
     // 用服务端合并后的数据更新本地
     if (remoteData.vocabulary) {
-      mergeGlobalVocabulary(remoteData.vocabulary);
+      mergeGlobalVocabulary(
+        remoteData.vocabulary as Parameters<typeof mergeGlobalVocabulary>[0]
+      );
     }
 
     if (remoteData.bookProgress) {
@@ -292,17 +332,31 @@ export default function Home() {
     if (remoteData.books && mergeBooksFromRemote) {
       mergeBooksFromRemote(remoteData.books as import("@/hooks/useBookshelf").Book[]);
     }
-  }, [syncBoth, buildSyncData, books, mergeGlobalVocabulary, mergeBookProgress, mergeBooksFromRemote]);
+  }, [
+    prepareSyncPayload,
+    syncBoth,
+    syncCode,
+    books,
+    mergeGlobalVocabulary,
+    mergeBookProgress,
+    mergeBooksFromRemote,
+  ]);
 
   // 自动同步专用：仅返回远程数据，不做本地合并（由 hook 调用方决定何时合并）
   // 这里复用 handleSync 的逻辑，但通过回调通知外部有新的远程数据
   const performSyncForPeriodic = useCallback(async () => {
-    const remoteData = await syncBoth(buildSyncData());
+    const { payload, contentHashes } = await prepareSyncPayload();
+    const remoteData = await syncBoth(payload);
     if (!remoteData) return null;
+    if (syncCode && contentHashes) {
+      saveBookHashMap(syncCode, contentHashes);
+    }
 
     // 复用 handleSync 的合并逻辑
     if (remoteData.vocabulary) {
-      mergeGlobalVocabulary(remoteData.vocabulary);
+      mergeGlobalVocabulary(
+        remoteData.vocabulary as Parameters<typeof mergeGlobalVocabulary>[0]
+      );
     }
 
     if (remoteData.bookProgress) {
@@ -335,7 +389,15 @@ export default function Home() {
     }
 
     return remoteData;
-  }, [syncBoth, buildSyncData, books, mergeGlobalVocabulary, mergeBookProgress, mergeBooksFromRemote]);
+  }, [
+    prepareSyncPayload,
+    syncBoth,
+    syncCode,
+    books,
+    mergeGlobalVocabulary,
+    mergeBookProgress,
+    mergeBooksFromRemote,
+  ]);
 
   // 启用自动定时同步（仅前台 + 每小时 + 需 syncCode）
   usePeriodicSync({
@@ -1174,7 +1236,6 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
       lineHeight={lineHeight}
       currentTheme={currentTheme}
       dictMode={dictMode}
-      pageTurnRatio={pageTurnRatio}
       clickToTurnPage={clickToTurnPage}
       dictLoadStatus={dictLoadStatus}
       syncPanelOpen={syncPanelOpen}
@@ -1215,7 +1276,6 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
       setBackgroundTheme={setBackgroundTheme}
       resetToDefault={resetToDefault}
       setDictMode={setDictMode}
-      setPageTurnRatio={setPageTurnRatio}
       setClickToTurnPage={setClickToTurnPage}
       setCurrentScrollPercent={setCurrentScrollPercent}
       setCurrentParagraphIndex={setCurrentParagraphIndex}
