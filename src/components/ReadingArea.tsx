@@ -167,24 +167,6 @@ function trimTopAlignedOnly(
   }
 }
 
-/** WebView / Android：`key`、`code`、legacy `keyCode` 组合因内核而异 */
-function getVolumeDirection(e: KeyboardEvent): "up" | "down" | null {
-  const key = e.key;
-  if (key === "AudioVolumeUp" || key === "VolumeUp") return "up";
-  if (key === "AudioVolumeDown" || key === "VolumeDown") return "down";
-
-  const code = e.code;
-  if (code === "VolumeUp" || code === "AudioVolumeUp") return "up";
-  if (code === "VolumeDown" || code === "AudioVolumeDown") return "down";
-
-  const kc = e.keyCode;
-  // 常见 Chromium legacy：174/175；部分 WebView 映射 Android KEYCODE_VOLUME_*：24/25
-  if (kc === 175 || kc === 24) return "up";
-  if (kc === 174 || kc === 25) return "down";
-
-  return null;
-}
-
 // Ref type
 export interface ReadingAreaRef {
   jumpToParagraph: (paragraphIndex: number) => void;
@@ -600,18 +582,6 @@ export const ReadingArea = forwardRef(function ReadingArea({
   const [readProgress, setReadProgress] = useState(0);
   const lastSwipeTimeRef = useRef(0);
   const lastProgrammaticPageTurnAt = useRef(0);
-  /**
-   * 桌面端等环境若真能收到音量键事件：keydown 成功后记录时间，短时内的 keyup 视为同一击（避免双翻）。
-   * Android 滑动模式下调不到此处（见下方 effect）。
-   */
-  const lastVolumeKeydownNavAtRef = useRef<number | null>(null);
-
-  /** Android + 滑动翻页：音量由 VIA/WebView「内置音量翻页」滚阅读区，页面通常收不到 key 事件；勿用 JS 拦截。 */
-  const isAndroidSwipeScrollMode =
-    typeof navigator !== "undefined" &&
-    /Android/i.test(navigator.userAgent) &&
-    !clickToTurnPage;
-
   const virtualizer = useVirtualizer({
     count: processedContent ? processedContent.length : 0,
     getScrollElement: () => containerRef.current,
@@ -621,21 +591,15 @@ export const ReadingArea = forwardRef(function ReadingArea({
   });
 
   /**
-   * 点击 / 横滑手势翻页；若环境能收到音量键（非 Android 滑动模式），亦可由此翻页。
+   * 横滑手势 / 点击半屏翻页；不处理音量键（由系统或浏览器侧功能负责）。
    * @returns 是否实际发起了本次翻页（未因节流等原因跳过）
    */
-  const scrollReadingPage = useCallback(
-    (
-      direction: "next" | "prev",
-      opts?: { bypassThrottle?: boolean }
-    ): boolean => {
+  const scrollReadingPage = useCallback((direction: "next" | "prev"): boolean => {
     const el = containerRef.current;
     if (!el) return false;
 
     const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-    if (!opts?.bypassThrottle) {
-      if (now - lastProgrammaticPageTurnAt.current < 220) return false;
-    }
+    if (now - lastProgrammaticPageTurnAt.current < 220) return false;
     lastProgrammaticPageTurnAt.current = now;
 
     const pageH = el.clientHeight;
@@ -664,53 +628,6 @@ export const ReadingArea = forwardRef(function ReadingArea({
     });
     return true;
   }, [fontSize, lineHeight, processedContent, virtualizer]);
-
-  /**
-   * 仅在「页面可能收到音量键」的环境注册监听。
-   * Android + 滑动模式：依赖浏览器/VIA 内置音量翻页滚动 `.reading-container`，此处注册无效且不应 preventDefault。
-   */
-  useEffect(() => {
-    if (isAndroidSwipeScrollMode) return;
-
-    const PAIR_SUPPRESS_MS = 320;
-    const volOpts = { bypassThrottle: true } as const;
-
-    const handleVolume = (e: KeyboardEvent) => {
-      const dir = getVolumeDirection(e);
-      if (!dir) return;
-
-      e.preventDefault();
-      e.stopPropagation();
-
-      const now =
-        typeof performance !== "undefined" ? performance.now() : Date.now();
-
-      if (e.type === "keydown") {
-        const ok = scrollReadingPage(
-          dir === "up" ? "prev" : "next",
-          volOpts
-        );
-        if (ok) {
-          lastVolumeKeydownNavAtRef.current = now;
-        }
-        return;
-      }
-
-      const lastKd = lastVolumeKeydownNavAtRef.current;
-      if (lastKd !== null && now - lastKd < PAIR_SUPPRESS_MS) {
-        return;
-      }
-      scrollReadingPage(dir === "up" ? "prev" : "next", volOpts);
-    };
-
-    const opts: AddEventListenerOptions = { capture: true };
-    window.addEventListener("keydown", handleVolume, opts);
-    window.addEventListener("keyup", handleVolume, opts);
-    return () => {
-      window.removeEventListener("keydown", handleVolume, opts);
-      window.removeEventListener("keyup", handleVolume, opts);
-    };
-  }, [scrollReadingPage, isAndroidSwipeScrollMode]);
 
   // 文本选择功能 - 句子翻译
   const handleTextSelection = useCallback(() => {
