@@ -20,8 +20,6 @@ interface SettingsPanelProps {
   isDarkMode: boolean;
   dictMode: 'zh' | 'en';
   onDictModeChange: (mode: 'zh' | 'en') => void;
-  pageTurnRatio: number;
-  onPageTurnRatioChange: (ratio: number) => void;
   clickToTurnPage: boolean;
   onClickToTurnPageChange: (v: boolean) => void;
 }
@@ -42,8 +40,6 @@ export function SettingsPanel({
   isDarkMode,
   dictMode,
   onDictModeChange,
-  pageTurnRatio,
-  onPageTurnRatioChange,
   clickToTurnPage,
   onClickToTurnPageChange,
 }: SettingsPanelProps) {
@@ -162,35 +158,14 @@ export function SettingsPanel({
             </div>
           </div>
 
-          {/* Page Turn Ratio */}
-          <div className="setting-item">
-            <div className="setting-label">
-              <span className="label-text">50%</span>
-              <span className="label-text">翻页幅度</span>
-              <span className="label-text">100%</span>
-            </div>
-            <div className="setting-control">
-              <input
-                type="range"
-                min="0.5"
-                max="1.0"
-                step="0.05"
-                value={pageTurnRatio}
-                onChange={(e) => onPageTurnRatioChange(Number(e.target.value))}
-                className="slider"
-              />
-              <span className="setting-value" style={{ color: textColor }}>
-                {Math.round(pageTurnRatio * 100)}%
-              </span>
-            </div>
-          </div>
-
           {/* Click to Turn Page */}
           <div className="setting-item">
             <div className="setting-label">
               <span className="label-text">点击翻页</span>
               <span className="label-text" style={{ fontSize: 12, opacity: 0.6 }}>
-                {clickToTurnPage ? '点击屏幕左/右翻页' : '自由滑动浏览'}
+                {clickToTurnPage
+                  ? '点击左/右半屏整页翻动'
+                  : '左右滑动整页翻动；明显纵向滑动可上下浏览'}
               </span>
             </div>
             <div className="mode-options">

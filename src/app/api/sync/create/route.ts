@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import { kv } from '@/lib/kv';
+import { parseJsonBodyWithOptionalGzip } from '@/lib/syncServerBody';
+
+export const maxDuration = 120;
 
 // 生成 6 位随机同步码
 function generateSyncCode(): string {
@@ -13,7 +16,8 @@ function generateSyncCode(): string {
 
 export async function POST(request: Request) {
   try {
-    const { data } = await request.json();
+    const parsed = (await parseJsonBodyWithOptionalGzip(request)) as { data?: unknown };
+    const { data } = parsed;
 
     // data 包含: { vocabulary, bookProgress, settings, updatedAt }
     if (!data) {
