@@ -152,6 +152,23 @@ function trimAfterPageTurnPreferTop(
   }
 }
 
+/**
+ * 仅顶边整行对齐，不裁视口底边。用于安卓 VIA 等「原生滚一屏 + 事后 trim」：
+ * 向下翻时虚拟列表刚挂载，行框若未稳定，`trimHalfLineOffBottomForNextPage` 易误判，
+ * 把 scrollTop 大幅上提，表现为「向下只能翻一页 / 翻不动」。
+ */
+function trimTopAlignedOnly(
+  scrollEl: HTMLElement,
+  contentRoot: HTMLElement,
+  minMainLineHeight: number
+): void {
+  for (let i = 0; i < 8; i++) {
+    const before = scrollEl.scrollTop;
+    trimHalfLineAtTop(scrollEl, contentRoot, minMainLineHeight);
+    if (Math.abs(scrollEl.scrollTop - before) < 0.5) break;
+  }
+}
+
 // Ref type
 export interface ReadingAreaRef {
   jumpToParagraph: (paragraphIndex: number) => void;
@@ -566,8 +583,8 @@ export const ReadingArea = forwardRef(function ReadingArea({
   const pointerDownScrollTopRef = useRef(0);
   /** 安卓滑动模式：音量键交给浏览器/WebView 原生滚动后，仅做一次 trim（避免与 scrollReadingPage 双重滚动） */
   const pendingAndroidVolumeTrimRef = useRef(false);
-  const volumeTrimFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const volumeTrimScrollDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const volumeTrimFallbackTimerRef = useRef<number | null>(null);
+  const volumeTrimScrollDebounceRef = useRef<number | null>(null);
 
   const [readProgress, setReadProgress] = useState(0);
   const lastSwipeTimeRef = useRef(0);
@@ -632,7 +649,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
       const el = containerRef.current;
       const r = contentRef.current;
       if (!el || !r) return;
-      trimAfterPageTurnPreferTop(el, r, minMain);
+      trimTopAlignedOnly(el, r, minMain);
     };
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -671,10 +688,10 @@ export const ReadingArea = forwardRef(function ReadingArea({
       if (volumeTrimScrollDebounceRef.current !== null) {
         clearTimeout(volumeTrimScrollDebounceRef.current);
       }
-      volumeTrimScrollDebounceRef.current = setTimeout(() => {
+      volumeTrimScrollDebounceRef.current = window.setTimeout(() => {
         volumeTrimScrollDebounceRef.current = null;
         flushTrim();
-      }, 120);
+      }, 160);
     };
 
     el.addEventListener("scroll", onScroll, { passive: true });
@@ -707,21 +724,23 @@ export const ReadingArea = forwardRef(function ReadingArea({
        */
       if (isAndroidSwipeScrollMode) {
         e.stopPropagation();
-        const now =
-          typeof performance !== "undefined" ? performance.now() : Date.now();
-        if (now - lastProgrammaticPageTurnAt.current < 220) return;
-        lastProgrammaticPageTurnAt.current = now;
+        /** 不设 220ms 节流：原生滚屏不由我们触发，节流只会漏掉连续音量键或误拦第二轮 keydown */
 
         pendingAndroidVolumeTrimRef.current = true;
-        if (volumeTrimFallbackTimerRef.current !== null) {
-          clearTimeout(volumeTrimFallbackTimerRef.current);
+        /**
+         * 仅在没有兜底定时器时才启动：若每次 keydown 都 clear+重置 400ms，
+         * 第二次音量下若未产生 scroll（VIA 常见），pending 永远不清；
+         * 连续按「下」还会把兜底无限推迟；按「上」产生 scroll 才碰巧 flush——
+         * 与「再上一下才能再下」现象一致。
+         */
+        if (volumeTrimFallbackTimerRef.current === null) {
+          volumeTrimFallbackTimerRef.current = window.setTimeout(() => {
+            volumeTrimFallbackTimerRef.current = null;
+            if (!pendingAndroidVolumeTrimRef.current) return;
+            runTrimAfterVolumeNativeScroll();
+            pendingAndroidVolumeTrimRef.current = false;
+          }, 400);
         }
-        volumeTrimFallbackTimerRef.current = setTimeout(() => {
-          volumeTrimFallbackTimerRef.current = null;
-          if (!pendingAndroidVolumeTrimRef.current) return;
-          runTrimAfterVolumeNativeScroll();
-          pendingAndroidVolumeTrimRef.current = false;
-        }, 400);
         return;
       }
 
