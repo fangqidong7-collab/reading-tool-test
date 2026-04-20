@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { lemmatize, getWordMeaning, getWordMeaningEn } from "@/lib/dictionary";
 import { lookupExternalDict, lookupExternalDictEn } from "@/lib/dictLoader";
 import { speakWord } from "@/lib/speak";
-import { shortenTranslation } from "@/lib/annotationText";
+
 
 interface WordTooltipProps {
   word: string;
@@ -24,6 +24,53 @@ interface WordTooltipProps {
   bgColor?: string;
   textColor?: string;
   accentColor?: string;
+}
+
+
+/**
+ * Shorten translation text - keep only 1-2 most concise meanings
+ */
+function shortenTranslation(text: string): string {
+  if (!text) return '未知';
+  
+  // First, clean the text (remove POS tags, brackets, etc.)
+  let cleaned = text;
+  cleaned = cleaned.replace(/^[a-z]+\.(?:\/[a-z]+\.)*\s*/gi, '');
+  cleaned = cleaned.replace(/^(名词|动词|形容词|副词|介词|连词|代词|冠词|感叹词|数词|前缀|后缀)[;；\s]*/g, '');
+  cleaned = cleaned.replace(/^[.。:：]+/, '');
+  cleaned = cleaned.replace(/\[[^\]]+\]/g, '');
+  cleaned = cleaned.replace(/\s+/g, ' ');
+  cleaned = cleaned.replace(/^[，。、；：.!?,]+/, '').replace(/[，。、；：.!?,]+$/, '');
+  cleaned = cleaned.trim();
+  
+  if (!cleaned) return '未知';
+  
+  // Split by various separators
+  let items = cleaned.split(/[;；,，、/\n\\n]+/);
+  
+  // Clean each item and filter: must have Chinese characters, max 6 chars each
+  items = items
+    .map(s => s.trim())
+    .filter(s => s.length > 0 && s.length <= 6)
+    .filter(s => /[\u4e00-\u9fff]/.test(s));
+  
+  // Take first 2 items
+  items = items.slice(0, 2);
+  
+  if (items.length === 0) {
+    // Fallback: be more lenient, just take first 2 parts and extract Chinese
+    items = cleaned.split(/[;；,，、/\n\\n]+/)
+      .map(s => s.trim())
+      .filter(s => s.length > 0)
+      .slice(0, 2);
+    // Extract Chinese characters only, max 4 chars each
+    items = items.map(s => {
+      const chinese = s.replace(/[^\u4e00-\u9fff]/g, '');
+      return chinese.substring(0, 4);
+    }).filter(s => s.length > 0);
+  }
+  
+  return items.length > 0 ? items.join(',') : '未知';
 }
 
 export function WordTooltip({
@@ -58,8 +105,8 @@ const displayMeaning =
   dictMode === "en"
     ? (annotation?.meaning || getWordMeaningEn(root) || externalEnRaw || null)
     : (internalZhEntry
-        ? shortenTranslation(internalZhEntry.meaning, "zh")
-        : (externalZhRaw ? shortenTranslation(externalZhRaw, "zh") : null));
+        ? shortenTranslation(internalZhEntry.meaning)
+        : (externalZhRaw ? shortenTranslation(externalZhRaw) : null));
 
 
 const displayEntry = displayMeaning
@@ -166,17 +213,8 @@ const displayEntry = displayMeaning
         <div className="tooltip-actions">
           {isAnnotated ? (
             <button
-              type="button"
               className="tooltip-btn tooltip-btn-remove"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-              }}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onRemoveAnnotation(word);
-              }}
+              onClick={() => onRemoveAnnotation(word)}
             >
               取消标注
             </button>

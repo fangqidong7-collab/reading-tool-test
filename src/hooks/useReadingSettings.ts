@@ -22,6 +22,7 @@ export interface ReadingSettingsStorage {
   backgroundTheme: string;
   sidebarOpenByBook: Record<string, boolean>;
   dictMode: 'zh' | 'en';
+  pageTurnRatio: number;
   clickToTurnPage: boolean;
 }
 
@@ -79,6 +80,7 @@ function loadSettingsFromStorage(): ReadingSettingsStorage {
       backgroundTheme: "cream",
       sidebarOpenByBook: {},
       dictMode: "zh",
+      pageTurnRatio: 0.9,
       clickToTurnPage: false,
     };
   }
@@ -102,6 +104,7 @@ function loadSettingsFromStorage(): ReadingSettingsStorage {
     backgroundTheme: "cream",
     sidebarOpenByBook: {},
     dictMode: "zh",
+    pageTurnRatio: 0.9,
     clickToTurnPage: false,
   };
 }
@@ -124,10 +127,12 @@ export function useReadingSettings() {
     backgroundTheme: "cream",
     sidebarOpenByBook: {},
     dictMode: "zh",
+    pageTurnRatio: 0.9,
     clickToTurnPage: false,
   });
   const [isLoaded, setIsLoaded] = useState(false);
   const [dictMode, setDictModeState] = useState<'zh' | 'en'>('zh');
+  const [pageTurnRatio, setPageTurnRatioState] = useState(0.9);
   const [clickToTurnPage, setClickToTurnPageState] = useState(false);
 
   // Load settings on mount
@@ -135,6 +140,7 @@ export function useReadingSettings() {
     const loaded = loadSettingsFromStorage();
     setStorage(loaded);
     setDictModeState(loaded.dictMode || 'zh');
+    setPageTurnRatioState(loaded.pageTurnRatio ?? 0.9);
     setClickToTurnPageState(loaded.clickToTurnPage ?? false);
     const colors = getThemeColors(loaded.backgroundTheme);
     setSettings({
@@ -154,6 +160,7 @@ export function useReadingSettings() {
         backgroundTheme: storage.backgroundTheme,
         sidebarOpenByBook: storage.sidebarOpenByBook,
         dictMode: storage.dictMode,
+        pageTurnRatio: storage.pageTurnRatio,
         clickToTurnPage: storage.clickToTurnPage,
       });
     }
@@ -219,6 +226,7 @@ export function useReadingSettings() {
       clickToTurnPage: false,
     }));
     setDictModeState('zh');
+    setPageTurnRatioState(0.9);
     setClickToTurnPageState(false);
   }, []);
 
@@ -226,6 +234,13 @@ export function useReadingSettings() {
   const setDictMode = useCallback((mode: 'zh' | 'en') => {
     setDictModeState(mode);
     setStorage((prev) => ({ ...prev, dictMode: mode }));
+  }, []);
+
+  // Set page turn ratio
+  const setPageTurnRatio = useCallback((ratio: number) => {
+    const clamped = Math.max(0.5, Math.min(1.0, ratio));
+    setPageTurnRatioState(clamped);
+    setStorage((prev) => ({ ...prev, pageTurnRatio: clamped }));
   }, []);
 
   // Set click to turn page mode
@@ -261,6 +276,8 @@ export function useReadingSettings() {
     resetToDefault,
     dictMode,
     setDictMode,
+    pageTurnRatio,
+    setPageTurnRatio,
     clickToTurnPage,
     setClickToTurnPage,
   };

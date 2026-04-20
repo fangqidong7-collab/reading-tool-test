@@ -1,6 +1,20 @@
-// 词形还原、词表等仍在本文件；中/英释义仅走外部词典（dictLoader），不再使用内置 JSON。
+// 常用英语词典 - 已移至 public/dict_builtin.json，动态加载
+let englishDictionary: Record<string, { meaning: string; pos: string }> = {};
+let builtinDictLoaded = false;
 
-import { lookupExternalDict, lookupExternalDictEn } from "./dictLoader";
+export async function loadBuiltinDictionary(): Promise<void> {
+  if (builtinDictLoaded) return;
+  try {
+    const resp = await fetch('/dict_builtin.json');
+    if (resp.ok) {
+      englishDictionary = await resp.json();
+      builtinDictLoaded = true;
+      console.log('内置词典加载完成, 词条数:', Object.keys(englishDictionary).length);
+    }
+  } catch (e) {
+    console.warn('内置词典加载失败:', e);
+  }
+}
 
 // 不规则动词表 - 过去式/过去分词 -> 原形
 export const irregularVerbs: Record<string, string> = {
@@ -932,12 +946,10 @@ export function lemmatize(word: string): string {
 }
 
 /**
- * 中文释义：仅查外部 dict.json（lookupExternalDict 内含智能变体）
+ * 获取单词的中文释义 - 使用智能后缀去除
  */
 export function getWordMeaning(word: string): { meaning: string; pos: string } | null {
-  const meaning = lookupExternalDict(word);
-  if (!meaning) return null;
-  return { meaning, pos: "" };
+  return smartLookup(word);
 }
 
 /**
@@ -946,10 +958,11 @@ export function getWordMeaning(word: string): { meaning: string; pos: string } |
 export function findWordFamily(root: string, text: string): string[] {
   const lowerRoot = root.toLowerCase();
   const family: Set<string> = new Set();
-
+  
+  // 正则匹配单词
   const wordRegex = /[a-zA-Z]+/g;
   let match;
-
+  
   while ((match = wordRegex.exec(text)) !== null) {
     const word = match[0].toLowerCase();
     const wordRoot = lemmatize(word);
@@ -957,13 +970,204 @@ export function findWordFamily(root: string, text: string): string[] {
       family.add(match[0]);
     }
   }
-
+  
   return Array.from(family);
 }
 
 /**
- * 英英释义：仅查外部 dict_en.json
+ * 智能去后缀 - 尝试多种可能的还原形式
  */
+function getStemVariants(word: string): string[] {
+	const variants: string[] = [];
+	const lower = word.toLowerCase();
+	
+	// 双写辅音字母列表（常见需要双写的辅音结尾）
+	const doubleConsonants = ['b', 'd', 'g', 'm', 'n', 'p', 'r', 's', 't'];
+	
+	// 以e结尾的动词（去e加ing/ed）
+	const vowelEnding = /[aeiou]$/;
+	
+	// 以辅音+y结尾（去y加ied）
+	const consonantYEnding = /[bcdfghjklmnpqrstvwxyz]y$/i;
+	
+	// 去-ed时尝试的各种形式
+	if (lower.endsWith('ed')) {
+		const base = lower.slice(0, -2);
+		variants.push(base);
+		variants.push(base + 'e');
+		variants.push(lower.slice(0, -1));
+		if (base.length >= 2) {
+			const lastTwo = base.slice(-2);
+			if (lastTwo[0] === lastTwo[1] && doubleConsonants.includes(lastTwo[0])) {
+				variants.push(base.slice(0, -1));
+			}
+		}
+		if (consonantYEnding.test(base)) {
+			variants.push(base.slice(0, -1) + 'ied');
+		}
+	}
+	
+	// 去-ing时尝试的各种形式
+	if (lower.endsWith('ing')) {
+		const base = lower.slice(0, -3);
+		variants.push(base);
+		if (vowelEnding.test(base.slice(-2, -1))) {
+			variants.push(base + 'e');
+		}
+		if (base.length >= 2) {
+			const lastTwo = base.slice(-2);
+			if (lastTwo[0] === lastTwo[1] && doubleConsonants.includes(lastTwo[0])) {
+				variants.push(base.slice(0, -1));
+			}
+		}
+	}
+	
+	// 去-s时尝试的各种形式
+	if (lower.endsWith('s') && lower.length > 2) {
+		const base = lower.slice(0, -1);
+		if (lower.endsWith('es')) {
+			const baseEs = lower.slice(0, -2);
+			variants.push(baseEs);
+			if (/[shxz]/.test(baseEs.slice(-1)) || baseEs.endsWith('ch') || baseEs.endsWith('o')) {
+				variants.push(baseEs);
+			}
+			if (consonantYEnding.test(baseEs)) {
+				variants.push(baseEs.slice(0, -1) + 'ied');
+			}
+		}
+		variants.push(base);
+		if (consonantYEnding.test(base)) {
+			variants.push(base.slice(0, -1) + 'ies');
+		}
+	}
+	
+	// 去-er时尝试的各种形式
+	if (lower.endsWith('er')) {
+		const base = lower.slice(0, -2);
+		variants.push(base);
+		variants.push(base + 'e');
+		if (base.length >= 2) {
+			const lastTwo = base.slice(-2);
+			if (lastTwo[0] === lastTwo[1] && doubleConsonants.includes(lastTwo[0])) {
+				variants.push(base.slice(0, -1));
+			}
+		}
+	}
+	
+	// 去-est时尝试的各种形式
+	if (lower.endsWith('est')) {
+		const base = lower.slice(0, -3);
+		variants.push(base);
+		variants.push(base + 'e');
+		if (base.length >= 2) {
+			const lastTwo = base.slice(-2);
+			if (lastTwo[0] === lastTwo[1] && doubleConsonants.includes(lastTwo[0])) {
+				variants.push(base.slice(0, -1));
+			}
+		}
+	}
+	
+	// 去-ly时尝试的各种形式
+	if (lower.endsWith('ly')) {
+		const base = lower.slice(0, -2);
+		variants.push(base);
+		variants.push(base + 'le');
+		variants.push(base + 'y');
+		if (lower.endsWith('ally')) {
+			variants.push(lower.slice(0, -4));
+		}
+	}
+	
+	// 去后缀后再去后缀
+	if (variants.length > 0) {
+		const uniqueVariants = [...new Set(variants)];
+		for (const v of uniqueVariants) {
+			if (v !== lower && v.length > 2) {
+				const recursive = getStemVariants(v);
+				for (const r of recursive) {
+					if (!variants.includes(r)) {
+						variants.push(r);
+					}
+				}
+			}
+		}
+	}
+	
+	const unique = [...new Set(variants)];
+	return unique.filter(v => v.length >= 2 && v !== lower);
+}
+
+/**
+ * 智能词典查找 - 支持后缀智能去除
+ */
+export function smartLookup(word: string): { meaning: string; pos: string } | null {
+	const lower = word.toLowerCase();
+	
+	// 1. 先查原始单词
+	if (englishDictionary[lower]) {
+		return englishDictionary[lower];
+	}
+	
+	// 2. 获取所有可能的词根变体
+	const variants = getStemVariants(lower);
+	
+	// 3. 按优先级尝试每个变体
+	for (const variant of variants) {
+		if (englishDictionary[variant]) {
+			return englishDictionary[variant];
+		}
+	}
+	
+	// 4. 最后尝试lemmatize结果
+	const lemma = lemmatize(lower);
+	if (lemma !== lower && englishDictionary[lemma]) {
+		return englishDictionary[lemma];
+	}
+	
+	return null;
+}
+
+// ==================== English-English Dictionary ====================
+
+// 英英词典 - 已移至 public/dict_builtin_en.json，动态加载
+let englishDictionaryEn: Record<string, string> = {};
+let builtinDictEnLoaded = false;
+
+export async function loadBuiltinDictionaryEn(): Promise<void> {
+  if (builtinDictEnLoaded) return;
+  try {
+    const resp = await fetch('/dict_builtin_en.json');
+    if (resp.ok) {
+      englishDictionaryEn = await resp.json();
+      builtinDictEnLoaded = true;
+      console.log('内置英英词典加载完成, 词条数:', Object.keys(englishDictionaryEn).length);
+    }
+  } catch (e) {
+    console.warn('内置英英词典加载失败:', e);
+  }
+}
+
 export function getWordMeaningEn(word: string): string | null {
-  return lookupExternalDictEn(word);
+  const lower = word.toLowerCase();
+  
+  // 1. 直接查找
+  if (englishDictionaryEn[lower]) {
+    return englishDictionaryEn[lower];
+  }
+  
+  // 2. 获取词根变体
+  const variants = getStemVariants(lower);
+  for (const variant of variants) {
+    if (englishDictionaryEn[variant]) {
+      return englishDictionaryEn[variant];
+    }
+  }
+  
+  // 3. 最后尝试 lemmatize 结果
+  const lemma = lemmatize(lower);
+  if (lemma !== lower && englishDictionaryEn[lemma]) {
+    return englishDictionaryEn[lemma];
+  }
+  
+  return null;
 }
