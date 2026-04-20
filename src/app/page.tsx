@@ -15,7 +15,7 @@ import {
   saveBookHashMap,
 } from "@/lib/syncIncrementalClient";
 import { useReadingSettings } from "@/hooks/useReadingSettings";
-import { lemmatize, getWordMeaning, getWordMeaningEn, findWordFamily, loadBuiltinDictionary, loadBuiltinDictionaryEn } from "@/lib/dictionary";
+import { lemmatize, getWordMeaning, getWordMeaningEn, findWordFamily } from "@/lib/dictionary";
 import { translateWord, translateWordEn, translateSentence } from "@/lib/translate";
 import { forceReloadDictionary, lookupExternalDict, lookupExternalDictEn, loadExternalDictionaryEn, type DictLoadStatus } from "@/lib/dictLoader";
 import { cleanTranslation, shortenTranslation } from "@/lib/annotationText";
@@ -453,12 +453,8 @@ export default function Home() {
     }
   }, []);
 
-  // Load external dictionary on mount (force reload to get latest dict.json and dict_en.json)
+  // Load external dictionary on mount（仅外部 dict.json / dict_en.json，内置 JSON 已移除）
   useEffect(() => {
-    // 同时加载中英词典和英英词典
-    loadBuiltinDictionary();
-    loadBuiltinDictionaryEn();
-    
     Promise.all([
       forceReloadDictionary(),
       loadExternalDictionaryEn()
@@ -885,16 +881,23 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
       startCharIndex: number;
       endCharIndex: number;
     }) => {
-      // 获取选区在屏幕上的位置
+      // 获取选区在屏幕上的位置（移动端 rect 偶发为 0，需兜底）
       const sel = window.getSelection();
       if (!sel || sel.rangeCount === 0) return;
       const rect = sel.getRangeAt(0).getBoundingClientRect();
+      const vw =
+        typeof window !== "undefined" ? window.innerWidth : 400;
+      const vh =
+        typeof window !== "undefined" ? window.innerHeight : 600;
+      const hasSize = rect.width > 1 && rect.height > 1;
+      const cx = hasSize ? rect.left + rect.width / 2 : vw / 2;
+      const cy = hasSize ? rect.top + rect.height / 2 : vh * 0.35;
 
       setPendingSelection({
         ...selection,
         position: {
-          x: rect.left + rect.width / 2,
-          y: rect.top - 10,
+          x: cx,
+          y: hasSize ? rect.top - 10 : cy,
         },
       });
     },

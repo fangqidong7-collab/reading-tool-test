@@ -830,13 +830,6 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
       {/* Main Content */}
       <main className="main-content" style={{ backgroundColor }}>
         <div ref={containerRef} className="reading-container">
-          {/* Loading overlay */}
-          {loading && (
-            <div className="loading-overlay">
-              <div className="loading-spinner"></div>
-              <div style={{ color: "#666", fontSize: "14px" }}>正在处理文本...</div>
-            </div>
-          )}
           <ReadingArea
             ref={readingAreaRef}
             text={text}
@@ -1025,11 +1018,11 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
         </>
       )}
 
-      {/* Loading Indicator */}
+      {/* 全屏 loading：打开文章时只显示这一处 */}
       {loading && (
         <div className="loading-overlay">
           <div className="loading-spinner"></div>
-          <span style={{ color: isDarkMode ? "#ccc" : "#666" }}>正在标注...</span>
+          <span style={{ color: isDarkMode ? "#ccc" : "#666" }}>正在处理...</span>
         </div>
       )}
 

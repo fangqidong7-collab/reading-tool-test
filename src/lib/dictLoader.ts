@@ -383,16 +383,8 @@ function getStemVariantsExternal(word: string): string[] {
 export function smartLookupExternal(word: string): string | null {
 	const lower = word.toLowerCase().trim();
 	
-	// 调试日志
-	console.log('smartLookupExternal 被调用');
-	console.log('  传入的查询词:', lower);
-	console.log('  externalDict 是否已加载:', externalDict !== null && Object.keys(externalDict).length > 0);
-	console.log('  externalDict 词条数:', Object.keys(externalDict).length);
-	console.log('  直接查找 craft:', externalDict['craft']);
-	
 	// 1. 先查原始单词
 	if (externalDict[lower]) {
-		console.log('  找到匹配词条:', externalDict[lower]);
 		return externalDict[lower];
 	}
 	
@@ -442,12 +434,6 @@ function getPrefixVariants(word: string): string[] {
  * Look up a word in the external dictionary
  */
 export function lookupExternalDict(word: string): string | null {
-	console.log('lookupExternalDict 被调用, word =', word);
-	console.log('externalDict 当前状态:', {
-		keysCount: Object.keys(externalDict).length,
-		hasCraft: 'craft' in externalDict,
-		craftValue: externalDict['craft']
-	});
 	return smartLookupExternal(word);
 }
 
