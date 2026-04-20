@@ -154,6 +154,10 @@ const Paragraph = React.memo(({
   onRemoveSentenceAnnotation,
 }: ParagraphProps) => {
   const handleClick = useCallback((e: React.MouseEvent) => {
+    const sel = typeof window !== 'undefined' ? window.getSelection() : null;
+    if (sel && !sel.isCollapsed && sel.toString().trim().length > 0) {
+      return;
+    }
     const target = e.target as HTMLElement;
     if (target.classList.contains('word')) {
       const word = target.dataset.word || '';
@@ -733,17 +737,46 @@ export const ReadingArea = forwardRef(function ReadingArea({
     }
   }, [onTextSelect, processedContent]);
 
-  // 添加文本选择监听
+  // 文本选区结束：桌面 mouseup；触屏依赖 selectionchange / pointerup（mouseup 不会触发）
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    const handleMouseUp = () => {
-      setTimeout(handleTextSelection, 10);
+    let pending: ReturnType<typeof setTimeout> | null = null;
+    const scheduleSelection = () => {
+      if (pending) clearTimeout(pending);
+      pending = setTimeout(() => {
+        pending = null;
+        handleTextSelection();
+      }, 10);
     };
 
-    container.addEventListener('mouseup', handleMouseUp);
-    return () => container.removeEventListener('mouseup', handleMouseUp);
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const onSelectionChange = () => {
+      const sel = window.getSelection();
+      const root = containerRef.current;
+      if (!sel || !root) return;
+      const anchor = sel.anchorNode;
+      if (!anchor || !root.contains(anchor)) return;
+
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        debounceTimer = null;
+        handleTextSelection();
+      }, 280);
+    };
+
+    container.addEventListener('mouseup', scheduleSelection);
+    container.addEventListener('pointerup', scheduleSelection);
+    document.addEventListener('selectionchange', onSelectionChange);
+
+    return () => {
+      container.removeEventListener('mouseup', scheduleSelection);
+      container.removeEventListener('pointerup', scheduleSelection);
+      document.removeEventListener('selectionchange', onSelectionChange);
+      if (pending) clearTimeout(pending);
+      if (debounceTimer) clearTimeout(debounceTimer);
+    };
   }, [handleTextSelection]);
 
   // 计算滚动百分比
@@ -1057,6 +1090,9 @@ const getFirstVisibleIndex = useCallback(() => {
         <div 
           ref={containerRef}
           className="reading-container"
+          onContextMenu={(e) => {
+            e.preventDefault();
+          }}
           onClick={(e) => {
             // ===== 如果有文字被选中，不翻页 =====
             const selection = window.getSelection();
@@ -1103,6 +1139,7 @@ const getFirstVisibleIndex = useCallback(() => {
             padding: "0px",
             boxSizing: "border-box",
             WebkitOverflowScrolling: "touch",
+            touchAction: "pan-y",
           }}
         >
           <div 
@@ -1189,16 +1226,29 @@ const getFirstVisibleIndex = useCallback(() => {
             color: ${textColor};
             font-family: Georgia, "Times New Roman", serif;
             text-align: justify;
+            -webkit-touch-callout: none;
+            -webkit-user-select: text;
+            user-select: text;
           }
 
           .reader-content :global(.paragraph) {
             margin-bottom: 16px;
             margin-top: 0px;
+            -webkit-user-select: text;
+            user-select: text;
+          }
+
+          .reader-content :global(.annotation),
+          .reader-content :global(.sentence-annotation) {
+            -webkit-user-select: none;
+            user-select: none;
           }
 
           .reader-content :global(.word) {
             cursor: pointer;
             transition: color 0.15s;
+            -webkit-user-select: text;
+            user-select: text;
           }
 
           .reader-content :global(.word:hover) {
