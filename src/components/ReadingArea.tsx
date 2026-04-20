@@ -600,8 +600,17 @@ export const ReadingArea = forwardRef(function ReadingArea({
   const [readProgress, setReadProgress] = useState(0);
   const lastSwipeTimeRef = useRef(0);
   const lastProgrammaticPageTurnAt = useRef(0);
-  /** 与下一次 keyup 配对：若刚处理过 keydown，短时间内跟随的 keyup 视为同一击，不再翻页 */
+  /**
+   * 桌面端等环境若真能收到音量键事件：keydown 成功后记录时间，短时内的 keyup 视为同一击（避免双翻）。
+   * Android 滑动模式下调不到此处（见下方 effect）。
+   */
   const lastVolumeKeydownNavAtRef = useRef<number | null>(null);
+
+  /** Android + 滑动翻页：音量由 VIA/WebView「内置音量翻页」滚阅读区，页面通常收不到 key 事件；勿用 JS 拦截。 */
+  const isAndroidSwipeScrollMode =
+    typeof navigator !== "undefined" &&
+    /Android/i.test(navigator.userAgent) &&
+    !clickToTurnPage;
 
   const virtualizer = useVirtualizer({
     count: processedContent ? processedContent.length : 0,
@@ -612,7 +621,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
   });
 
   /**
-   * 整页翻动：按视口高度滚一屏（经 virtualizer.scrollBy，与 TanStack 内部 offset 一致），再 trim。
+   * 点击 / 横滑手势翻页；若环境能收到音量键（非 Android 滑动模式），亦可由此翻页。
    * @returns 是否实际发起了本次翻页（未因节流等原因跳过）
    */
   const scrollReadingPage = useCallback(
@@ -620,50 +629,51 @@ export const ReadingArea = forwardRef(function ReadingArea({
       direction: "next" | "prev",
       opts?: { bypassThrottle?: boolean }
     ): boolean => {
-      const el = containerRef.current;
-      if (!el) return false;
+    const el = containerRef.current;
+    if (!el) return false;
 
-      const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-      if (!opts?.bypassThrottle) {
-        if (now - lastProgrammaticPageTurnAt.current < 220) return false;
+    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+    if (!opts?.bypassThrottle) {
+      if (now - lastProgrammaticPageTurnAt.current < 220) return false;
+    }
+    lastProgrammaticPageTurnAt.current = now;
+
+    const pageH = el.clientHeight;
+    if (pageH <= 0) return false;
+
+    const delta = direction === "next" ? pageH : -pageH;
+    virtualizer.scrollBy(delta, { behavior: "auto" });
+
+    const minMain = Math.max(12, Math.round(fontSize * Math.min(lineHeight, 3) * 0.58));
+    const androidTrim =
+      typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent);
+    const runTrim = () => {
+      const scrollEl = containerRef.current;
+      const root = contentRef.current;
+      if (!scrollEl || !root || !processedContent?.length) return;
+      if (androidTrim) {
+        trimTopAlignedOnly(scrollEl, root, minMain);
+      } else {
+        trimAfterPageTurnPreferTop(scrollEl, root, minMain);
       }
-      lastProgrammaticPageTurnAt.current = now;
-
-      const pageH = el.clientHeight;
-      if (pageH <= 0) return false;
-
-      const delta = direction === "next" ? pageH : -pageH;
-      virtualizer.scrollBy(delta, { behavior: "auto" });
-
-      const minMain = Math.max(12, Math.round(fontSize * Math.min(lineHeight, 3) * 0.58));
-      const androidTrim =
-        typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent);
-      const runTrim = () => {
-        const scrollEl = containerRef.current;
-        const root = contentRef.current;
-        if (!scrollEl || !root || !processedContent?.length) return;
-        if (androidTrim) {
-          trimTopAlignedOnly(scrollEl, root, minMain);
-        } else {
-          trimAfterPageTurnPreferTop(scrollEl, root, minMain);
-        }
-      };
-      // 多等一帧：虚拟列表测量/挂载与 scroll 对齐后再量行框，减少漏检
+    };
+    requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          requestAnimationFrame(runTrim);
-        });
+        requestAnimationFrame(runTrim);
       });
-      return true;
-    },
-    [fontSize, lineHeight, processedContent, virtualizer]
-  );
+    });
+    return true;
+  }, [fontSize, lineHeight, processedContent, virtualizer]);
 
-  // 音量键翻页：程序化 scrollReadingPage；安卓裁底 trim 仅用顶对齐（见上文）。
-  // WebView key/e.code/keyCode 不一致；部分机型只有 keyup。keydown 成功翻页后才记录时间，避免与 220ms 节流叠加导致「keyup 吞掉唯一一次翻页」。
+  /**
+   * 仅在「页面可能收到音量键」的环境注册监听。
+   * Android + 滑动模式：依赖浏览器/VIA 内置音量翻页滚动 `.reading-container`，此处注册无效且不应 preventDefault。
+   */
   useEffect(() => {
+    if (isAndroidSwipeScrollMode) return;
+
     const PAIR_SUPPRESS_MS = 320;
-    const volumeOpts = { bypassThrottle: true } as const;
+    const volOpts = { bypassThrottle: true } as const;
 
     const handleVolume = (e: KeyboardEvent) => {
       const dir = getVolumeDirection(e);
@@ -678,7 +688,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
       if (e.type === "keydown") {
         const ok = scrollReadingPage(
           dir === "up" ? "prev" : "next",
-          volumeOpts
+          volOpts
         );
         if (ok) {
           lastVolumeKeydownNavAtRef.current = now;
@@ -690,7 +700,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
       if (lastKd !== null && now - lastKd < PAIR_SUPPRESS_MS) {
         return;
       }
-      scrollReadingPage(dir === "up" ? "prev" : "next", volumeOpts);
+      scrollReadingPage(dir === "up" ? "prev" : "next", volOpts);
     };
 
     const opts: AddEventListenerOptions = { capture: true };
@@ -700,7 +710,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
       window.removeEventListener("keydown", handleVolume, opts);
       window.removeEventListener("keyup", handleVolume, opts);
     };
-  }, [scrollReadingPage]);
+  }, [scrollReadingPage, isAndroidSwipeScrollMode]);
 
   // 文本选择功能 - 句子翻译
   const handleTextSelection = useCallback(() => {
