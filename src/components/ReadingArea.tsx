@@ -151,6 +151,40 @@ function trimAfterPageTurnPreferTop(
   }
 }
 
+/**
+ * 仅对齐页顶整行，不裁视口底边。安卓虚拟列表在刚滚入新段时行高未稳定，`trimHalfLineOffBottomForNextPage`
+ * 易误判并把 scrollTop 大幅上提，表现为「音量下只能翻一页 / 只能往上」。
+ */
+function trimTopAlignedOnly(
+  scrollEl: HTMLElement,
+  contentRoot: HTMLElement,
+  minMainLineHeight: number
+): void {
+  for (let i = 0; i < 8; i++) {
+    const before = scrollEl.scrollTop;
+    trimHalfLineAtTop(scrollEl, contentRoot, minMainLineHeight);
+    if (Math.abs(scrollEl.scrollTop - before) < 0.5) break;
+  }
+}
+
+/** WebView / Android：`key`、`code`、legacy `keyCode` 组合因内核而异 */
+function getVolumeDirection(e: KeyboardEvent): "up" | "down" | null {
+  const key = e.key;
+  if (key === "AudioVolumeUp" || key === "VolumeUp") return "up";
+  if (key === "AudioVolumeDown" || key === "VolumeDown") return "down";
+
+  const code = e.code;
+  if (code === "VolumeUp" || code === "AudioVolumeUp") return "up";
+  if (code === "VolumeDown" || code === "AudioVolumeDown") return "down";
+
+  const kc = e.keyCode;
+  // 常见 Chromium legacy：174/175；部分 WebView 映射 Android KEYCODE_VOLUME_*：24/25
+  if (kc === 175 || kc === 24) return "up";
+  if (kc === 174 || kc === 25) return "down";
+
+  return null;
+}
+
 // Ref type
 export interface ReadingAreaRef {
   jumpToParagraph: (paragraphIndex: number) => void;
@@ -566,6 +600,8 @@ export const ReadingArea = forwardRef(function ReadingArea({
   const [readProgress, setReadProgress] = useState(0);
   const lastSwipeTimeRef = useRef(0);
   const lastProgrammaticPageTurnAt = useRef(0);
+  /** 与下一次 keyup 配对：若刚处理过 keydown，短时间内跟随的 keyup 视为同一击，不再翻页 */
+  const lastVolumeKeydownNavAtRef = useRef<number | null>(null);
 
   const virtualizer = useVirtualizer({
     count: processedContent ? processedContent.length : 0,
@@ -576,35 +612,41 @@ export const ReadingArea = forwardRef(function ReadingArea({
   });
 
   /**
-   * 整页翻动：先按可视高度 ± 一页（auto），再 trim 顶边整行 + 底边半截移出（裁底不留半行，留给下一页）。
+   * 整页翻动：按视口高度滚一屏（经 virtualizer.scrollBy，与 TanStack 内部 offset 一致），再 trim。
+   * @returns 是否实际发起了本次翻页（未因节流等原因跳过）
    */
   const scrollReadingPage = useCallback(
-    (direction: "next" | "prev") => {
+    (
+      direction: "next" | "prev",
+      opts?: { bypassThrottle?: boolean }
+    ): boolean => {
       const el = containerRef.current;
-      if (!el) return;
+      if (!el) return false;
 
       const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-      if (now - lastProgrammaticPageTurnAt.current < 220) return;
+      if (!opts?.bypassThrottle) {
+        if (now - lastProgrammaticPageTurnAt.current < 220) return false;
+      }
       lastProgrammaticPageTurnAt.current = now;
 
       const pageH = el.clientHeight;
-      if (pageH <= 0) return;
+      if (pageH <= 0) return false;
 
-      const maxS = Math.max(0, el.scrollHeight - pageH);
-      const S = el.scrollTop;
-
-      if (direction === "next") {
-        el.scrollTo({ top: Math.min(S + pageH, maxS), behavior: "auto" });
-      } else {
-        el.scrollTo({ top: Math.max(S - pageH, 0), behavior: "auto" });
-      }
+      const delta = direction === "next" ? pageH : -pageH;
+      virtualizer.scrollBy(delta, { behavior: "auto" });
 
       const minMain = Math.max(12, Math.round(fontSize * Math.min(lineHeight, 3) * 0.58));
+      const androidTrim =
+        typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent);
       const runTrim = () => {
         const scrollEl = containerRef.current;
         const root = contentRef.current;
         if (!scrollEl || !root || !processedContent?.length) return;
-        trimAfterPageTurnPreferTop(scrollEl, root, minMain);
+        if (androidTrim) {
+          trimTopAlignedOnly(scrollEl, root, minMain);
+        } else {
+          trimAfterPageTurnPreferTop(scrollEl, root, minMain);
+        }
       };
       // 多等一帧：虚拟列表测量/挂载与 scroll 对齐后再量行框，减少漏检
       requestAnimationFrame(() => {
@@ -612,26 +654,52 @@ export const ReadingArea = forwardRef(function ReadingArea({
           requestAnimationFrame(runTrim);
         });
       });
+      return true;
     },
     [fontSize, lineHeight, processedContent, virtualizer]
   );
 
-  // 音量键翻页（含安卓 VIA 滑动模式）：统一走程序化 scrollReadingPage。
-  // 依赖 WebView「原生滚一屏」会在虚拟列表 scrollHeight 滞后时卡在假底部，表现为只能下一页；
-  // preventDefault 后由我们单次 scroll + trim，与桌面一致。
+  // 音量键翻页：程序化 scrollReadingPage；安卓裁底 trim 仅用顶对齐（见上文）。
+  // WebView key/e.code/keyCode 不一致；部分机型只有 keyup。keydown 成功翻页后才记录时间，避免与 220ms 节流叠加导致「keyup 吞掉唯一一次翻页」。
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const isVolUp = e.key === "AudioVolumeUp" || e.key === "VolumeUp";
-      const isVolDown = e.key === "AudioVolumeDown" || e.key === "VolumeDown";
-      if (!isVolUp && !isVolDown) return;
+    const PAIR_SUPPRESS_MS = 320;
+    const volumeOpts = { bypassThrottle: true } as const;
+
+    const handleVolume = (e: KeyboardEvent) => {
+      const dir = getVolumeDirection(e);
+      if (!dir) return;
 
       e.preventDefault();
       e.stopPropagation();
-      scrollReadingPage(isVolUp ? "prev" : "next");
+
+      const now =
+        typeof performance !== "undefined" ? performance.now() : Date.now();
+
+      if (e.type === "keydown") {
+        const ok = scrollReadingPage(
+          dir === "up" ? "prev" : "next",
+          volumeOpts
+        );
+        if (ok) {
+          lastVolumeKeydownNavAtRef.current = now;
+        }
+        return;
+      }
+
+      const lastKd = lastVolumeKeydownNavAtRef.current;
+      if (lastKd !== null && now - lastKd < PAIR_SUPPRESS_MS) {
+        return;
+      }
+      scrollReadingPage(dir === "up" ? "prev" : "next", volumeOpts);
     };
 
-    window.addEventListener("keydown", handleKeyDown, { capture: true });
-    return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
+    const opts: AddEventListenerOptions = { capture: true };
+    window.addEventListener("keydown", handleVolume, opts);
+    window.addEventListener("keyup", handleVolume, opts);
+    return () => {
+      window.removeEventListener("keydown", handleVolume, opts);
+      window.removeEventListener("keyup", handleVolume, opts);
+    };
   }, [scrollReadingPage]);
 
   // 文本选择功能 - 句子翻译
