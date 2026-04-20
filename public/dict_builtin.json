@@ -1,0 +1,3954 @@
+{
+  "to": {
+    "meaning": "到;向;对于",
+    "pos": "prep."
+  },
+  "of": {
+    "meaning": "...的",
+    "pos": "prep."
+  },
+  "at": {
+    "meaning": "在;向",
+    "pos": "prep."
+  },
+  "by": {
+    "meaning": "通过;被;在...旁边",
+    "pos": "prep."
+  },
+  "an": {
+    "meaning": "一个(元音开头的冠词)",
+    "pos": "art."
+  },
+  "am": {
+    "meaning": "是(第一人称)",
+    "pos": "v."
+  },
+  "is": {
+    "meaning": "是",
+    "pos": "v."
+  },
+  "are": {
+    "meaning": "是",
+    "pos": "v."
+  },
+  "was": {
+    "meaning": "是(过去式)",
+    "pos": "v."
+  },
+  "were": {
+    "meaning": "是(过去式复数)",
+    "pos": "v."
+  },
+  "been": {
+    "meaning": "曾经是",
+    "pos": "v."
+  },
+  "being": {
+    "meaning": "正在是",
+    "pos": "v."
+  },
+  "has": {
+    "meaning": "有(第三人称)",
+    "pos": "v."
+  },
+  "having": {
+    "meaning": "正在有",
+    "pos": "v."
+  },
+  "does": {
+    "meaning": "做(第三人称)",
+    "pos": "v."
+  },
+  "doing": {
+    "meaning": "正在做",
+    "pos": "v."
+  },
+  "done": {
+    "meaning": "已完成",
+    "pos": "v."
+  },
+  "will": {
+    "meaning": "将要",
+    "pos": "aux.v."
+  },
+  "would": {
+    "meaning": "将会;愿意",
+    "pos": "aux.v."
+  },
+  "shall": {
+    "meaning": "将要;应该",
+    "pos": "aux.v."
+  },
+  "should": {
+    "meaning": "应该",
+    "pos": "aux.v."
+  },
+  "can": {
+    "meaning": "能;会",
+    "pos": "aux.v."
+  },
+  "could": {
+    "meaning": "能够",
+    "pos": "aux.v."
+  },
+  "may": {
+    "meaning": "可能;可以",
+    "pos": "aux.v."
+  },
+  "might": {
+    "meaning": "可能",
+    "pos": "aux.v."
+  },
+  "must": {
+    "meaning": "必须",
+    "pos": "aux.v."
+  },
+  "ought": {
+    "meaning": "应该",
+    "pos": "aux.v."
+  },
+  "be": {
+    "meaning": "是;存在",
+    "pos": "v."
+  },
+  "have": {
+    "meaning": "有",
+    "pos": "v."
+  },
+  "do": {
+    "meaning": "做",
+    "pos": "v."
+  },
+  "say": {
+    "meaning": "说",
+    "pos": "v."
+  },
+  "get": {
+    "meaning": "得到;获得",
+    "pos": "v."
+  },
+  "make": {
+    "meaning": "制作;使",
+    "pos": "v."
+  },
+  "go": {
+    "meaning": "去;走",
+    "pos": "v."
+  },
+  "know": {
+    "meaning": "知道",
+    "pos": "v."
+  },
+  "take": {
+    "meaning": "拿;取",
+    "pos": "v."
+  },
+  "see": {
+    "meaning": "看见",
+    "pos": "v."
+  },
+  "come": {
+    "meaning": "来",
+    "pos": "v."
+  },
+  "think": {
+    "meaning": "想;认为",
+    "pos": "v."
+  },
+  "look": {
+    "meaning": "看",
+    "pos": "v."
+  },
+  "want": {
+    "meaning": "想要",
+    "pos": "v."
+  },
+  "give": {
+    "meaning": "给",
+    "pos": "v."
+  },
+  "use": {
+    "meaning": "使用",
+    "pos": "v."
+  },
+  "find": {
+    "meaning": "找到",
+    "pos": "v."
+  },
+  "tell": {
+    "meaning": "告诉",
+    "pos": "v."
+  },
+  "ask": {
+    "meaning": "问",
+    "pos": "v."
+  },
+  "work": {
+    "meaning": "工作",
+    "pos": "v."
+  },
+  "seem": {
+    "meaning": "似乎",
+    "pos": "v."
+  },
+  "feel": {
+    "meaning": "感觉",
+    "pos": "v."
+  },
+  "try": {
+    "meaning": "尝试",
+    "pos": "v."
+  },
+  "leave": {
+    "meaning": "离开",
+    "pos": "v."
+  },
+  "call": {
+    "meaning": "打电话",
+    "pos": "v."
+  },
+  "keep": {
+    "meaning": "保持",
+    "pos": "v."
+  },
+  "let": {
+    "meaning": "让",
+    "pos": "v."
+  },
+  "begin": {
+    "meaning": "开始",
+    "pos": "v."
+  },
+  "show": {
+    "meaning": "显示",
+    "pos": "v."
+  },
+  "hear": {
+    "meaning": "听见",
+    "pos": "v."
+  },
+  "play": {
+    "meaning": "玩;演奏",
+    "pos": "v."
+  },
+  "run": {
+    "meaning": "跑",
+    "pos": "v."
+  },
+  "move": {
+    "meaning": "移动",
+    "pos": "v."
+  },
+  "live": {
+    "meaning": "生活;居住",
+    "pos": "v."
+  },
+  "believe": {
+    "meaning": "相信",
+    "pos": "v."
+  },
+  "bring": {
+    "meaning": "带来",
+    "pos": "v."
+  },
+  "happen": {
+    "meaning": "发生",
+    "pos": "v."
+  },
+  "write": {
+    "meaning": "写",
+    "pos": "v."
+  },
+  "provide": {
+    "meaning": "提供",
+    "pos": "v."
+  },
+  "sit": {
+    "meaning": "坐",
+    "pos": "v."
+  },
+  "stand": {
+    "meaning": "站",
+    "pos": "v."
+  },
+  "lose": {
+    "meaning": "失去",
+    "pos": "v."
+  },
+  "pay": {
+    "meaning": "支付",
+    "pos": "v."
+  },
+  "meet": {
+    "meaning": "遇见",
+    "pos": "v."
+  },
+  "include": {
+    "meaning": "包含",
+    "pos": "v."
+  },
+  "continue": {
+    "meaning": "继续",
+    "pos": "v."
+  },
+  "set": {
+    "meaning": "设置",
+    "pos": "v."
+  },
+  "learn": {
+    "meaning": "学习",
+    "pos": "v."
+  },
+  "change": {
+    "meaning": "改变",
+    "pos": "v."
+  },
+  "lead": {
+    "meaning": "领导;导致",
+    "pos": "v."
+  },
+  "understand": {
+    "meaning": "理解",
+    "pos": "v."
+  },
+  "watch": {
+    "meaning": "观看",
+    "pos": "v."
+  },
+  "follow": {
+    "meaning": "跟随",
+    "pos": "v."
+  },
+  "stop": {
+    "meaning": "停止",
+    "pos": "v."
+  },
+  "create": {
+    "meaning": "创造",
+    "pos": "v."
+  },
+  "speak": {
+    "meaning": "说话",
+    "pos": "v."
+  },
+  "read": {
+    "meaning": "阅读",
+    "pos": "v."
+  },
+  "allow": {
+    "meaning": "允许",
+    "pos": "v."
+  },
+  "add": {
+    "meaning": "添加",
+    "pos": "v."
+  },
+  "spend": {
+    "meaning": "花费",
+    "pos": "v."
+  },
+  "grow": {
+    "meaning": "成长",
+    "pos": "v."
+  },
+  "open": {
+    "meaning": "打开",
+    "pos": "v."
+  },
+  "walk": {
+    "meaning": "走",
+    "pos": "v."
+  },
+  "win": {
+    "meaning": "赢",
+    "pos": "v."
+  },
+  "offer": {
+    "meaning": "提供",
+    "pos": "v."
+  },
+  "remember": {
+    "meaning": "记住",
+    "pos": "v."
+  },
+  "love": {
+    "meaning": "爱",
+    "pos": "v."
+  },
+  "consider": {
+    "meaning": "考虑",
+    "pos": "v."
+  },
+  "appear": {
+    "meaning": "出现",
+    "pos": "v."
+  },
+  "buy": {
+    "meaning": "买",
+    "pos": "v."
+  },
+  "wait": {
+    "meaning": "等待",
+    "pos": "v."
+  },
+  "serve": {
+    "meaning": "服务",
+    "pos": "v."
+  },
+  "die": {
+    "meaning": "死",
+    "pos": "v."
+  },
+  "send": {
+    "meaning": "发送",
+    "pos": "v."
+  },
+  "expect": {
+    "meaning": "期望",
+    "pos": "v."
+  },
+  "build": {
+    "meaning": "建造",
+    "pos": "v."
+  },
+  "stay": {
+    "meaning": "停留",
+    "pos": "v."
+  },
+  "fall": {
+    "meaning": "落下",
+    "pos": "v."
+  },
+  "cut": {
+    "meaning": "切",
+    "pos": "v."
+  },
+  "reach": {
+    "meaning": "到达",
+    "pos": "v."
+  },
+  "kill": {
+    "meaning": "杀",
+    "pos": "v."
+  },
+  "remain": {
+    "meaning": "保留;仍然",
+    "pos": "v."
+  },
+  "suggest": {
+    "meaning": "建议",
+    "pos": "v."
+  },
+  "raise": {
+    "meaning": "举起",
+    "pos": "v."
+  },
+  "pass": {
+    "meaning": "通过",
+    "pos": "v."
+  },
+  "sell": {
+    "meaning": "卖",
+    "pos": "v."
+  },
+  "require": {
+    "meaning": "需要",
+    "pos": "v."
+  },
+  "report": {
+    "meaning": "报告",
+    "pos": "v."
+  },
+  "decide": {
+    "meaning": "决定",
+    "pos": "v."
+  },
+  "pull": {
+    "meaning": "拉",
+    "pos": "v."
+  },
+  "develop": {
+    "meaning": "发展",
+    "pos": "v."
+  },
+  "explain": {
+    "meaning": "解释",
+    "pos": "v."
+  },
+  "produce": {
+    "meaning": "生产",
+    "pos": "v."
+  },
+  "drive": {
+    "meaning": "驾驶",
+    "pos": "v."
+  },
+  "fly": {
+    "meaning": "飞",
+    "pos": "v."
+  },
+  "eat": {
+    "meaning": "吃",
+    "pos": "v."
+  },
+  "drink": {
+    "meaning": "喝",
+    "pos": "v."
+  },
+  "sleep": {
+    "meaning": "睡觉",
+    "pos": "v."
+  },
+  "teach": {
+    "meaning": "教",
+    "pos": "v."
+  },
+  "fight": {
+    "meaning": "战斗",
+    "pos": "v."
+  },
+  "rise": {
+    "meaning": "升起",
+    "pos": "v."
+  },
+  "dream": {
+    "meaning": "做梦",
+    "pos": "v."
+  },
+  "choose": {
+    "meaning": "选择",
+    "pos": "v."
+  },
+  "hold": {
+    "meaning": "握住",
+    "pos": "v."
+  },
+  "throw": {
+    "meaning": "扔",
+    "pos": "v."
+  },
+  "catch": {
+    "meaning": "抓住",
+    "pos": "v."
+  },
+  "hit": {
+    "meaning": "击打",
+    "pos": "v."
+  },
+  "bear": {
+    "meaning": "承受",
+    "pos": "v."
+  },
+  "draw": {
+    "meaning": "画;拉",
+    "pos": "v."
+  },
+  "deal": {
+    "meaning": "处理",
+    "pos": "v."
+  },
+  "mean": {
+    "meaning": "意思是",
+    "pos": "v."
+  },
+  "cost": {
+    "meaning": "花费",
+    "pos": "v."
+  },
+  "wear": {
+    "meaning": "穿",
+    "pos": "v."
+  },
+  "break": {
+    "meaning": "打破",
+    "pos": "v."
+  },
+  "hang": {
+    "meaning": "挂",
+    "pos": "v."
+  },
+  "ride": {
+    "meaning": "骑",
+    "pos": "v."
+  },
+  "sing": {
+    "meaning": "唱歌",
+    "pos": "v."
+  },
+  "put": {
+    "meaning": "放",
+    "pos": "v."
+  },
+  "become": {
+    "meaning": "成为",
+    "pos": "v."
+  },
+  "depend": {
+    "meaning": "依赖",
+    "pos": "v."
+  },
+  "protect": {
+    "meaning": "保护",
+    "pos": "v."
+  },
+  "cover": {
+    "meaning": "覆盖",
+    "pos": "v."
+  },
+  "discover": {
+    "meaning": "发现",
+    "pos": "v."
+  },
+  "discuss": {
+    "meaning": "讨论",
+    "pos": "v."
+  },
+  "support": {
+    "meaning": "支持",
+    "pos": "v."
+  },
+  "accept": {
+    "meaning": "接受",
+    "pos": "v."
+  },
+  "enjoy": {
+    "meaning": "享受",
+    "pos": "v."
+  },
+  "express": {
+    "meaning": "表达",
+    "pos": "v."
+  },
+  "achieve": {
+    "meaning": "实现",
+    "pos": "v."
+  },
+  "argue": {
+    "meaning": "争论",
+    "pos": "v."
+  },
+  "claim": {
+    "meaning": "声称",
+    "pos": "v."
+  },
+  "compare": {
+    "meaning": "比较",
+    "pos": "v."
+  },
+  "concern": {
+    "meaning": "关心",
+    "pos": "v."
+  },
+  "connect": {
+    "meaning": "连接",
+    "pos": "v."
+  },
+  "contain": {
+    "meaning": "包含",
+    "pos": "v."
+  },
+  "describe": {
+    "meaning": "描述",
+    "pos": "v."
+  },
+  "determine": {
+    "meaning": "决定",
+    "pos": "v."
+  },
+  "effect": {
+    "meaning": "产生影响",
+    "pos": "v."
+  },
+  "exist": {
+    "meaning": "存在",
+    "pos": "v."
+  },
+  "experience": {
+    "meaning": "经历",
+    "pos": "v."
+  },
+  "fail": {
+    "meaning": "失败",
+    "pos": "v."
+  },
+  "fill": {
+    "meaning": "填充",
+    "pos": "v."
+  },
+  "focus": {
+    "meaning": "聚焦",
+    "pos": "v."
+  },
+  "form": {
+    "meaning": "形成",
+    "pos": "v."
+  },
+  "guess": {
+    "meaning": "猜测",
+    "pos": "v."
+  },
+  "hope": {
+    "meaning": "希望",
+    "pos": "v."
+  },
+  "identify": {
+    "meaning": "识别",
+    "pos": "v."
+  },
+  "imagine": {
+    "meaning": "想象",
+    "pos": "v."
+  },
+  "impact": {
+    "meaning": "影响",
+    "pos": "v."
+  },
+  "indicate": {
+    "meaning": "表明",
+    "pos": "v."
+  },
+  "involve": {
+    "meaning": "涉及",
+    "pos": "v."
+  },
+  "join": {
+    "meaning": "加入",
+    "pos": "v."
+  },
+  "judge": {
+    "meaning": "判断",
+    "pos": "v."
+  },
+  "laugh": {
+    "meaning": "笑",
+    "pos": "v."
+  },
+  "lay": {
+    "meaning": "放置",
+    "pos": "v."
+  },
+  "lie": {
+    "meaning": "说谎;躺",
+    "pos": "v."
+  },
+  "limit": {
+    "meaning": "限制",
+    "pos": "v."
+  },
+  "link": {
+    "meaning": "连接",
+    "pos": "v."
+  },
+  "listen": {
+    "meaning": "听",
+    "pos": "v."
+  },
+  "maintain": {
+    "meaning": "维护",
+    "pos": "v."
+  },
+  "manage": {
+    "meaning": "管理",
+    "pos": "v."
+  },
+  "mark": {
+    "meaning": "标记",
+    "pos": "v."
+  },
+  "matter": {
+    "meaning": "重要",
+    "pos": "v."
+  },
+  "measure": {
+    "meaning": "测量",
+    "pos": "v."
+  },
+  "notice": {
+    "meaning": "注意",
+    "pos": "v."
+  },
+  "obtain": {
+    "meaning": "获得",
+    "pos": "v."
+  },
+  "occur": {
+    "meaning": "发生",
+    "pos": "v."
+  },
+  "operate": {
+    "meaning": "操作",
+    "pos": "v."
+  },
+  "organize": {
+    "meaning": "组织",
+    "pos": "v."
+  },
+  "output": {
+    "meaning": "输出",
+    "pos": "v."
+  },
+  "own": {
+    "meaning": "拥有",
+    "pos": "v."
+  },
+  "pick": {
+    "meaning": "挑选",
+    "pos": "v."
+  },
+  "place": {
+    "meaning": "放置",
+    "pos": "v."
+  },
+  "plan": {
+    "meaning": "计划",
+    "pos": "v."
+  },
+  "point": {
+    "meaning": "指向",
+    "pos": "v."
+  },
+  "press": {
+    "meaning": "按压",
+    "pos": "v."
+  },
+  "prevent": {
+    "meaning": "预防",
+    "pos": "v."
+  },
+  "process": {
+    "meaning": "处理",
+    "pos": "v."
+  },
+  "promise": {
+    "meaning": "承诺",
+    "pos": "v."
+  },
+  "prove": {
+    "meaning": "证明",
+    "pos": "v."
+  },
+  "publish": {
+    "meaning": "出版",
+    "pos": "v."
+  },
+  "push": {
+    "meaning": "推",
+    "pos": "v."
+  },
+  "question": {
+    "meaning": "质疑",
+    "pos": "v."
+  },
+  "quote": {
+    "meaning": "引用",
+    "pos": "v."
+  },
+  "react": {
+    "meaning": "反应",
+    "pos": "v."
+  },
+  "realize": {
+    "meaning": "意识到",
+    "pos": "v."
+  },
+  "receive": {
+    "meaning": "收到",
+    "pos": "v."
+  },
+  "recognize": {
+    "meaning": "认出",
+    "pos": "v."
+  },
+  "recommend": {
+    "meaning": "推荐",
+    "pos": "v."
+  },
+  "reduce": {
+    "meaning": "减少",
+    "pos": "v."
+  },
+  "refer": {
+    "meaning": "参考",
+    "pos": "v."
+  },
+  "reflect": {
+    "meaning": "反映",
+    "pos": "v."
+  },
+  "refuse": {
+    "meaning": "拒绝",
+    "pos": "v."
+  },
+  "relate": {
+    "meaning": "相关",
+    "pos": "v."
+  },
+  "release": {
+    "meaning": "释放",
+    "pos": "v."
+  },
+  "remove": {
+    "meaning": "移除",
+    "pos": "v."
+  },
+  "replace": {
+    "meaning": "替换",
+    "pos": "v."
+  },
+  "reply": {
+    "meaning": "回复",
+    "pos": "v."
+  },
+  "represent": {
+    "meaning": "代表",
+    "pos": "v."
+  },
+  "respond": {
+    "meaning": "回应",
+    "pos": "v."
+  },
+  "return": {
+    "meaning": "返回",
+    "pos": "v."
+  },
+  "reveal": {
+    "meaning": "揭示",
+    "pos": "v."
+  },
+  "review": {
+    "meaning": "回顾",
+    "pos": "v."
+  },
+  "rid": {
+    "meaning": "摆脱",
+    "pos": "v."
+  },
+  "ring": {
+    "meaning": "响",
+    "pos": "v."
+  },
+  "save": {
+    "meaning": "保存",
+    "pos": "v."
+  },
+  "search": {
+    "meaning": "搜索",
+    "pos": "v."
+  },
+  "select": {
+    "meaning": "选择",
+    "pos": "v."
+  },
+  "separate": {
+    "meaning": "分离",
+    "pos": "v."
+  },
+  "shake": {
+    "meaning": "摇",
+    "pos": "v."
+  },
+  "share": {
+    "meaning": "分享",
+    "pos": "v."
+  },
+  "shoot": {
+    "meaning": "射击",
+    "pos": "v."
+  },
+  "shout": {
+    "meaning": "喊",
+    "pos": "v."
+  },
+  "shut": {
+    "meaning": "关",
+    "pos": "v."
+  },
+  "sign": {
+    "meaning": "签名",
+    "pos": "v."
+  },
+  "signal": {
+    "meaning": "发信号",
+    "pos": "v."
+  },
+  "slide": {
+    "meaning": "滑",
+    "pos": "v."
+  },
+  "smile": {
+    "meaning": "微笑",
+    "pos": "v."
+  },
+  "smoke": {
+    "meaning": "吸烟",
+    "pos": "v."
+  },
+  "solve": {
+    "meaning": "解决",
+    "pos": "v."
+  },
+  "specify": {
+    "meaning": "指定",
+    "pos": "v."
+  },
+  "spread": {
+    "meaning": "传播",
+    "pos": "v."
+  },
+  "stare": {
+    "meaning": "盯着",
+    "pos": "v."
+  },
+  "state": {
+    "meaning": "说;陈述",
+    "pos": "v."
+  },
+  "stick": {
+    "meaning": "粘;刺",
+    "pos": "v."
+  },
+  "store": {
+    "meaning": "存储",
+    "pos": "v."
+  },
+  "strain": {
+    "meaning": "拉紧",
+    "pos": "v."
+  },
+  "struggle": {
+    "meaning": "挣扎",
+    "pos": "v."
+  },
+  "submit": {
+    "meaning": "提交",
+    "pos": "v."
+  },
+  "substitute": {
+    "meaning": "替代",
+    "pos": "v."
+  },
+  "suffer": {
+    "meaning": "遭受",
+    "pos": "v."
+  },
+  "supply": {
+    "meaning": "供应",
+    "pos": "v."
+  },
+  "suppose": {
+    "meaning": "假设",
+    "pos": "v."
+  },
+  "surprise": {
+    "meaning": "惊讶",
+    "pos": "v."
+  },
+  "swim": {
+    "meaning": "游泳",
+    "pos": "v."
+  },
+  "target": {
+    "meaning": "目标",
+    "pos": "v."
+  },
+  "taste": {
+    "meaning": "品尝",
+    "pos": "v."
+  },
+  "test": {
+    "meaning": "测试",
+    "pos": "v."
+  },
+  "thank": {
+    "meaning": "感谢",
+    "pos": "v."
+  },
+  "touch": {
+    "meaning": "触摸",
+    "pos": "v."
+  },
+  "tour": {
+    "meaning": "旅游",
+    "pos": "v."
+  },
+  "track": {
+    "meaning": "追踪",
+    "pos": "v."
+  },
+  "trade": {
+    "meaning": "贸易",
+    "pos": "v."
+  },
+  "transform": {
+    "meaning": "转换",
+    "pos": "v."
+  },
+  "translate": {
+    "meaning": "翻译",
+    "pos": "v."
+  },
+  "treat": {
+    "meaning": "对待",
+    "pos": "v."
+  },
+  "trigger": {
+    "meaning": "触发",
+    "pos": "v."
+  },
+  "trust": {
+    "meaning": "信任",
+    "pos": "v."
+  },
+  "turn": {
+    "meaning": "转",
+    "pos": "v."
+  },
+  "twist": {
+    "meaning": "扭",
+    "pos": "v."
+  },
+  "type": {
+    "meaning": "打字",
+    "pos": "v."
+  },
+  "undergo": {
+    "meaning": "经历",
+    "pos": "v."
+  },
+  "undertake": {
+    "meaning": "承担",
+    "pos": "v."
+  },
+  "unite": {
+    "meaning": "团结",
+    "pos": "v."
+  },
+  "unlock": {
+    "meaning": "解锁",
+    "pos": "v."
+  },
+  "update": {
+    "meaning": "更新",
+    "pos": "v."
+  },
+  "upgrade": {
+    "meaning": "升级",
+    "pos": "v."
+  },
+  "upset": {
+    "meaning": "使不安",
+    "pos": "v."
+  },
+  "urge": {
+    "meaning": "催促",
+    "pos": "v."
+  },
+  "utilize": {
+    "meaning": "利用",
+    "pos": "v."
+  },
+  "validate": {
+    "meaning": "验证",
+    "pos": "v."
+  },
+  "value": {
+    "meaning": "重视",
+    "pos": "v."
+  },
+  "vanish": {
+    "meaning": "消失",
+    "pos": "v."
+  },
+  "vary": {
+    "meaning": "变化",
+    "pos": "v."
+  },
+  "verify": {
+    "meaning": "验证",
+    "pos": "v."
+  },
+  "visit": {
+    "meaning": "访问",
+    "pos": "v."
+  },
+  "vote": {
+    "meaning": "投票",
+    "pos": "v."
+  },
+  "wake": {
+    "meaning": "醒来",
+    "pos": "v."
+  },
+  "wander": {
+    "meaning": "徘徊",
+    "pos": "v."
+  },
+  "warn": {
+    "meaning": "警告",
+    "pos": "v."
+  },
+  "wash": {
+    "meaning": "洗",
+    "pos": "v."
+  },
+  "waste": {
+    "meaning": "浪费",
+    "pos": "v."
+  },
+  "weigh": {
+    "meaning": "称重",
+    "pos": "v."
+  },
+  "welcome": {
+    "meaning": "欢迎",
+    "pos": "v."
+  },
+  "whip": {
+    "meaning": "鞭打",
+    "pos": "v."
+  },
+  "whisper": {
+    "meaning": "低语",
+    "pos": "v."
+  },
+  "widen": {
+    "meaning": "加宽",
+    "pos": "v."
+  },
+  "wipe": {
+    "meaning": "擦",
+    "pos": "v."
+  },
+  "wish": {
+    "meaning": "希望",
+    "pos": "v."
+  },
+  "withdraw": {
+    "meaning": "撤回",
+    "pos": "v."
+  },
+  "witness": {
+    "meaning": "见证",
+    "pos": "v."
+  },
+  "wonder": {
+    "meaning": "想知道",
+    "pos": "v."
+  },
+  "worry": {
+    "meaning": "担心",
+    "pos": "v."
+  },
+  "wrap": {
+    "meaning": "包裹",
+    "pos": "v."
+  },
+  "wreck": {
+    "meaning": "破坏",
+    "pos": "v."
+  },
+  "wrestle": {
+    "meaning": "摔跤",
+    "pos": "v."
+  },
+  "wring": {
+    "meaning": "拧",
+    "pos": "v."
+  },
+  "yield": {
+    "meaning": "产生;让步",
+    "pos": "v."
+  },
+  "zoom": {
+    "meaning": "缩放",
+    "pos": "v."
+  },
+  "study": {
+    "meaning": "学习;研究",
+    "pos": "v."
+  },
+  "improve": {
+    "meaning": "改进",
+    "pos": "v."
+  },
+  "increase": {
+    "meaning": "增加",
+    "pos": "v."
+  },
+  "introduce": {
+    "meaning": "介绍",
+    "pos": "v."
+  },
+  "invite": {
+    "meaning": "邀请",
+    "pos": "v."
+  },
+  "jump": {
+    "meaning": "跳",
+    "pos": "v."
+  },
+  "hurry": {
+    "meaning": "匆忙",
+    "pos": "v."
+  },
+  "injure": {
+    "meaning": "伤害",
+    "pos": "v."
+  },
+  "time": {
+    "meaning": "时间",
+    "pos": "n."
+  },
+  "year": {
+    "meaning": "年",
+    "pos": "n."
+  },
+  "people": {
+    "meaning": "人",
+    "pos": "n."
+  },
+  "way": {
+    "meaning": "方式;路",
+    "pos": "n."
+  },
+  "day": {
+    "meaning": "天",
+    "pos": "n."
+  },
+  "man": {
+    "meaning": "男人",
+    "pos": "n."
+  },
+  "woman": {
+    "meaning": "女人",
+    "pos": "n."
+  },
+  "child": {
+    "meaning": "孩子",
+    "pos": "n."
+  },
+  "world": {
+    "meaning": "世界",
+    "pos": "n."
+  },
+  "life": {
+    "meaning": "生活;生命",
+    "pos": "n."
+  },
+  "hand": {
+    "meaning": "手",
+    "pos": "n."
+  },
+  "part": {
+    "meaning": "部分",
+    "pos": "n."
+  },
+  "case": {
+    "meaning": "案例",
+    "pos": "n."
+  },
+  "week": {
+    "meaning": "周",
+    "pos": "n."
+  },
+  "company": {
+    "meaning": "公司",
+    "pos": "n."
+  },
+  "system": {
+    "meaning": "系统",
+    "pos": "n."
+  },
+  "program": {
+    "meaning": "程序",
+    "pos": "n."
+  },
+  "night": {
+    "meaning": "夜晚",
+    "pos": "n."
+  },
+  "home": {
+    "meaning": "家",
+    "pos": "n."
+  },
+  "water": {
+    "meaning": "水",
+    "pos": "n."
+  },
+  "room": {
+    "meaning": "房间",
+    "pos": "n."
+  },
+  "mother": {
+    "meaning": "母亲",
+    "pos": "n."
+  },
+  "area": {
+    "meaning": "区域",
+    "pos": "n."
+  },
+  "money": {
+    "meaning": "钱",
+    "pos": "n."
+  },
+  "story": {
+    "meaning": "故事",
+    "pos": "n."
+  },
+  "fact": {
+    "meaning": "事实",
+    "pos": "n."
+  },
+  "month": {
+    "meaning": "月",
+    "pos": "n."
+  },
+  "lot": {
+    "meaning": "很多",
+    "pos": "n."
+  },
+  "right": {
+    "meaning": "右边;权利",
+    "pos": "n."
+  },
+  "book": {
+    "meaning": "书",
+    "pos": "n."
+  },
+  "eye": {
+    "meaning": "眼睛",
+    "pos": "n."
+  },
+  "job": {
+    "meaning": "工作",
+    "pos": "n."
+  },
+  "word": {
+    "meaning": "单词",
+    "pos": "n."
+  },
+  "business": {
+    "meaning": "商业",
+    "pos": "n."
+  },
+  "issue": {
+    "meaning": "问题",
+    "pos": "n."
+  },
+  "side": {
+    "meaning": "边",
+    "pos": "n."
+  },
+  "kind": {
+    "meaning": "种类",
+    "pos": "n."
+  },
+  "house": {
+    "meaning": "房子",
+    "pos": "n."
+  },
+  "service": {
+    "meaning": "服务",
+    "pos": "n."
+  },
+  "friend": {
+    "meaning": "朋友",
+    "pos": "n."
+  },
+  "father": {
+    "meaning": "父亲",
+    "pos": "n."
+  },
+  "power": {
+    "meaning": "力量;权力",
+    "pos": "n."
+  },
+  "hour": {
+    "meaning": "小时",
+    "pos": "n."
+  },
+  "game": {
+    "meaning": "游戏",
+    "pos": "n."
+  },
+  "line": {
+    "meaning": "线;行",
+    "pos": "n."
+  },
+  "end": {
+    "meaning": "结束",
+    "pos": "n."
+  },
+  "member": {
+    "meaning": "成员",
+    "pos": "n."
+  },
+  "law": {
+    "meaning": "法律",
+    "pos": "n."
+  },
+  "car": {
+    "meaning": "汽车",
+    "pos": "n."
+  },
+  "city": {
+    "meaning": "城市",
+    "pos": "n."
+  },
+  "community": {
+    "meaning": "社区",
+    "pos": "n."
+  },
+  "name": {
+    "meaning": "名字",
+    "pos": "n."
+  },
+  "president": {
+    "meaning": "总统",
+    "pos": "n."
+  },
+  "team": {
+    "meaning": "团队",
+    "pos": "n."
+  },
+  "minute": {
+    "meaning": "分钟",
+    "pos": "n."
+  },
+  "idea": {
+    "meaning": "主意",
+    "pos": "n."
+  },
+  "kid": {
+    "meaning": "孩子",
+    "pos": "n."
+  },
+  "body": {
+    "meaning": "身体",
+    "pos": "n."
+  },
+  "information": {
+    "meaning": "信息",
+    "pos": "n."
+  },
+  "back": {
+    "meaning": "后面",
+    "pos": "n."
+  },
+  "parent": {
+    "meaning": "父母",
+    "pos": "n."
+  },
+  "others": {
+    "meaning": "其他人",
+    "pos": "n."
+  },
+  "level": {
+    "meaning": "水平",
+    "pos": "n."
+  },
+  "office": {
+    "meaning": "办公室",
+    "pos": "n."
+  },
+  "door": {
+    "meaning": "门",
+    "pos": "n."
+  },
+  "health": {
+    "meaning": "健康",
+    "pos": "n."
+  },
+  "person": {
+    "meaning": "人",
+    "pos": "n."
+  },
+  "art": {
+    "meaning": "艺术",
+    "pos": "n."
+  },
+  "war": {
+    "meaning": "战争",
+    "pos": "n."
+  },
+  "history": {
+    "meaning": "历史",
+    "pos": "n."
+  },
+  "party": {
+    "meaning": "派对;政党",
+    "pos": "n."
+  },
+  "result": {
+    "meaning": "结果",
+    "pos": "n."
+  },
+  "morning": {
+    "meaning": "早晨",
+    "pos": "n."
+  },
+  "reason": {
+    "meaning": "原因",
+    "pos": "n."
+  },
+  "research": {
+    "meaning": "研究",
+    "pos": "n."
+  },
+  "girl": {
+    "meaning": "女孩",
+    "pos": "n."
+  },
+  "guy": {
+    "meaning": "家伙",
+    "pos": "n."
+  },
+  "moment": {
+    "meaning": "时刻",
+    "pos": "n."
+  },
+  "air": {
+    "meaning": "空气",
+    "pos": "n."
+  },
+  "teacher": {
+    "meaning": "老师",
+    "pos": "n."
+  },
+  "force": {
+    "meaning": "力量",
+    "pos": "n."
+  },
+  "education": {
+    "meaning": "教育",
+    "pos": "n."
+  },
+  "foot": {
+    "meaning": "脚",
+    "pos": "n."
+  },
+  "boy": {
+    "meaning": "男孩",
+    "pos": "n."
+  },
+  "age": {
+    "meaning": "年龄",
+    "pos": "n."
+  },
+  "policy": {
+    "meaning": "政策",
+    "pos": "n."
+  },
+  "music": {
+    "meaning": "音乐",
+    "pos": "n."
+  },
+  "market": {
+    "meaning": "市场",
+    "pos": "n."
+  },
+  "sense": {
+    "meaning": "感觉;意义",
+    "pos": "n."
+  },
+  "nation": {
+    "meaning": "国家",
+    "pos": "n."
+  },
+  "college": {
+    "meaning": "大学",
+    "pos": "n."
+  },
+  "interest": {
+    "meaning": "兴趣",
+    "pos": "n."
+  },
+  "death": {
+    "meaning": "死亡",
+    "pos": "n."
+  },
+  "class": {
+    "meaning": "班级;课",
+    "pos": "n."
+  },
+  "control": {
+    "meaning": "控制",
+    "pos": "n."
+  },
+  "care": {
+    "meaning": "关心",
+    "pos": "n."
+  },
+  "field": {
+    "meaning": "领域;田",
+    "pos": "n."
+  },
+  "development": {
+    "meaning": "发展",
+    "pos": "n."
+  },
+  "role": {
+    "meaning": "角色",
+    "pos": "n."
+  },
+  "effort": {
+    "meaning": "努力",
+    "pos": "n."
+  },
+  "rate": {
+    "meaning": "比率",
+    "pos": "n."
+  },
+  "heart": {
+    "meaning": "心",
+    "pos": "n."
+  },
+  "drug": {
+    "meaning": "药",
+    "pos": "n."
+  },
+  "leader": {
+    "meaning": "领导者",
+    "pos": "n."
+  },
+  "light": {
+    "meaning": "光",
+    "pos": "n."
+  },
+  "voice": {
+    "meaning": "声音",
+    "pos": "n."
+  },
+  "wife": {
+    "meaning": "妻子",
+    "pos": "n."
+  },
+  "police": {
+    "meaning": "警察",
+    "pos": "n."
+  },
+  "mind": {
+    "meaning": "头脑",
+    "pos": "n."
+  },
+  "difference": {
+    "meaning": "差异",
+    "pos": "n."
+  },
+  "period": {
+    "meaning": "时期",
+    "pos": "n."
+  },
+  "building": {
+    "meaning": "建筑",
+    "pos": "n."
+  },
+  "action": {
+    "meaning": "行动",
+    "pos": "n."
+  },
+  "authority": {
+    "meaning": "权威",
+    "pos": "n."
+  },
+  "model": {
+    "meaning": "模型",
+    "pos": "n."
+  },
+  "student": {
+    "meaning": "学生",
+    "pos": "n."
+  },
+  "society": {
+    "meaning": "社会",
+    "pos": "n."
+  },
+  "view": {
+    "meaning": "观点",
+    "pos": "n."
+  },
+  "goal": {
+    "meaning": "目标",
+    "pos": "n."
+  },
+  "paper": {
+    "meaning": "纸;论文",
+    "pos": "n."
+  },
+  "event": {
+    "meaning": "事件",
+    "pos": "n."
+  },
+  "picture": {
+    "meaning": "图片",
+    "pos": "n."
+  },
+  "nature": {
+    "meaning": "自然",
+    "pos": "n."
+  },
+  "truth": {
+    "meaning": "真理",
+    "pos": "n."
+  },
+  "road": {
+    "meaning": "路",
+    "pos": "n."
+  },
+  "letter": {
+    "meaning": "信;字母",
+    "pos": "n."
+  },
+  "rule": {
+    "meaning": "规则",
+    "pos": "n."
+  },
+  "decision": {
+    "meaning": "决定",
+    "pos": "n."
+  },
+  "project": {
+    "meaning": "项目",
+    "pos": "n."
+  },
+  "behavior": {
+    "meaning": "行为",
+    "pos": "n."
+  },
+  "quality": {
+    "meaning": "质量",
+    "pos": "n."
+  },
+  "need": {
+    "meaning": "需要",
+    "pos": "n."
+  },
+  "food": {
+    "meaning": "食物",
+    "pos": "n."
+  },
+  "analysis": {
+    "meaning": "分析",
+    "pos": "n."
+  },
+  "character": {
+    "meaning": "性格;角色",
+    "pos": "n."
+  },
+  "pressure": {
+    "meaning": "压力",
+    "pos": "n."
+  },
+  "position": {
+    "meaning": "位置;职位",
+    "pos": "n."
+  },
+  "success": {
+    "meaning": "成功",
+    "pos": "n."
+  },
+  "opportunity": {
+    "meaning": "机会",
+    "pos": "n."
+  },
+  "application": {
+    "meaning": "应用;申请",
+    "pos": "n."
+  },
+  "responsibility": {
+    "meaning": "责任",
+    "pos": "n."
+  },
+  "direction": {
+    "meaning": "方向",
+    "pos": "n."
+  },
+  "thought": {
+    "meaning": "思想",
+    "pos": "n."
+  },
+  "theory": {
+    "meaning": "理论",
+    "pos": "n."
+  },
+  "purpose": {
+    "meaning": "目的",
+    "pos": "n."
+  },
+  "challenge": {
+    "meaning": "挑战",
+    "pos": "n."
+  },
+  "title": {
+    "meaning": "标题",
+    "pos": "n."
+  },
+  "data": {
+    "meaning": "数据",
+    "pos": "n."
+  },
+  "approach": {
+    "meaning": "方法",
+    "pos": "n."
+  },
+  "feature": {
+    "meaning": "特征",
+    "pos": "n."
+  },
+  "content": {
+    "meaning": "内容",
+    "pos": "n."
+  },
+  "design": {
+    "meaning": "设计",
+    "pos": "n."
+  },
+  "department": {
+    "meaning": "部门",
+    "pos": "n."
+  },
+  "source": {
+    "meaning": "来源",
+    "pos": "n."
+  },
+  "material": {
+    "meaning": "材料",
+    "pos": "n."
+  },
+  "practice": {
+    "meaning": "实践",
+    "pos": "n."
+  },
+  "problem": {
+    "meaning": "问题",
+    "pos": "n."
+  },
+  "evidence": {
+    "meaning": "证据",
+    "pos": "n."
+  },
+  "message": {
+    "meaning": "消息",
+    "pos": "n."
+  },
+  "choice": {
+    "meaning": "选择",
+    "pos": "n."
+  },
+  "answer": {
+    "meaning": "答案",
+    "pos": "n."
+  },
+  "phone": {
+    "meaning": "电话",
+    "pos": "n."
+  },
+  "resource": {
+    "meaning": "资源",
+    "pos": "n."
+  },
+  "relationship": {
+    "meaning": "关系",
+    "pos": "n."
+  },
+  "knowledge": {
+    "meaning": "知识",
+    "pos": "n."
+  },
+  "dog": {
+    "meaning": "狗",
+    "pos": "n."
+  },
+  "cat": {
+    "meaning": "猫",
+    "pos": "n."
+  },
+  "bird": {
+    "meaning": "鸟",
+    "pos": "n."
+  },
+  "fish": {
+    "meaning": "鱼",
+    "pos": "n."
+  },
+  "tree": {
+    "meaning": "树",
+    "pos": "n."
+  },
+  "flower": {
+    "meaning": "花",
+    "pos": "n."
+  },
+  "garden": {
+    "meaning": "花园",
+    "pos": "n."
+  },
+  "forest": {
+    "meaning": "森林",
+    "pos": "n."
+  },
+  "river": {
+    "meaning": "河流",
+    "pos": "n."
+  },
+  "mountain": {
+    "meaning": "山",
+    "pos": "n."
+  },
+  "ocean": {
+    "meaning": "海洋",
+    "pos": "n."
+  },
+  "lake": {
+    "meaning": "湖",
+    "pos": "n."
+  },
+  "sky": {
+    "meaning": "天空",
+    "pos": "n."
+  },
+  "sun": {
+    "meaning": "太阳",
+    "pos": "n."
+  },
+  "moon": {
+    "meaning": "月亮",
+    "pos": "n."
+  },
+  "star": {
+    "meaning": "星星",
+    "pos": "n."
+  },
+  "rain": {
+    "meaning": "雨",
+    "pos": "n."
+  },
+  "snow": {
+    "meaning": "雪",
+    "pos": "n."
+  },
+  "wind": {
+    "meaning": "风",
+    "pos": "n."
+  },
+  "fire": {
+    "meaning": "火",
+    "pos": "n."
+  },
+  "earth": {
+    "meaning": "地球",
+    "pos": "n."
+  },
+  "ground": {
+    "meaning": "地面",
+    "pos": "n."
+  },
+  "stone": {
+    "meaning": "石头",
+    "pos": "n."
+  },
+  "sand": {
+    "meaning": "沙",
+    "pos": "n."
+  },
+  "sea": {
+    "meaning": "海",
+    "pos": "n."
+  },
+  "wave": {
+    "meaning": "波浪",
+    "pos": "n."
+  },
+  "cloud": {
+    "meaning": "云",
+    "pos": "n."
+  },
+  "storm": {
+    "meaning": "风暴",
+    "pos": "n."
+  },
+  "spring": {
+    "meaning": "春天",
+    "pos": "n."
+  },
+  "summer": {
+    "meaning": "夏天",
+    "pos": "n."
+  },
+  "autumn": {
+    "meaning": "秋天",
+    "pos": "n."
+  },
+  "winter": {
+    "meaning": "冬天",
+    "pos": "n."
+  },
+  "afternoon": {
+    "meaning": "下午",
+    "pos": "n."
+  },
+  "evening": {
+    "meaning": "傍晚",
+    "pos": "n."
+  },
+  "midnight": {
+    "meaning": "午夜",
+    "pos": "n."
+  },
+  "clock": {
+    "meaning": "时钟",
+    "pos": "n."
+  },
+  "window": {
+    "meaning": "窗户",
+    "pos": "n."
+  },
+  "floor": {
+    "meaning": "地板",
+    "pos": "n."
+  },
+  "wall": {
+    "meaning": "墙",
+    "pos": "n."
+  },
+  "roof": {
+    "meaning": "屋顶",
+    "pos": "n."
+  },
+  "bed": {
+    "meaning": "床",
+    "pos": "n."
+  },
+  "chair": {
+    "meaning": "椅子",
+    "pos": "n."
+  },
+  "table": {
+    "meaning": "桌子",
+    "pos": "n."
+  },
+  "cup": {
+    "meaning": "杯子",
+    "pos": "n."
+  },
+  "bottle": {
+    "meaning": "瓶子",
+    "pos": "n."
+  },
+  "box": {
+    "meaning": "盒子",
+    "pos": "n."
+  },
+  "bag": {
+    "meaning": "包",
+    "pos": "n."
+  },
+  "basket": {
+    "meaning": "篮子",
+    "pos": "n."
+  },
+  "note": {
+    "meaning": "笔记",
+    "pos": "n."
+  },
+  "page": {
+    "meaning": "页",
+    "pos": "n."
+  },
+  "chapter": {
+    "meaning": "章节",
+    "pos": "n."
+  },
+  "newspaper": {
+    "meaning": "报纸",
+    "pos": "n."
+  },
+  "magazine": {
+    "meaning": "杂志",
+    "pos": "n."
+  },
+  "radio": {
+    "meaning": "收音机",
+    "pos": "n."
+  },
+  "television": {
+    "meaning": "电视",
+    "pos": "n."
+  },
+  "computer": {
+    "meaning": "电脑",
+    "pos": "n."
+  },
+  "machine": {
+    "meaning": "机器",
+    "pos": "n."
+  },
+  "engine": {
+    "meaning": "引擎",
+    "pos": "n."
+  },
+  "tool": {
+    "meaning": "工具",
+    "pos": "n."
+  },
+  "weapon": {
+    "meaning": "武器",
+    "pos": "n."
+  },
+  "medicine": {
+    "meaning": "药",
+    "pos": "n."
+  },
+  "hospital": {
+    "meaning": "医院",
+    "pos": "n."
+  },
+  "doctor": {
+    "meaning": "医生",
+    "pos": "n."
+  },
+  "nurse": {
+    "meaning": "护士",
+    "pos": "n."
+  },
+  "patient": {
+    "meaning": "病人",
+    "pos": "n."
+  },
+  "school": {
+    "meaning": "学校",
+    "pos": "n."
+  },
+  "university": {
+    "meaning": "大学",
+    "pos": "n."
+  },
+  "lesson": {
+    "meaning": "课",
+    "pos": "n."
+  },
+  "homework": {
+    "meaning": "作业",
+    "pos": "n."
+  },
+  "exam": {
+    "meaning": "考试",
+    "pos": "n."
+  },
+  "grade": {
+    "meaning": "年级;成绩",
+    "pos": "n."
+  },
+  "bread": {
+    "meaning": "面包",
+    "pos": "n."
+  },
+  "meat": {
+    "meaning": "肉",
+    "pos": "n."
+  },
+  "vegetable": {
+    "meaning": "蔬菜",
+    "pos": "n."
+  },
+  "fruit": {
+    "meaning": "水果",
+    "pos": "n."
+  },
+  "egg": {
+    "meaning": "蛋",
+    "pos": "n."
+  },
+  "rice": {
+    "meaning": "米饭",
+    "pos": "n."
+  },
+  "soup": {
+    "meaning": "汤",
+    "pos": "n."
+  },
+  "salad": {
+    "meaning": "沙拉",
+    "pos": "n."
+  },
+  "coffee": {
+    "meaning": "咖啡",
+    "pos": "n."
+  },
+  "tea": {
+    "meaning": "茶",
+    "pos": "n."
+  },
+  "milk": {
+    "meaning": "牛奶",
+    "pos": "n."
+  },
+  "juice": {
+    "meaning": "果汁",
+    "pos": "n."
+  },
+  "beer": {
+    "meaning": "啤酒",
+    "pos": "n."
+  },
+  "wine": {
+    "meaning": "酒",
+    "pos": "n."
+  },
+  "clothes": {
+    "meaning": "衣服",
+    "pos": "n."
+  },
+  "shirt": {
+    "meaning": "衬衫",
+    "pos": "n."
+  },
+  "pants": {
+    "meaning": "裤子",
+    "pos": "n."
+  },
+  "dress": {
+    "meaning": "连衣裙",
+    "pos": "n."
+  },
+  "coat": {
+    "meaning": "外套",
+    "pos": "n."
+  },
+  "shoe": {
+    "meaning": "鞋",
+    "pos": "n."
+  },
+  "hat": {
+    "meaning": "帽子",
+    "pos": "n."
+  },
+  "glove": {
+    "meaning": "手套",
+    "pos": "n."
+  },
+  "stocking": {
+    "meaning": "长袜",
+    "pos": "n."
+  },
+  "color": {
+    "meaning": "颜色",
+    "pos": "n."
+  },
+  "gold": {
+    "meaning": "金色",
+    "pos": "n."
+  },
+  "silver": {
+    "meaning": "银色",
+    "pos": "n."
+  },
+  "good": {
+    "meaning": "好的",
+    "pos": "adj."
+  },
+  "new": {
+    "meaning": "新的",
+    "pos": "adj."
+  },
+  "first": {
+    "meaning": "第一的",
+    "pos": "adj."
+  },
+  "last": {
+    "meaning": "最后的",
+    "pos": "adj."
+  },
+  "long": {
+    "meaning": "长的",
+    "pos": "adj."
+  },
+  "great": {
+    "meaning": "伟大的",
+    "pos": "adj."
+  },
+  "little": {
+    "meaning": "小的",
+    "pos": "adj."
+  },
+  "other": {
+    "meaning": "其他的",
+    "pos": "adj."
+  },
+  "old": {
+    "meaning": "老的",
+    "pos": "adj."
+  },
+  "big": {
+    "meaning": "大的",
+    "pos": "adj."
+  },
+  "high": {
+    "meaning": "高的",
+    "pos": "adj."
+  },
+  "different": {
+    "meaning": "不同的",
+    "pos": "adj."
+  },
+  "small": {
+    "meaning": "小的",
+    "pos": "adj."
+  },
+  "large": {
+    "meaning": "大的",
+    "pos": "adj."
+  },
+  "next": {
+    "meaning": "下一个",
+    "pos": "adj."
+  },
+  "early": {
+    "meaning": "早的",
+    "pos": "adj."
+  },
+  "young": {
+    "meaning": "年轻的",
+    "pos": "adj."
+  },
+  "important": {
+    "meaning": "重要的",
+    "pos": "adj."
+  },
+  "few": {
+    "meaning": "少的",
+    "pos": "adj."
+  },
+  "public": {
+    "meaning": "公共的",
+    "pos": "adj."
+  },
+  "bad": {
+    "meaning": "坏的",
+    "pos": "adj."
+  },
+  "same": {
+    "meaning": "相同的",
+    "pos": "adj."
+  },
+  "able": {
+    "meaning": "能",
+    "pos": "adj."
+  },
+  "human": {
+    "meaning": "人类的",
+    "pos": "adj."
+  },
+  "local": {
+    "meaning": "当地的",
+    "pos": "adj."
+  },
+  "sure": {
+    "meaning": "确定的",
+    "pos": "adj."
+  },
+  "free": {
+    "meaning": "自由的;免费的",
+    "pos": "adj."
+  },
+  "better": {
+    "meaning": "更好的",
+    "pos": "adj."
+  },
+  "real": {
+    "meaning": "真实的",
+    "pos": "adj."
+  },
+  "special": {
+    "meaning": "特别的",
+    "pos": "adj."
+  },
+  "easy": {
+    "meaning": "容易的",
+    "pos": "adj."
+  },
+  "hard": {
+    "meaning": "困难的",
+    "pos": "adj."
+  },
+  "low": {
+    "meaning": "低的",
+    "pos": "adj."
+  },
+  "basic": {
+    "meaning": "基本的",
+    "pos": "adj."
+  },
+  "certain": {
+    "meaning": "确定的",
+    "pos": "adj."
+  },
+  "personal": {
+    "meaning": "个人的",
+    "pos": "adj."
+  },
+  "happy": {
+    "meaning": "快乐的",
+    "pos": "adj."
+  },
+  "sad": {
+    "meaning": "悲伤的",
+    "pos": "adj."
+  },
+  "angry": {
+    "meaning": "生气的",
+    "pos": "adj."
+  },
+  "strong": {
+    "meaning": "强壮的",
+    "pos": "adj."
+  },
+  "weak": {
+    "meaning": "虚弱的",
+    "pos": "adj."
+  },
+  "rich": {
+    "meaning": "富有的",
+    "pos": "adj."
+  },
+  "poor": {
+    "meaning": "贫穷的",
+    "pos": "adj."
+  },
+  "hot": {
+    "meaning": "热的",
+    "pos": "adj."
+  },
+  "cold": {
+    "meaning": "冷的",
+    "pos": "adj."
+  },
+  "warm": {
+    "meaning": "温暖的",
+    "pos": "adj."
+  },
+  "cool": {
+    "meaning": "凉爽的",
+    "pos": "adj."
+  },
+  "full": {
+    "meaning": "满的",
+    "pos": "adj."
+  },
+  "empty": {
+    "meaning": "空的",
+    "pos": "adj."
+  },
+  "fast": {
+    "meaning": "快的",
+    "pos": "adj."
+  },
+  "slow": {
+    "meaning": "慢的",
+    "pos": "adj."
+  },
+  "quick": {
+    "meaning": "快的",
+    "pos": "adj."
+  },
+  "bright": {
+    "meaning": "明亮的",
+    "pos": "adj."
+  },
+  "dark": {
+    "meaning": "黑暗的",
+    "pos": "adj."
+  },
+  "clean": {
+    "meaning": "干净的",
+    "pos": "adj."
+  },
+  "dirty": {
+    "meaning": "脏的",
+    "pos": "adj."
+  },
+  "dry": {
+    "meaning": "干燥的",
+    "pos": "adj."
+  },
+  "wet": {
+    "meaning": "湿的",
+    "pos": "adj."
+  },
+  "modern": {
+    "meaning": "现代的",
+    "pos": "adj."
+  },
+  "traditional": {
+    "meaning": "传统的",
+    "pos": "adj."
+  },
+  "popular": {
+    "meaning": "流行的",
+    "pos": "adj."
+  },
+  "common": {
+    "meaning": "常见的",
+    "pos": "adj."
+  },
+  "rare": {
+    "meaning": "稀有的",
+    "pos": "adj."
+  },
+  "normal": {
+    "meaning": "正常的",
+    "pos": "adj."
+  },
+  "strange": {
+    "meaning": "奇怪的",
+    "pos": "adj."
+  },
+  "perfect": {
+    "meaning": "完美的",
+    "pos": "adj."
+  },
+  "possible": {
+    "meaning": "可能的",
+    "pos": "adj."
+  },
+  "necessary": {
+    "meaning": "必要的",
+    "pos": "adj."
+  },
+  "available": {
+    "meaning": "可用的",
+    "pos": "adj."
+  },
+  "interesting": {
+    "meaning": "有趣的",
+    "pos": "adj."
+  },
+  "boring": {
+    "meaning": "无聊的",
+    "pos": "adj."
+  },
+  "exciting": {
+    "meaning": "令人兴奋的",
+    "pos": "adj."
+  },
+  "dangerous": {
+    "meaning": "危险的",
+    "pos": "adj."
+  },
+  "safe": {
+    "meaning": "安全的",
+    "pos": "adj."
+  },
+  "difficult": {
+    "meaning": "困难的",
+    "pos": "adj."
+  },
+  "simple": {
+    "meaning": "简单的",
+    "pos": "adj."
+  },
+  "complex": {
+    "meaning": "复杂的",
+    "pos": "adj."
+  },
+  "busy": {
+    "meaning": "忙碌的",
+    "pos": "adj."
+  },
+  "quiet": {
+    "meaning": "安静的",
+    "pos": "adj."
+  },
+  "loud": {
+    "meaning": "大声的",
+    "pos": "adj."
+  },
+  "clear": {
+    "meaning": "清楚的",
+    "pos": "adj."
+  },
+  "thick": {
+    "meaning": "厚的",
+    "pos": "adj."
+  },
+  "thin": {
+    "meaning": "薄的",
+    "pos": "adj."
+  },
+  "wide": {
+    "meaning": "宽的",
+    "pos": "adj."
+  },
+  "narrow": {
+    "meaning": "窄的",
+    "pos": "adj."
+  },
+  "deep": {
+    "meaning": "深的",
+    "pos": "adj."
+  },
+  "shallow": {
+    "meaning": "浅的",
+    "pos": "adj."
+  },
+  "heavy": {
+    "meaning": "重的",
+    "pos": "adj."
+  },
+  "sweet": {
+    "meaning": "甜的",
+    "pos": "adj."
+  },
+  "sour": {
+    "meaning": "酸的",
+    "pos": "adj."
+  },
+  "bitter": {
+    "meaning": "苦的",
+    "pos": "adj."
+  },
+  "salty": {
+    "meaning": "咸的",
+    "pos": "adj."
+  },
+  "spicy": {
+    "meaning": "辣的",
+    "pos": "adj."
+  },
+  "delicious": {
+    "meaning": "美味的",
+    "pos": "adj."
+  },
+  "tasty": {
+    "meaning": "好吃的",
+    "pos": "adj."
+  },
+  "fresh": {
+    "meaning": "新鲜的",
+    "pos": "adj."
+  },
+  "ripe": {
+    "meaning": "成熟的",
+    "pos": "adj."
+  },
+  "raw": {
+    "meaning": "生的",
+    "pos": "adj."
+  },
+  "cooked": {
+    "meaning": "煮熟的",
+    "pos": "adj."
+  },
+  "famous": {
+    "meaning": "著名的",
+    "pos": "adj."
+  },
+  "unknown": {
+    "meaning": "未知的",
+    "pos": "adj."
+  },
+  "familiar": {
+    "meaning": "熟悉的",
+    "pos": "adj."
+  },
+  "foreign": {
+    "meaning": "外国的",
+    "pos": "adj."
+  },
+  "native": {
+    "meaning": "本地的",
+    "pos": "adj."
+  },
+  "international": {
+    "meaning": "国际的",
+    "pos": "adj."
+  },
+  "national": {
+    "meaning": "国家的",
+    "pos": "adj."
+  },
+  "regional": {
+    "meaning": "地区的",
+    "pos": "adj."
+  },
+  "central": {
+    "meaning": "中心的",
+    "pos": "adj."
+  },
+  "present": {
+    "meaning": "现在的",
+    "pos": "adj."
+  },
+  "absent": {
+    "meaning": "缺席的",
+    "pos": "adj."
+  },
+  "positive": {
+    "meaning": "积极的",
+    "pos": "adj."
+  },
+  "negative": {
+    "meaning": "消极的",
+    "pos": "adj."
+  },
+  "active": {
+    "meaning": "积极的",
+    "pos": "adj."
+  },
+  "passive": {
+    "meaning": "被动的",
+    "pos": "adj."
+  },
+  "creative": {
+    "meaning": "创造性的",
+    "pos": "adj."
+  },
+  "productive": {
+    "meaning": "多产的",
+    "pos": "adj."
+  },
+  "ugly": {
+    "meaning": "丑陋的",
+    "pos": "adj."
+  },
+  "pretty": {
+    "meaning": "漂亮的",
+    "pos": "adj."
+  },
+  "handsome": {
+    "meaning": "英俊的",
+    "pos": "adj."
+  },
+  "lovely": {
+    "meaning": "可爱的",
+    "pos": "adj."
+  },
+  "elegant": {
+    "meaning": "优雅的",
+    "pos": "adj."
+  },
+  "gentle": {
+    "meaning": "温柔的",
+    "pos": "adj."
+  },
+  "cruel": {
+    "meaning": "残忍的",
+    "pos": "adj."
+  },
+  "honest": {
+    "meaning": "诚实的",
+    "pos": "adj."
+  },
+  "brave": {
+    "meaning": "勇敢的",
+    "pos": "adj."
+  },
+  "cowardly": {
+    "meaning": "胆小的",
+    "pos": "adj."
+  },
+  "wise": {
+    "meaning": "明智的",
+    "pos": "adj."
+  },
+  "foolish": {
+    "meaning": "愚蠢的",
+    "pos": "adj."
+  },
+  "smart": {
+    "meaning": "聪明的",
+    "pos": "adj."
+  },
+  "stupid": {
+    "meaning": "愚蠢的",
+    "pos": "adj."
+  },
+  "clever": {
+    "meaning": "聪明的",
+    "pos": "adj."
+  },
+  "silly": {
+    "meaning": "傻的",
+    "pos": "adj."
+  },
+  "careful": {
+    "meaning": "仔细的",
+    "pos": "adj."
+  },
+  "careless": {
+    "meaning": "粗心的",
+    "pos": "adj."
+  },
+  "proud": {
+    "meaning": "骄傲的",
+    "pos": "adj."
+  },
+  "humble": {
+    "meaning": "谦虚的",
+    "pos": "adj."
+  },
+  "confident": {
+    "meaning": "自信的",
+    "pos": "adj."
+  },
+  "shy": {
+    "meaning": "害羞的",
+    "pos": "adj."
+  },
+  "polite": {
+    "meaning": "有礼貌的",
+    "pos": "adj."
+  },
+  "rude": {
+    "meaning": "粗鲁的",
+    "pos": "adj."
+  },
+  "generous": {
+    "meaning": "慷慨的",
+    "pos": "adj."
+  },
+  "selfish": {
+    "meaning": "自私的",
+    "pos": "adj."
+  },
+  "optimistic": {
+    "meaning": "乐观的",
+    "pos": "adj."
+  },
+  "pessimistic": {
+    "meaning": "悲观的",
+    "pos": "adj."
+  },
+  "serious": {
+    "meaning": "严肃的",
+    "pos": "adj."
+  },
+  "funny": {
+    "meaning": "有趣的",
+    "pos": "adj."
+  },
+  "formal": {
+    "meaning": "正式的",
+    "pos": "adj."
+  },
+  "legal": {
+    "meaning": "合法的",
+    "pos": "adj."
+  },
+  "moral": {
+    "meaning": "道德的",
+    "pos": "adj."
+  },
+  "religious": {
+    "meaning": "宗教的",
+    "pos": "adj."
+  },
+  "scientific": {
+    "meaning": "科学的",
+    "pos": "adj."
+  },
+  "technical": {
+    "meaning": "技术的",
+    "pos": "adj."
+  },
+  "political": {
+    "meaning": "政治的",
+    "pos": "adj."
+  },
+  "economic": {
+    "meaning": "经济的",
+    "pos": "adj."
+  },
+  "cultural": {
+    "meaning": "文化的",
+    "pos": "adj."
+  },
+  "geographic": {
+    "meaning": "地理的",
+    "pos": "adj."
+  },
+  "psychological": {
+    "meaning": "心理的",
+    "pos": "adj."
+  },
+  "biological": {
+    "meaning": "生物的",
+    "pos": "adj."
+  },
+  "chemical": {
+    "meaning": "化学的",
+    "pos": "adj."
+  },
+  "physical": {
+    "meaning": "物理的;身体的",
+    "pos": "adj."
+  },
+  "mental": {
+    "meaning": "精神的",
+    "pos": "adj."
+  },
+  "spiritual": {
+    "meaning": "精神的",
+    "pos": "adj."
+  },
+  "virtual": {
+    "meaning": "虚拟的",
+    "pos": "adj."
+  },
+  "actual": {
+    "meaning": "实际的",
+    "pos": "adj."
+  },
+  "obvious": {
+    "meaning": "明显的",
+    "pos": "adj."
+  },
+  "hidden": {
+    "meaning": "隐藏的",
+    "pos": "adj."
+  },
+  "secret": {
+    "meaning": "秘密的",
+    "pos": "adj."
+  },
+  "closed": {
+    "meaning": "关闭的",
+    "pos": "adj."
+  },
+  "complete": {
+    "meaning": "完整的",
+    "pos": "adj."
+  },
+  "whole": {
+    "meaning": "整个的",
+    "pos": "adj."
+  },
+  "exact": {
+    "meaning": "准确的",
+    "pos": "adj."
+  },
+  "relative": {
+    "meaning": "相对的",
+    "pos": "adj."
+  },
+  "primary": {
+    "meaning": "主要的",
+    "pos": "adj."
+  },
+  "secondary": {
+    "meaning": "次要的",
+    "pos": "adj."
+  },
+  "minimum": {
+    "meaning": "最小的",
+    "pos": "adj."
+  },
+  "maximum": {
+    "meaning": "最大的",
+    "pos": "adj."
+  },
+  "average": {
+    "meaning": "平均的",
+    "pos": "adj."
+  },
+  "equal": {
+    "meaning": "平等的",
+    "pos": "adj."
+  },
+  "identical": {
+    "meaning": "相同的",
+    "pos": "adj."
+  },
+  "opposite": {
+    "meaning": "相反的",
+    "pos": "adj."
+  },
+  "various": {
+    "meaning": "各种各样的",
+    "pos": "adj."
+  },
+  "diverse": {
+    "meaning": "多样的",
+    "pos": "adj."
+  },
+  "single": {
+    "meaning": "单一的",
+    "pos": "adj."
+  },
+  "married": {
+    "meaning": "已婚的",
+    "pos": "adj."
+  },
+  "alive": {
+    "meaning": "活着的",
+    "pos": "adj."
+  },
+  "dead": {
+    "meaning": "死的",
+    "pos": "adj."
+  },
+  "living": {
+    "meaning": "活着的",
+    "pos": "adj."
+  },
+  "healthy": {
+    "meaning": "健康的",
+    "pos": "adj."
+  },
+  "sick": {
+    "meaning": "生病的",
+    "pos": "adj."
+  },
+  "ill": {
+    "meaning": "生病的",
+    "pos": "adj."
+  },
+  "well": {
+    "meaning": "健康的",
+    "pos": "adj."
+  },
+  "tired": {
+    "meaning": "累的",
+    "pos": "adj."
+  },
+  "awake": {
+    "meaning": "醒着的",
+    "pos": "adj."
+  },
+  "asleep": {
+    "meaning": "睡着的",
+    "pos": "adj."
+  },
+  "ready": {
+    "meaning": "准备好的",
+    "pos": "adj."
+  },
+  "prepared": {
+    "meaning": "准备好的",
+    "pos": "adj."
+  },
+  "willing": {
+    "meaning": "愿意的",
+    "pos": "adj."
+  },
+  "reluctant": {
+    "meaning": "不情愿的",
+    "pos": "adj."
+  },
+  "eager": {
+    "meaning": "渴望的",
+    "pos": "adj."
+  },
+  "curious": {
+    "meaning": "好奇的",
+    "pos": "adj."
+  },
+  "bored": {
+    "meaning": "无聊的",
+    "pos": "adj."
+  },
+  "satisfied": {
+    "meaning": "满意的",
+    "pos": "adj."
+  },
+  "pleased": {
+    "meaning": "高兴的",
+    "pos": "adj."
+  },
+  "grateful": {
+    "meaning": "感激的",
+    "pos": "adj."
+  },
+  "sorry": {
+    "meaning": "抱歉的",
+    "pos": "adj."
+  },
+  "guilty": {
+    "meaning": "内疚的",
+    "pos": "adj."
+  },
+  "innocent": {
+    "meaning": "无辜的",
+    "pos": "adj."
+  },
+  "up": {
+    "meaning": "向上",
+    "pos": "adv."
+  },
+  "down": {
+    "meaning": "向下",
+    "pos": "adv."
+  },
+  "in": {
+    "meaning": "在里面",
+    "pos": "adv."
+  },
+  "out": {
+    "meaning": "在外面",
+    "pos": "adv."
+  },
+  "on": {
+    "meaning": "在上面",
+    "pos": "adv."
+  },
+  "off": {
+    "meaning": "离开",
+    "pos": "adv."
+  },
+  "here": {
+    "meaning": "这里",
+    "pos": "adv."
+  },
+  "there": {
+    "meaning": "那里",
+    "pos": "adv."
+  },
+  "where": {
+    "meaning": "哪里",
+    "pos": "adv."
+  },
+  "when": {
+    "meaning": "什么时候",
+    "pos": "adv."
+  },
+  "now": {
+    "meaning": "现在",
+    "pos": "adv."
+  },
+  "then": {
+    "meaning": "那时",
+    "pos": "adv."
+  },
+  "again": {
+    "meaning": "再次",
+    "pos": "adv."
+  },
+  "always": {
+    "meaning": "总是",
+    "pos": "adv."
+  },
+  "never": {
+    "meaning": "从不",
+    "pos": "adv."
+  },
+  "ever": {
+    "meaning": "曾经",
+    "pos": "adv."
+  },
+  "still": {
+    "meaning": "仍然",
+    "pos": "adv."
+  },
+  "yet": {
+    "meaning": "还",
+    "pos": "adv."
+  },
+  "already": {
+    "meaning": "已经",
+    "pos": "adv."
+  },
+  "soon": {
+    "meaning": "很快",
+    "pos": "adv."
+  },
+  "later": {
+    "meaning": "之后",
+    "pos": "adv."
+  },
+  "most": {
+    "meaning": "最",
+    "pos": "adv."
+  },
+  "very": {
+    "meaning": "非常",
+    "pos": "adv."
+  },
+  "too": {
+    "meaning": "也;太",
+    "pos": "adv."
+  },
+  "enough": {
+    "meaning": "足够",
+    "pos": "adv."
+  },
+  "just": {
+    "meaning": "只是",
+    "pos": "adv."
+  },
+  "only": {
+    "meaning": "仅仅",
+    "pos": "adv."
+  },
+  "even": {
+    "meaning": "甚至",
+    "pos": "adv."
+  },
+  "also": {
+    "meaning": "也",
+    "pos": "adv."
+  },
+  "so": {
+    "meaning": "如此",
+    "pos": "adv."
+  },
+  "much": {
+    "meaning": "很",
+    "pos": "adv."
+  },
+  "quite": {
+    "meaning": "相当",
+    "pos": "adv."
+  },
+  "rather": {
+    "meaning": "相当",
+    "pos": "adv."
+  },
+  "almost": {
+    "meaning": "几乎",
+    "pos": "adv."
+  },
+  "nearly": {
+    "meaning": "将近",
+    "pos": "adv."
+  },
+  "about": {
+    "meaning": "大约",
+    "pos": "adv."
+  },
+  "around": {
+    "meaning": "周围",
+    "pos": "adv."
+  },
+  "away": {
+    "meaning": "离开",
+    "pos": "adv."
+  },
+  "along": {
+    "meaning": "沿着",
+    "pos": "adv."
+  },
+  "through": {
+    "meaning": "通过",
+    "pos": "adv."
+  },
+  "across": {
+    "meaning": "穿过",
+    "pos": "adv."
+  },
+  "over": {
+    "meaning": "超过",
+    "pos": "adv."
+  },
+  "under": {
+    "meaning": "在下面",
+    "pos": "adv."
+  },
+  "between": {
+    "meaning": "之间",
+    "pos": "adv."
+  },
+  "above": {
+    "meaning": "在上面",
+    "pos": "adv."
+  },
+  "below": {
+    "meaning": "在下面",
+    "pos": "adv."
+  },
+  "inside": {
+    "meaning": "在里面",
+    "pos": "adv."
+  },
+  "outside": {
+    "meaning": "在外面",
+    "pos": "adv."
+  },
+  "however": {
+    "meaning": "然而",
+    "pos": "adv."
+  },
+  "therefore": {
+    "meaning": "因此",
+    "pos": "adv."
+  },
+  "thus": {
+    "meaning": "因此",
+    "pos": "adv."
+  },
+  "besides": {
+    "meaning": "此外",
+    "pos": "adv."
+  },
+  "moreover": {
+    "meaning": "此外",
+    "pos": "adv."
+  },
+  "furthermore": {
+    "meaning": "此外",
+    "pos": "adv."
+  },
+  "instead": {
+    "meaning": "代替",
+    "pos": "adv."
+  },
+  "otherwise": {
+    "meaning": "否则",
+    "pos": "adv."
+  },
+  "because": {
+    "meaning": "因为",
+    "pos": "adv."
+  },
+  "since": {
+    "meaning": "自从",
+    "pos": "adv."
+  },
+  "unless": {
+    "meaning": "除非",
+    "pos": "adv."
+  },
+  "whether": {
+    "meaning": "是否",
+    "pos": "adv."
+  },
+  "if": {
+    "meaning": "如果",
+    "pos": "adv."
+  },
+  "once": {
+    "meaning": "一旦",
+    "pos": "adv."
+  },
+  "twice": {
+    "meaning": "两次",
+    "pos": "adv."
+  },
+  "slowly": {
+    "meaning": "慢慢地",
+    "pos": "adv."
+  },
+  "quickly": {
+    "meaning": "快速地",
+    "pos": "adv."
+  },
+  "suddenly": {
+    "meaning": "突然",
+    "pos": "adv."
+  },
+  "gradually": {
+    "meaning": "逐渐地",
+    "pos": "adv."
+  },
+  "finally": {
+    "meaning": "最后",
+    "pos": "adv."
+  },
+  "eventually": {
+    "meaning": "最终",
+    "pos": "adv."
+  },
+  "recently": {
+    "meaning": "最近",
+    "pos": "adv."
+  },
+  "currently": {
+    "meaning": "目前",
+    "pos": "adv."
+  },
+  "originally": {
+    "meaning": "最初",
+    "pos": "adv."
+  },
+  "previously": {
+    "meaning": "之前",
+    "pos": "adv."
+  },
+  "nowadays": {
+    "meaning": "如今",
+    "pos": "adv."
+  },
+  "today": {
+    "meaning": "今天",
+    "pos": "adv."
+  },
+  "tomorrow": {
+    "meaning": "明天",
+    "pos": "adv."
+  },
+  "yesterday": {
+    "meaning": "昨天",
+    "pos": "adv."
+  },
+  "tonight": {
+    "meaning": "今晚",
+    "pos": "adv."
+  },
+  "somewhere": {
+    "meaning": "某处",
+    "pos": "adv."
+  },
+  "anywhere": {
+    "meaning": "任何地方",
+    "pos": "adv."
+  },
+  "everywhere": {
+    "meaning": "到处",
+    "pos": "adv."
+  },
+  "nowhere": {
+    "meaning": "无处",
+    "pos": "adv."
+  },
+  "together": {
+    "meaning": "一起",
+    "pos": "adv."
+  },
+  "apart": {
+    "meaning": "分开",
+    "pos": "adv."
+  },
+  "perhaps": {
+    "meaning": "也许",
+    "pos": "adv."
+  },
+  "probably": {
+    "meaning": "可能",
+    "pos": "adv."
+  },
+  "certainly": {
+    "meaning": "当然",
+    "pos": "adv."
+  },
+  "definitely": {
+    "meaning": "肯定",
+    "pos": "adv."
+  },
+  "possibly": {
+    "meaning": "可能地",
+    "pos": "adv."
+  },
+  "maybe": {
+    "meaning": "也许",
+    "pos": "adv."
+  },
+  "clearly": {
+    "meaning": "清楚地",
+    "pos": "adv."
+  },
+  "exactly": {
+    "meaning": "确切地",
+    "pos": "adv."
+  },
+  "simply": {
+    "meaning": "简单地",
+    "pos": "adv."
+  },
+  "especially": {
+    "meaning": "尤其",
+    "pos": "adv."
+  },
+  "particularly": {
+    "meaning": "特别地",
+    "pos": "adv."
+  },
+  "generally": {
+    "meaning": "通常",
+    "pos": "adv."
+  },
+  "usually": {
+    "meaning": "通常",
+    "pos": "adv."
+  },
+  "normally": {
+    "meaning": "正常地",
+    "pos": "adv."
+  },
+  "indeed": {
+    "meaning": "确实",
+    "pos": "adv."
+  },
+  "actually": {
+    "meaning": "实际上",
+    "pos": "adv."
+  },
+  "really": {
+    "meaning": "真正地",
+    "pos": "adv."
+  },
+  "truly": {
+    "meaning": "真正地",
+    "pos": "adv."
+  },
+  "apparently": {
+    "meaning": "明显地",
+    "pos": "adv."
+  },
+  "absolutely": {
+    "meaning": "绝对地",
+    "pos": "adv."
+  },
+  "completely": {
+    "meaning": "完全地",
+    "pos": "adv."
+  },
+  "totally": {
+    "meaning": "完全地",
+    "pos": "adv."
+  },
+  "entirely": {
+    "meaning": "完全地",
+    "pos": "adv."
+  },
+  "partly": {
+    "meaning": "部分地",
+    "pos": "adv."
+  },
+  "mostly": {
+    "meaning": "主要地",
+    "pos": "adv."
+  },
+  "highly": {
+    "meaning": "高度地",
+    "pos": "adv."
+  },
+  "greatly": {
+    "meaning": "大大地",
+    "pos": "adv."
+  },
+  "deeply": {
+    "meaning": "深深地",
+    "pos": "adv."
+  },
+  "widely": {
+    "meaning": "广泛地",
+    "pos": "adv."
+  },
+  "carefully": {
+    "meaning": "仔细地",
+    "pos": "adv."
+  },
+  "happily": {
+    "meaning": "快乐地",
+    "pos": "adv."
+  },
+  "sadly": {
+    "meaning": "悲伤地",
+    "pos": "adv."
+  },
+  "angrily": {
+    "meaning": "生气地",
+    "pos": "adv."
+  },
+  "bravely": {
+    "meaning": "勇敢地",
+    "pos": "adv."
+  },
+  "proudly": {
+    "meaning": "骄傲地",
+    "pos": "adv."
+  },
+  "politely": {
+    "meaning": "礼貌地",
+    "pos": "adv."
+  },
+  "rudely": {
+    "meaning": "粗鲁地",
+    "pos": "adv."
+  },
+  "generously": {
+    "meaning": "慷慨地",
+    "pos": "adv."
+  },
+  "loudly": {
+    "meaning": "大声地",
+    "pos": "adv."
+  },
+  "softly": {
+    "meaning": "轻柔地",
+    "pos": "adv."
+  },
+  "brightly": {
+    "meaning": "明亮地",
+    "pos": "adv."
+  },
+  "warmly": {
+    "meaning": "温暖地",
+    "pos": "adv."
+  },
+  "friendly": {
+    "meaning": "友好地",
+    "pos": "adv."
+  },
+  "badly": {
+    "meaning": "糟糕地",
+    "pos": "adv."
+  },
+  "best": {
+    "meaning": "最好地",
+    "pos": "adv."
+  },
+  "worst": {
+    "meaning": "最糟地",
+    "pos": "adv."
+  },
+  "among": {
+    "meaning": "在...之中",
+    "pos": "prep."
+  },
+  "during": {
+    "meaning": "在...期间",
+    "pos": "prep."
+  },
+  "before": {
+    "meaning": "在...之前",
+    "pos": "prep."
+  },
+  "after": {
+    "meaning": "在...之后",
+    "pos": "prep."
+  },
+  "until": {
+    "meaning": "直到",
+    "pos": "prep."
+  },
+  "against": {
+    "meaning": "反对",
+    "pos": "prep."
+  },
+  "for": {
+    "meaning": "为了",
+    "pos": "prep."
+  },
+  "with": {
+    "meaning": "和",
+    "pos": "prep."
+  },
+  "without": {
+    "meaning": "没有",
+    "pos": "prep."
+  },
+  "within": {
+    "meaning": "在...之内",
+    "pos": "prep."
+  },
+  "beyond": {
+    "meaning": "超过",
+    "pos": "prep."
+  },
+  "behind": {
+    "meaning": "在...后面",
+    "pos": "prep."
+  },
+  "near": {
+    "meaning": "附近",
+    "pos": "prep."
+  },
+  "concerning": {
+    "meaning": "关于",
+    "pos": "prep."
+  },
+  "despite": {
+    "meaning": "尽管",
+    "pos": "prep."
+  },
+  "except": {
+    "meaning": "除...之外",
+    "pos": "prep."
+  },
+  "plus": {
+    "meaning": "加",
+    "pos": "prep."
+  },
+  "my": {
+    "meaning": "我的",
+    "pos": "pron."
+  },
+  "your": {
+    "meaning": "你的",
+    "pos": "pron."
+  },
+  "his": {
+    "meaning": "他的",
+    "pos": "pron."
+  },
+  "her": {
+    "meaning": "她的",
+    "pos": "pron."
+  },
+  "its": {
+    "meaning": "它的",
+    "pos": "pron."
+  },
+  "our": {
+    "meaning": "我们的",
+    "pos": "pron."
+  },
+  "their": {
+    "meaning": "他们的",
+    "pos": "pron."
+  },
+  "whose": {
+    "meaning": "谁的",
+    "pos": "pron."
+  },
+  "which": {
+    "meaning": "哪个",
+    "pos": "pron."
+  },
+  "what": {
+    "meaning": "什么",
+    "pos": "pron."
+  },
+  "someone": {
+    "meaning": "某人",
+    "pos": "pron."
+  },
+  "anybody": {
+    "meaning": "任何人",
+    "pos": "pron."
+  },
+  "everything": {
+    "meaning": "每件事",
+    "pos": "pron."
+  },
+  "nothing": {
+    "meaning": "没有事",
+    "pos": "pron."
+  },
+  "each": {
+    "meaning": "每个",
+    "pos": "pron."
+  },
+  "every": {
+    "meaning": "每个",
+    "pos": "pron."
+  },
+  "either": {
+    "meaning": "任一",
+    "pos": "pron."
+  },
+  "another": {
+    "meaning": "另一个",
+    "pos": "pron."
+  },
+  "both": {
+    "meaning": "两者",
+    "pos": "pron."
+  },
+  "many": {
+    "meaning": "很多",
+    "pos": "pron."
+  },
+  "several": {
+    "meaning": "几个",
+    "pos": "pron."
+  },
+  "some": {
+    "meaning": "一些",
+    "pos": "pron."
+  },
+  "any": {
+    "meaning": "任何",
+    "pos": "pron."
+  },
+  "such": {
+    "meaning": "这样的",
+    "pos": "pron."
+  },
+  "one": {
+    "meaning": "一个",
+    "pos": "pron."
+  },
+  "two": {
+    "meaning": "二",
+    "pos": "num."
+  },
+  "three": {
+    "meaning": "三",
+    "pos": "num."
+  },
+  "four": {
+    "meaning": "四",
+    "pos": "num."
+  },
+  "five": {
+    "meaning": "五",
+    "pos": "num."
+  },
+  "six": {
+    "meaning": "六",
+    "pos": "num."
+  },
+  "seven": {
+    "meaning": "七",
+    "pos": "num."
+  },
+  "eight": {
+    "meaning": "八",
+    "pos": "num."
+  },
+  "nine": {
+    "meaning": "九",
+    "pos": "num."
+  },
+  "ten": {
+    "meaning": "十",
+    "pos": "num."
+  },
+  "hundred": {
+    "meaning": "百",
+    "pos": "num."
+  },
+  "thousand": {
+    "meaning": "千",
+    "pos": "num."
+  },
+  "million": {
+    "meaning": "百万",
+    "pos": "num."
+  },
+  "oh": {
+    "meaning": "哦",
+    "pos": "interj."
+  },
+  "wow": {
+    "meaning": "哇",
+    "pos": "interj."
+  },
+  "hey": {
+    "meaning": "嘿",
+    "pos": "interj."
+  },
+  "hello": {
+    "meaning": "你好",
+    "pos": "interj."
+  },
+  "hi": {
+    "meaning": "嗨",
+    "pos": "interj."
+  },
+  "yes": {
+    "meaning": "是",
+    "pos": "interj."
+  },
+  "no": {
+    "meaning": "不",
+    "pos": "interj."
+  },
+  "please": {
+    "meaning": "请",
+    "pos": "interj."
+  },
+  "thanks": {
+    "meaning": "谢谢",
+    "pos": "interj."
+  },
+  "face": {
+    "meaning": "脸",
+    "pos": "n."
+  },
+  "head": {
+    "meaning": "头",
+    "pos": "n."
+  }
+}

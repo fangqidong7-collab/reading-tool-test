@@ -68,6 +68,7 @@ export interface ReadingHomeViewProps {
   lineHeight: number;
   currentTheme: string;
   dictMode: "zh" | "en";
+  pageTurnRatio: number;
   clickToTurnPage: boolean;
   // Dict status
   dictLoadStatus: string;
@@ -120,6 +121,7 @@ export interface ReadingHomeViewProps {
   setBackgroundTheme: (theme: string) => void;
   resetToDefault: () => void;
   setDictMode: (mode: "zh" | "en") => void;
+  setPageTurnRatio: (ratio: number) => void;
   setClickToTurnPage: (enabled: boolean) => void;
   // Callbacks - state setters
   setCurrentScrollPercent: (percent: number) => void;
@@ -186,6 +188,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
     lineHeight,
     currentTheme,
     dictMode,
+    pageTurnRatio,
     clickToTurnPage,
     dictLoadStatus,
     syncPanelOpen,
@@ -226,6 +229,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
     setBackgroundTheme,
     resetToDefault,
     setDictMode,
+    setPageTurnRatio,
     setClickToTurnPage,
     setCurrentScrollPercent,
     setCurrentParagraphIndex,
@@ -247,22 +251,6 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
     closeSearch,
   } = props;
 
-  /** 手机/触摸：操作条贴底，避免与系统选区气泡重叠且便于拇指点击；不铺全屏遮罩以免挡住继续调整选区 */
-  const [sentenceBarAtBottom, setSentenceBarAtBottom] = React.useState(false);
-  React.useEffect(() => {
-    const update = () => {
-      if (typeof window === "undefined") return;
-      const narrow = window.innerWidth <= 768;
-      const coarse =
-        typeof window.matchMedia === "function" &&
-        window.matchMedia("(pointer: coarse)").matches;
-      setSentenceBarAtBottom(narrow || coarse);
-    };
-    update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, []);
-
   return (
     <div className="app-container" style={{ backgroundColor }}>
       {/* Settings Panel */}
@@ -282,6 +270,8 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
         isDarkMode={isDarkMode}
         dictMode={dictMode}
         onDictModeChange={setDictMode}
+        pageTurnRatio={pageTurnRatio}
+        onPageTurnRatioChange={setPageTurnRatio}
         clickToTurnPage={clickToTurnPage}
         onClickToTurnPageChange={setClickToTurnPage}
       />
@@ -830,6 +820,13 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
       {/* Main Content */}
       <main className="main-content" style={{ backgroundColor }}>
         <div ref={containerRef} className="reading-container">
+          {/* Loading overlay */}
+          {loading && (
+            <div className="loading-overlay">
+              <div className="loading-spinner"></div>
+              <div style={{ color: "#666", fontSize: "14px" }}>正在处理文本...</div>
+            </div>
+          )}
           <ReadingArea
             ref={readingAreaRef}
             text={text}
@@ -876,6 +873,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
             initialParagraphIndex={currentBook?.lastParagraphIndex ?? -1}
             initialParagraphText={currentParagraphText}
             initialScrollPercent={currentBook?.lastScrollPosition || 0}
+            pageTurnRatio={pageTurnRatio}
             onTextSelect={handleTextSelect}
             sentenceAnnotations={currentBook?.sentenceAnnotations || []}
             onRemoveSentenceAnnotation={handleRemoveSentenceAnnotation}
@@ -919,66 +917,42 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
         />
       )}
 
-      {/* 句子翻译浮窗：桌面靠近选区；窄屏/触摸固定底部条，不与系统复制条抢位置 */}
+      {/* 句子翻译浮窗 */}
       {pendingSelection && (
         <>
-          {!sentenceBarAtBottom && (
-            <div
-              style={{
-                position: "fixed",
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                zIndex: 999,
-              }}
-              onClick={closePendingSelection}
-            />
-          )}
           <div
-            role="toolbar"
-            aria-label="句子翻译"
-            style={
-              sentenceBarAtBottom
-                ? {
-                    position: "fixed",
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    zIndex: 10001,
-                    backgroundColor: isDarkMode ? "#2a2a3e" : "#ffffff",
-                    borderTop: `1px solid ${isDarkMode ? "#444" : "#e5e5e5"}`,
-                    boxShadow: "0 -6px 24px rgba(0,0,0,0.12)",
-                    padding: "12px 14px calc(14px + env(safe-area-inset-bottom))",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "12px",
-                  }
-                : {
-                    position: "fixed",
-                    left: Math.max(
-                      10,
-                      Math.min(
-                        pendingSelection.position.x - 80,
-                        typeof window !== "undefined" ? window.innerWidth - 180 : 300
-                      )
-                    ),
-                    top: Math.max(10, pendingSelection.position.y - 50),
-                    zIndex: 1000,
-                    backgroundColor: isDarkMode ? "#2a2a3e" : "#ffffff",
-                    borderRadius: "8px",
-                    boxShadow: "0 4px 20px rgba(0,0,0,0.25)",
-                    padding: "10px 14px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                  }
-            }
-            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 999,
+            }}
+            onClick={closePendingSelection}
+          />
+          <div
+            style={{
+              position: "fixed",
+              left: Math.max(
+                10,
+                Math.min(
+                  pendingSelection.position.x - 80,
+                  typeof window !== "undefined" ? window.innerWidth - 180 : 300
+                )
+              ),
+              top: Math.max(10, pendingSelection.position.y - 50),
+              zIndex: 1000,
+              backgroundColor: isDarkMode ? "#2a2a3e" : "#ffffff",
+              borderRadius: "8px",
+              boxShadow: "0 4px 20px rgba(0,0,0,0.25)",
+              padding: "10px 14px",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+            }}
           >
             <button
-              type="button"
               onClick={handleTranslateSentence}
               disabled={translatingSelection}
               style={{
@@ -986,10 +960,8 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
                 color: "#fff",
                 border: "none",
                 borderRadius: "6px",
-                padding: sentenceBarAtBottom ? "12px 20px" : "8px 16px",
-                fontSize: sentenceBarAtBottom ? "16px" : "13px",
-                minHeight: sentenceBarAtBottom ? 44 : undefined,
-                minWidth: sentenceBarAtBottom ? 120 : undefined,
+                padding: "8px 16px",
+                fontSize: "13px",
                 cursor: translatingSelection ? "wait" : "pointer",
                 opacity: translatingSelection ? 0.7 : 1,
                 whiteSpace: "nowrap",
@@ -998,31 +970,28 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
               {translatingSelection ? "翻译中..." : "翻译标注"}
             </button>
             <button
-              type="button"
               onClick={closePendingSelection}
               style={{
                 background: "none",
                 border: "none",
                 cursor: "pointer",
-                padding: sentenceBarAtBottom ? "10px 14px" : "4px",
+                padding: "4px",
                 color: isDarkMode ? "#888" : "#999",
-                fontSize: sentenceBarAtBottom ? "15px" : "16px",
+                fontSize: "16px",
                 lineHeight: 1,
-                minHeight: sentenceBarAtBottom ? 44 : undefined,
-                touchAction: "manipulation",
               }}
             >
-              取消
+              x
             </button>
           </div>
         </>
       )}
 
-      {/* 全屏 loading：打开文章时只显示这一处（处理/标注合并为一次） */}
+      {/* Loading Indicator */}
       {loading && (
         <div className="loading-overlay">
           <div className="loading-spinner"></div>
-          <span style={{ color: isDarkMode ? "#ccc" : "#666" }}>正在处理...</span>
+          <span style={{ color: isDarkMode ? "#ccc" : "#666" }}>正在标注...</span>
         </div>
       )}
 
@@ -1160,20 +1129,13 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
 
         .main-content {
           flex: 1;
-          min-height: 0;
           overflow: hidden;
           position: relative;
-          display: flex;
-          flex-direction: column;
         }
 
-        /* 仅作阅读区外壳，不再滚动；避免与 ReadingArea 内层滚动叠成「双滚动条」导致整页像素与可视区域不一致、翻页跳行 */
         .reading-container {
-          flex: 1;
-          min-height: 0;
-          overflow: hidden;
-          display: flex;
-          flex-direction: column;
+          height: 100%;
+          overflow-y: auto;
         }
 
         .loading-overlay {

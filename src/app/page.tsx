@@ -7,44 +7,13 @@ import { ReadingHomeView } from "@/app/_home/ReadingHomeView";
 import { useSync } from "@/hooks/useSync";
 import { usePeriodicSync } from "@/hooks/usePeriodicSync";
 import JSLibLoader from "@/components/JSLibLoader";
-import { useBookshelf, ProcessedContent, SentenceAnnotation, type Book } from "@/hooks/useBookshelf";
-import {
-  buildIncrementalBookPayload,
-  hashBooksToMap,
-  loadBookHashMap,
-  saveBookHashMap,
-} from "@/lib/syncIncrementalClient";
+import { useBookshelf, ProcessedContent, SentenceAnnotation } from "@/hooks/useBookshelf";
 import { useReadingSettings } from "@/hooks/useReadingSettings";
-import { lemmatize, findWordFamily } from "@/lib/dictionary";
+import { lemmatize, getWordMeaning, getWordMeaningEn, findWordFamily, loadBuiltinDictionary, loadBuiltinDictionaryEn } from "@/lib/dictionary";
 import { translateWord, translateWordEn, translateSentence } from "@/lib/translate";
 import { forceReloadDictionary, lookupExternalDict, lookupExternalDictEn, loadExternalDictionaryEn, type DictLoadStatus } from "@/lib/dictLoader";
 import { cleanTranslation, shortenTranslation } from "@/lib/annotationText";
 import { processTextToSegmentsAsync } from "@/lib/processBookContent";
-
-type BookAnnotationsState = Record<
-  string,
-  { root: string; meaning: string; pos: string; count: number }
->;
-
-/** 避免书本 effect 与本地同一数据重复 setAnnotations，触发虚拟列表与高光层无谓重绘导致屏闪 */
-function bookAnnotationsEqual(a: BookAnnotationsState, b: BookAnnotationsState): boolean {
-  const keysA = Object.keys(a);
-  if (keysA.length !== Object.keys(b).length) return false;
-  for (const k of keysA) {
-    const x = a[k];
-    const y = b[k];
-    if (!y) return false;
-    if (
-      x.root !== y.root ||
-      x.meaning !== y.meaning ||
-      x.pos !== y.pos ||
-      x.count !== y.count
-    ) {
-      return false;
-    }
-  }
-  return true;
-}
 
 export default function Home() {
   const {
@@ -100,6 +69,8 @@ export default function Home() {
     resetToDefault,
     dictMode,
     setDictMode,
+    pageTurnRatio,
+    setPageTurnRatio,
     clickToTurnPage,
     setClickToTurnPage,
   } = useReadingSettings();
@@ -107,7 +78,9 @@ export default function Home() {
   // Reading state
   const [text, setText] = useState<string>("");
   const [processedContent, setProcessedContent] = useState<ProcessedContent | null>(null);
-  const [annotations, setAnnotations] = useState<BookAnnotationsState>({});
+  const [annotations, setAnnotations] = useState<
+    Record<string, { root: string; meaning: string; pos: string; count: number }>
+  >({});
   const [selectedWord, setSelectedWord] = useState<{
     word: string;
     position: { x: number; y: number };
@@ -211,32 +184,15 @@ export default function Home() {
     };
   }, [globalVocabulary, books]);
 
-  /** gzip + 增量正文（与上次指纹一致的书省略正文上传） */
-  const prepareSyncPayload = useCallback(async () => {
-    const base = buildSyncData();
-    const prev = syncCode ? loadBookHashMap(syncCode) : null;
-    const { booksOut, contentHashes } = await buildIncrementalBookPayload(
-      base.books as Book[],
-      prev
-    );
-    return {
-      payload: { ...base, books: booksOut },
-      contentHashes,
-    };
-  }, [buildSyncData, syncCode]);
-
   // Handle create sync - push current local data to cloud
   const handleCreateSync = useCallback(async () => {
-    const { payload, contentHashes } = await prepareSyncPayload();
-    const code = await createSync(payload);
-    if (code && contentHashes) {
-      saveBookHashMap(code, contentHashes);
-    }
+    const data = buildSyncData();
+    const code = await createSync(data);
     if (code) {
       console.log('已生成同步码:', code);
       setSyncJustCreated(true);
     }
-  }, [prepareSyncPayload, createSync]);
+  }, [buildSyncData, createSync]);
 
   // Handle bind existing sync code - pull data from cloud and merge
   const handleBindSync = useCallback(async (code: string) => {
@@ -291,36 +247,17 @@ export default function Home() {
       if (remoteData.books && mergeBooksFromRemote) {
         mergeBooksFromRemote(remoteData.books as import("@/hooks/useBookshelf").Book[]);
       }
-      if (remoteData.books?.length) {
-        try {
-          const hashes = await hashBooksToMap(
-            (remoteData.books as Book[]).map((b) => ({
-              id: b.id,
-              content: b.content ?? "",
-            }))
-          );
-          saveBookHashMap(code.toUpperCase(), hashes);
-        } catch {
-          /* 指纹写入失败不影响绑定 */
-        }
-      }
     }
   }, [bindSyncCode, globalVocabulary, addToGlobalVocabulary, books, updateScrollPosition, mergeBookProgress, mergeBooksFromRemote]);
 
-  // Handle sync - bidirectional sync（单次 push 返回合并结果 + 增量正文 + gzip）
+  // Handle sync - bidirectional sync (push local then pull merged result)
   const handleSync = useCallback(async () => {
-    const { payload, contentHashes } = await prepareSyncPayload();
-    const remoteData = await syncBoth(payload);
+    const remoteData = await syncBoth(buildSyncData());
     if (!remoteData) return;
-    if (syncCode && contentHashes) {
-      saveBookHashMap(syncCode, contentHashes);
-    }
 
     // 用服务端合并后的数据更新本地
     if (remoteData.vocabulary) {
-      mergeGlobalVocabulary(
-        remoteData.vocabulary as Parameters<typeof mergeGlobalVocabulary>[0]
-      );
+      mergeGlobalVocabulary(remoteData.vocabulary);
     }
 
     if (remoteData.bookProgress) {
@@ -355,31 +292,17 @@ export default function Home() {
     if (remoteData.books && mergeBooksFromRemote) {
       mergeBooksFromRemote(remoteData.books as import("@/hooks/useBookshelf").Book[]);
     }
-  }, [
-    prepareSyncPayload,
-    syncBoth,
-    syncCode,
-    books,
-    mergeGlobalVocabulary,
-    mergeBookProgress,
-    mergeBooksFromRemote,
-  ]);
+  }, [syncBoth, buildSyncData, books, mergeGlobalVocabulary, mergeBookProgress, mergeBooksFromRemote]);
 
   // 自动同步专用：仅返回远程数据，不做本地合并（由 hook 调用方决定何时合并）
   // 这里复用 handleSync 的逻辑，但通过回调通知外部有新的远程数据
   const performSyncForPeriodic = useCallback(async () => {
-    const { payload, contentHashes } = await prepareSyncPayload();
-    const remoteData = await syncBoth(payload);
+    const remoteData = await syncBoth(buildSyncData());
     if (!remoteData) return null;
-    if (syncCode && contentHashes) {
-      saveBookHashMap(syncCode, contentHashes);
-    }
 
     // 复用 handleSync 的合并逻辑
     if (remoteData.vocabulary) {
-      mergeGlobalVocabulary(
-        remoteData.vocabulary as Parameters<typeof mergeGlobalVocabulary>[0]
-      );
+      mergeGlobalVocabulary(remoteData.vocabulary);
     }
 
     if (remoteData.bookProgress) {
@@ -412,15 +335,7 @@ export default function Home() {
     }
 
     return remoteData;
-  }, [
-    prepareSyncPayload,
-    syncBoth,
-    syncCode,
-    books,
-    mergeGlobalVocabulary,
-    mergeBookProgress,
-    mergeBooksFromRemote,
-  ]);
+  }, [syncBoth, buildSyncData, books, mergeGlobalVocabulary, mergeBookProgress, mergeBooksFromRemote]);
 
   // 启用自动定时同步（仅前台 + 每小时 + 需 syncCode）
   usePeriodicSync({
@@ -478,6 +393,10 @@ export default function Home() {
 
   // Load external dictionary on mount (force reload to get latest dict.json and dict_en.json)
   useEffect(() => {
+    // 同时加载中英词典和英英词典
+    loadBuiltinDictionary();
+    loadBuiltinDictionaryEn();
+    
     Promise.all([
       forceReloadDictionary(),
       loadExternalDictionaryEn()
@@ -524,11 +443,7 @@ export default function Home() {
     // Annotations: compare by reference (immutable updates from useBookshelf)
     if (currentBookAnnotationsRef.current !== currentBook.annotations) {
       currentBookAnnotationsRef.current = currentBook.annotations;
-      setAnnotations((prev) =>
-        bookAnnotationsEqual(prev, currentBook.annotations as BookAnnotationsState)
-          ? prev
-          : (currentBook.annotations as BookAnnotationsState)
-      );
+      setAnnotations(currentBook.annotations);
     }
 
     // Only process segments on first open (bookId change)
@@ -724,23 +639,28 @@ export default function Home() {
         return;
       }
 
-      // Auto-annotate：仅外部词典（与弹窗一致：先词根再词形），没有再走 AI
+      // Auto-annotate
       const isEnglishMode = dictMode === 'en';
 
+      // 1. 先查内置词典
       let rawMeaning = "";
       if (isEnglishMode) {
-        rawMeaning =
-          lookupExternalDictEn(root) ||
-          lookupExternalDictEn(cleanWord) ||
-          "";
+        const enEntry = getWordMeaningEn(cleanWord);
+        if (enEntry) rawMeaning = enEntry;
       } else {
-        rawMeaning =
-          lookupExternalDict(root) ||
-          lookupExternalDict(cleanWord) ||
-          "";
+        const zhEntry = getWordMeaning(cleanWord);
+        if (zhEntry?.meaning) rawMeaning = zhEntry.meaning;
       }
 
-      // 外部词典没有，调用 AI
+      // 2. 内置词典没有，再查外部词典
+      if (!rawMeaning) {
+        const extMeaning = isEnglishMode
+          ? lookupExternalDictEn(cleanWord)
+          : lookupExternalDict(cleanWord);
+        if (extMeaning) rawMeaning = extMeaning;
+      }
+
+      // 3. 外部词典也没有，调用AI翻译
       if (!rawMeaning) {
         rawMeaning = isEnglishMode
           ? await translateWordEn(cleanWord)
@@ -793,25 +713,67 @@ if (existingMatchesMode) {
         let rawMeaning = "";
         const isEnglishMode = dictMode === 'en';
 
-        if (isEnglishMode) {
-          rawMeaning =
-            lookupExternalDictEn(root) ||
-            lookupExternalDictEn(cleanWord) ||
-            "";
-          if (!rawMeaning) {
-            rawMeaning = await translateWordEn(root || cleanWord);
+        // 调试日志
+        console.log('=== 开始查词 ===');
+        console.log('原始单词:', word);
+        console.log('词根:', root);
+        console.log('当前模式:', isEnglishMode ? '英文模式' : '中文模式');
+
+if (isEnglishMode) {
+  console.log("第一层（英文）：查 englishDictionaryEn");
+  const enEntry = getWordMeaningEn(root);
+  console.log("英英内置词典结果:", enEntry);
+
+  if (enEntry) {
+    rawMeaning = enEntry;
+  }
+
+  if (!rawMeaning) {
+    console.log("第二层（英文）：查 dict_en.json (externalDictEn)");
+  const extEnMeaning = lookupExternalDictEn(root) || lookupExternalDictEn(cleanWord);
+
+    console.log("外部英英词典结果:", extEnMeaning);
+    if (extEnMeaning) {
+      rawMeaning = extEnMeaning;
+    }
+  }
+
+  if (!rawMeaning) {
+    console.log("第三层（英文）：调用 AI 英英释义");
+rawMeaning = await translateWordEn(root || cleanWord);
+
+  }
+}
+
+ else {
+          // 中文模式查词流程（原有逻辑不变）
+          console.log('第一层（中文）：查 englishDictionary');
+          const entry = getWordMeaning(root);
+          console.log('内置词典结果:', entry);
+          if (entry?.meaning) {
+            rawMeaning = entry.meaning;
           }
-        } else {
-          rawMeaning =
-            lookupExternalDict(root) ||
-            lookupExternalDict(cleanWord) ||
-            "";
+
+          // 2. 查外部词典（带智能后缀去除）
           if (!rawMeaning) {
+            console.log('第二层（中文）：查 dict.json (externalDict)');
+            const extMeaning = lookupExternalDict(cleanWord);
+            console.log('外部词典结果:', extMeaning);
+            if (extMeaning) {
+              rawMeaning = extMeaning;
+            }
+          }
+
+          // 3. 最后才调用AI翻译
+          if (!rawMeaning) {
+            console.log('第三层（中文）：调用AI翻译');
             rawMeaning = await translateWord(cleanWord);
+
           }
         }
 
-        const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
+        // 清洗并精简释义
+const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
 
         const family = findWordFamily(root, text);
 
@@ -1212,6 +1174,7 @@ if (existingMatchesMode) {
       lineHeight={lineHeight}
       currentTheme={currentTheme}
       dictMode={dictMode}
+      pageTurnRatio={pageTurnRatio}
       clickToTurnPage={clickToTurnPage}
       dictLoadStatus={dictLoadStatus}
       syncPanelOpen={syncPanelOpen}
@@ -1252,6 +1215,7 @@ if (existingMatchesMode) {
       setBackgroundTheme={setBackgroundTheme}
       resetToDefault={resetToDefault}
       setDictMode={setDictMode}
+      setPageTurnRatio={setPageTurnRatio}
       setClickToTurnPage={setClickToTurnPage}
       setCurrentScrollPercent={setCurrentScrollPercent}
       setCurrentParagraphIndex={setCurrentParagraphIndex}
