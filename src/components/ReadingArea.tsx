@@ -1,6 +1,14 @@
 "use client";
 
-import React, { useCallback, useRef, useEffect, useState, forwardRef, useImperativeHandle } from "react";
+import React, {
+  useCallback,
+  useRef,
+  useEffect,
+  useLayoutEffect,
+  useState,
+  forwardRef,
+  useImperativeHandle,
+} from "react";
 import { ProcessedContent, SentenceAnnotation } from "@/hooks/useBookshelf";
 import { useVirtualizer } from '@tanstack/react-virtual';
 
@@ -554,9 +562,13 @@ export const ReadingArea = forwardRef(function ReadingArea({
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const selectionStartRef = useRef<{ paragraphIndex: number; charIndex: number } | null>(null);
-  /** 触摸开始时 scrollTop，用于区分「正在滚动」与「点选文字」 */
-  const touchStartScrollTopRef = useRef(0);
-  
+  /** 在阅读区内 pointerdown 时的 scrollTop，用于与 pointerup 对比，区分滚动与文本选择 */
+  const pointerDownScrollTopRef = useRef(0);
+  /** 安卓滑动模式：音量键交给浏览器/WebView 原生滚动后，仅做一次 trim（避免与 scrollReadingPage 双重滚动） */
+  const pendingAndroidVolumeTrimRef = useRef(false);
+  const volumeTrimFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const volumeTrimScrollDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [readProgress, setReadProgress] = useState(0);
   const lastSwipeTimeRef = useRef(0);
   const lastProgrammaticPageTurnAt = useRef(0);
@@ -610,24 +622,122 @@ export const ReadingArea = forwardRef(function ReadingArea({
     [fontSize, lineHeight, processedContent, virtualizer]
   );
 
-  // 音量键翻页
-  useEffect(() => {
-    // 方法1：监听 keydown（部分安卓浏览器会把音量键映射为 keydown 事件）
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // AudioVolumeUp / AudioVolumeDown 是标准键名
-      // VolumeUp / VolumeDown 是某些浏览器的旧键名
-      if (e.key === 'AudioVolumeUp' || e.key === 'VolumeUp') {
-        e.preventDefault();
-        scrollReadingPage("prev");
-      } else if (e.key === 'AudioVolumeDown' || e.key === 'VolumeDown') {
-        e.preventDefault();
-        scrollReadingPage("next");
+  /** 仅整行对齐（与 scrollReadingPage 末尾 trim 一致），供安卓滑动模式音量键原生滚动后调用 */
+  const runTrimAfterVolumeNativeScroll = useCallback(() => {
+    const scrollEl = containerRef.current;
+    const root = contentRef.current;
+    if (!scrollEl || !root || !processedContent?.length) return;
+    const minMain = Math.max(12, Math.round(fontSize * Math.min(lineHeight, 3) * 0.58));
+    const runTrim = () => {
+      const el = containerRef.current;
+      const r = contentRef.current;
+      if (!el || !r) return;
+      trimAfterPageTurnPreferTop(el, r, minMain);
+    };
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(runTrim);
+      });
+    });
+  }, [fontSize, lineHeight, processedContent]);
+
+  const isAndroidSwipeScrollMode =
+    typeof navigator !== "undefined" &&
+    /Android/i.test(navigator.userAgent) &&
+    !clickToTurnPage;
+
+  // 安卓 + 滑动模式：原生滚动结束后 debounce trim（仅当本轮为音量键触发）
+  useLayoutEffect(() => {
+    if (!isAndroidSwipeScrollMode) return;
+    const el = containerRef.current;
+    if (!el) return;
+
+    const clearFallback = () => {
+      if (volumeTrimFallbackTimerRef.current !== null) {
+        clearTimeout(volumeTrimFallbackTimerRef.current);
+        volumeTrimFallbackTimerRef.current = null;
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [scrollReadingPage]);
+    const flushTrim = () => {
+      if (!pendingAndroidVolumeTrimRef.current) return;
+      clearFallback();
+      runTrimAfterVolumeNativeScroll();
+      pendingAndroidVolumeTrimRef.current = false;
+    };
+
+    const onScroll = () => {
+      if (!pendingAndroidVolumeTrimRef.current) return;
+      if (volumeTrimScrollDebounceRef.current !== null) {
+        clearTimeout(volumeTrimScrollDebounceRef.current);
+      }
+      volumeTrimScrollDebounceRef.current = setTimeout(() => {
+        volumeTrimScrollDebounceRef.current = null;
+        flushTrim();
+      }, 120);
+    };
+
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      if (volumeTrimScrollDebounceRef.current !== null) {
+        clearTimeout(volumeTrimScrollDebounceRef.current);
+        volumeTrimScrollDebounceRef.current = null;
+      }
+      clearFallback();
+    };
+  }, [
+    isAndroidSwipeScrollMode,
+    runTrimAfterVolumeNativeScroll,
+    processedContent?.length,
+  ]);
+
+  // 音量键翻页
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isVolUp = e.key === "AudioVolumeUp" || e.key === "VolumeUp";
+      const isVolDown = e.key === "AudioVolumeDown" || e.key === "VolumeDown";
+      if (!isVolUp && !isVolDown) return;
+
+      /**
+       * 桌面 / iOS / 安卓点击翻页：捕获阶段拦截，由 scrollReadingPage 单次翻页 + trim。
+       * 安卓 + 滑动模式（如 VIA「音量键翻页」）：WebView 往往在 native 层已滚一屏，
+       * 若再调用 scrollReadingPage 会双重滚动；此处不 preventDefault、不二次 scroll，只标记
+       * 事后 trim（见 pendingAndroidVolumeTrimRef + scroll 监听）。
+       */
+      if (isAndroidSwipeScrollMode) {
+        e.stopPropagation();
+        const now =
+          typeof performance !== "undefined" ? performance.now() : Date.now();
+        if (now - lastProgrammaticPageTurnAt.current < 220) return;
+        lastProgrammaticPageTurnAt.current = now;
+
+        pendingAndroidVolumeTrimRef.current = true;
+        if (volumeTrimFallbackTimerRef.current !== null) {
+          clearTimeout(volumeTrimFallbackTimerRef.current);
+        }
+        volumeTrimFallbackTimerRef.current = setTimeout(() => {
+          volumeTrimFallbackTimerRef.current = null;
+          if (!pendingAndroidVolumeTrimRef.current) return;
+          runTrimAfterVolumeNativeScroll();
+          pendingAndroidVolumeTrimRef.current = false;
+        }, 400);
+        return;
+      }
+
+      e.preventDefault();
+      e.stopPropagation();
+      scrollReadingPage(isVolUp ? "prev" : "next");
+    };
+
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
+  }, [
+    scrollReadingPage,
+    isAndroidSwipeScrollMode,
+    runTrimAfterVolumeNativeScroll,
+    clickToTurnPage,
+  ]);
 
   // 文本选择功能 - 句子翻译
   const handleTextSelection = useCallback(() => {
@@ -769,52 +879,96 @@ export const ReadingArea = forwardRef(function ReadingArea({
     }
   }, [onTextSelect, processedContent]);
 
-  // 文本选择：桌面 mouseup；触摸设备依赖 selectionchange / touchend（mouseup 不会触发）
+  /**
+   * 句子翻译：仅在「交互结束」后再读选区并回调父组件。
+   * 若在 document 上跟随 selectionchange 同步 setState，拖选较长时 React
+   * 重绘 / 虚拟列表会替换原文 DOM，浏览器会把选区归一化到整段，表现为后文被全选。
+   */
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    const scheduleSelection = () => {
-      setTimeout(handleTextSelection, 10);
+    const SCROLL_SKIP_PX = 14;
+    const FINALIZE_MS = 64;
+
+    /** 本次 pointer 序列是否从阅读区内按下；仅此时用 scrollTop 区分「滚动」与「选文」 */
+    const pointerDownInContainerRef = { current: false };
+    let finalizeTimer: number | null = null;
+    let keyFinalizeTimer: number | null = null;
+
+    const trySyncSelection = () => {
+      const el = containerRef.current;
+      if (!el) return;
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed) return;
+      const anchor = sel.anchorNode;
+      const focus = sel.focusNode;
+      if (!anchor || !focus) return;
+      if (!el.contains(anchor) || !el.contains(focus)) return;
+      handleTextSelection();
     };
 
-    const handleMouseUp = () => {
-      scheduleSelection();
+    const scheduleFinalizeSelection = () => {
+      if (finalizeTimer !== null) {
+        clearTimeout(finalizeTimer);
+      }
+      finalizeTimer = window.setTimeout(() => {
+        finalizeTimer = null;
+        const el = containerRef.current;
+        if (!el) return;
+        if (pointerDownInContainerRef.current) {
+          if (Math.abs(el.scrollTop - pointerDownScrollTopRef.current) > SCROLL_SKIP_PX) {
+            return;
+          }
+        }
+        trySyncSelection();
+      }, FINALIZE_MS);
     };
 
-    let selDebounce: ReturnType<typeof setTimeout> | undefined;
-    const handleSelectionChange = () => {
-      clearTimeout(selDebounce);
-      selDebounce = setTimeout(() => {
-        const sel = window.getSelection();
-        if (!sel || sel.isCollapsed || !container.contains(sel.anchorNode)) return;
-        if (!container.contains(sel.focusNode)) return;
-        handleTextSelection();
-      }, 140);
+    const onPointerDown = (e: PointerEvent) => {
+      if (!e.isPrimary) return;
+      const el = containerRef.current;
+      if (!el) return;
+      pointerDownInContainerRef.current = el.contains(e.target as Node);
+      if (pointerDownInContainerRef.current) {
+        pointerDownScrollTopRef.current = el.scrollTop;
+      }
     };
 
-    const handleTouchStartSelection = () => {
-      touchStartScrollTopRef.current = container.scrollTop;
+    const onPointerUp = (e: PointerEvent) => {
+      if (!e.isPrimary) return;
+      scheduleFinalizeSelection();
     };
 
-    const handleTouchEndSelection = () => {
-      if (Math.abs(container.scrollTop - touchStartScrollTopRef.current) > 14) {
+    /** 键盘扩选（Shift+方向键）无 pointer，用 keyup 兜底 */
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (
+        e.key !== "ArrowLeft" &&
+        e.key !== "ArrowRight" &&
+        e.key !== "ArrowUp" &&
+        e.key !== "ArrowDown"
+      ) {
         return;
       }
-      setTimeout(handleTextSelection, 80);
+      if (keyFinalizeTimer !== null) {
+        clearTimeout(keyFinalizeTimer);
+      }
+      keyFinalizeTimer = window.setTimeout(() => {
+        keyFinalizeTimer = null;
+        trySyncSelection();
+      }, 120);
     };
 
-    container.addEventListener("mouseup", handleMouseUp);
-    container.addEventListener("touchstart", handleTouchStartSelection, { passive: true });
-    container.addEventListener("touchend", handleTouchEndSelection, { passive: true });
-    document.addEventListener("selectionchange", handleSelectionChange);
+    window.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("pointerup", onPointerUp, true);
+    document.addEventListener("keyup", onKeyUp, true);
 
     return () => {
-      clearTimeout(selDebounce);
-      container.removeEventListener("mouseup", handleMouseUp);
-      container.removeEventListener("touchstart", handleTouchStartSelection);
-      container.removeEventListener("touchend", handleTouchEndSelection);
-      document.removeEventListener("selectionchange", handleSelectionChange);
+      if (finalizeTimer !== null) clearTimeout(finalizeTimer);
+      if (keyFinalizeTimer !== null) clearTimeout(keyFinalizeTimer);
+      window.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("pointerup", onPointerUp, true);
+      document.removeEventListener("keyup", onKeyUp, true);
     };
   }, [handleTextSelection]);
 

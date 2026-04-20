@@ -15,11 +15,36 @@ import {
   saveBookHashMap,
 } from "@/lib/syncIncrementalClient";
 import { useReadingSettings } from "@/hooks/useReadingSettings";
-import { lemmatize, getWordMeaning, getWordMeaningEn, findWordFamily, loadBuiltinDictionary, loadBuiltinDictionaryEn } from "@/lib/dictionary";
+import { lemmatize, findWordFamily } from "@/lib/dictionary";
 import { translateWord, translateWordEn, translateSentence } from "@/lib/translate";
 import { forceReloadDictionary, lookupExternalDict, lookupExternalDictEn, loadExternalDictionaryEn, type DictLoadStatus } from "@/lib/dictLoader";
 import { cleanTranslation, shortenTranslation } from "@/lib/annotationText";
 import { processTextToSegmentsAsync } from "@/lib/processBookContent";
+
+type BookAnnotationsState = Record<
+  string,
+  { root: string; meaning: string; pos: string; count: number }
+>;
+
+/** 避免书本 effect 与本地同一数据重复 setAnnotations，触发虚拟列表与高光层无谓重绘导致屏闪 */
+function bookAnnotationsEqual(a: BookAnnotationsState, b: BookAnnotationsState): boolean {
+  const keysA = Object.keys(a);
+  if (keysA.length !== Object.keys(b).length) return false;
+  for (const k of keysA) {
+    const x = a[k];
+    const y = b[k];
+    if (!y) return false;
+    if (
+      x.root !== y.root ||
+      x.meaning !== y.meaning ||
+      x.pos !== y.pos ||
+      x.count !== y.count
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
 
 export default function Home() {
   const {
@@ -82,9 +107,7 @@ export default function Home() {
   // Reading state
   const [text, setText] = useState<string>("");
   const [processedContent, setProcessedContent] = useState<ProcessedContent | null>(null);
-  const [annotations, setAnnotations] = useState<
-    Record<string, { root: string; meaning: string; pos: string; count: number }>
-  >({});
+  const [annotations, setAnnotations] = useState<BookAnnotationsState>({});
   const [selectedWord, setSelectedWord] = useState<{
     word: string;
     position: { x: number; y: number };
@@ -455,10 +478,6 @@ export default function Home() {
 
   // Load external dictionary on mount (force reload to get latest dict.json and dict_en.json)
   useEffect(() => {
-    // 同时加载中英词典和英英词典
-    loadBuiltinDictionary();
-    loadBuiltinDictionaryEn();
-    
     Promise.all([
       forceReloadDictionary(),
       loadExternalDictionaryEn()
@@ -505,7 +524,11 @@ export default function Home() {
     // Annotations: compare by reference (immutable updates from useBookshelf)
     if (currentBookAnnotationsRef.current !== currentBook.annotations) {
       currentBookAnnotationsRef.current = currentBook.annotations;
-      setAnnotations(currentBook.annotations);
+      setAnnotations((prev) =>
+        bookAnnotationsEqual(prev, currentBook.annotations as BookAnnotationsState)
+          ? prev
+          : (currentBook.annotations as BookAnnotationsState)
+      );
     }
 
     // Only process segments on first open (bookId change)
@@ -701,28 +724,23 @@ export default function Home() {
         return;
       }
 
-      // Auto-annotate
+      // Auto-annotate：仅外部词典（与弹窗一致：先词根再词形），没有再走 AI
       const isEnglishMode = dictMode === 'en';
 
-      // 1. 先查内置词典
       let rawMeaning = "";
       if (isEnglishMode) {
-        const enEntry = getWordMeaningEn(cleanWord);
-        if (enEntry) rawMeaning = enEntry;
+        rawMeaning =
+          lookupExternalDictEn(root) ||
+          lookupExternalDictEn(cleanWord) ||
+          "";
       } else {
-        const zhEntry = getWordMeaning(cleanWord);
-        if (zhEntry?.meaning) rawMeaning = zhEntry.meaning;
+        rawMeaning =
+          lookupExternalDict(root) ||
+          lookupExternalDict(cleanWord) ||
+          "";
       }
 
-      // 2. 内置词典没有，再查外部词典
-      if (!rawMeaning) {
-        const extMeaning = isEnglishMode
-          ? lookupExternalDictEn(cleanWord)
-          : lookupExternalDict(cleanWord);
-        if (extMeaning) rawMeaning = extMeaning;
-      }
-
-      // 3. 外部词典也没有，调用AI翻译
+      // 外部词典没有，调用 AI
       if (!rawMeaning) {
         rawMeaning = isEnglishMode
           ? await translateWordEn(cleanWord)
@@ -775,67 +793,25 @@ if (existingMatchesMode) {
         let rawMeaning = "";
         const isEnglishMode = dictMode === 'en';
 
-        // 调试日志
-        console.log('=== 开始查词 ===');
-        console.log('原始单词:', word);
-        console.log('词根:', root);
-        console.log('当前模式:', isEnglishMode ? '英文模式' : '中文模式');
-
-if (isEnglishMode) {
-  console.log("第一层（英文）：查 englishDictionaryEn");
-  const enEntry = getWordMeaningEn(root);
-  console.log("英英内置词典结果:", enEntry);
-
-  if (enEntry) {
-    rawMeaning = enEntry;
-  }
-
-  if (!rawMeaning) {
-    console.log("第二层（英文）：查 dict_en.json (externalDictEn)");
-  const extEnMeaning = lookupExternalDictEn(root) || lookupExternalDictEn(cleanWord);
-
-    console.log("外部英英词典结果:", extEnMeaning);
-    if (extEnMeaning) {
-      rawMeaning = extEnMeaning;
-    }
-  }
-
-  if (!rawMeaning) {
-    console.log("第三层（英文）：调用 AI 英英释义");
-rawMeaning = await translateWordEn(root || cleanWord);
-
-  }
-}
-
- else {
-          // 中文模式查词流程（原有逻辑不变）
-          console.log('第一层（中文）：查 englishDictionary');
-          const entry = getWordMeaning(root);
-          console.log('内置词典结果:', entry);
-          if (entry?.meaning) {
-            rawMeaning = entry.meaning;
-          }
-
-          // 2. 查外部词典（带智能后缀去除）
+        if (isEnglishMode) {
+          rawMeaning =
+            lookupExternalDictEn(root) ||
+            lookupExternalDictEn(cleanWord) ||
+            "";
           if (!rawMeaning) {
-            console.log('第二层（中文）：查 dict.json (externalDict)');
-            const extMeaning = lookupExternalDict(cleanWord);
-            console.log('外部词典结果:', extMeaning);
-            if (extMeaning) {
-              rawMeaning = extMeaning;
-            }
+            rawMeaning = await translateWordEn(root || cleanWord);
           }
-
-          // 3. 最后才调用AI翻译
+        } else {
+          rawMeaning =
+            lookupExternalDict(root) ||
+            lookupExternalDict(cleanWord) ||
+            "";
           if (!rawMeaning) {
-            console.log('第三层（中文）：调用AI翻译');
             rawMeaning = await translateWord(cleanWord);
-
           }
         }
 
-        // 清洗并精简释义
-const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
+        const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
 
         const family = findWordFamily(root, text);
 
