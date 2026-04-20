@@ -824,17 +824,18 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
       startCharIndex: number;
       endCharIndex: number;
     }) => {
-      // 获取选区在屏幕上的位置
-      const sel = window.getSelection();
-      if (!sel || sel.rangeCount === 0) return;
-      const rect = sel.getRangeAt(0).getBoundingClientRect();
+      queueMicrotask(() => {
+        const sel = window.getSelection();
+        if (!sel || sel.rangeCount === 0) return;
+        const rect = sel.getRangeAt(0).getBoundingClientRect();
 
-      setPendingSelection({
-        ...selection,
-        position: {
-          x: rect.left + rect.width / 2,
-          y: rect.top - 10,
-        },
+        setPendingSelection({
+          ...selection,
+          position: {
+            x: rect.left + rect.width / 2,
+            y: rect.top - 10,
+          },
+        });
       });
     },
     []
