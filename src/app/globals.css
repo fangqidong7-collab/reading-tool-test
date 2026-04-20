@@ -1,8 +1,3 @@
-/*
- * Do NOT add `::highlight(...)` rules here — Next/Turbopack fails to parse them.
- * Sentence-selection highlight styling is injected at runtime in ReadingArea.tsx.
- */
-
 /* 禁用安卓浏览器下拉刷新，防止阅读时误触导致页面刷新 */
 html, body {
   overscroll-behavior-y: contain;

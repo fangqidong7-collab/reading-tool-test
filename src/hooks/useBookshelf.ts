@@ -66,59 +66,6 @@ export interface Book {
 
 const STORAGE_KEY = "english-reader-books";
 const GLOBAL_VOCAB_KEY = "english-reader-global-vocabulary";
-
-function normalizeBookTitleKey(title: string): string {
-  return title.trim().toLowerCase();
-}
-
-function mergeBookRecordPair(left: Book, right: Book): Book {
-  const lc = left.content || "";
-  const rc = right.content || "";
-  const merged: Book = { ...left, ...right };
-  merged.content = lc.length >= rc.length ? lc : rc;
-  merged.lastScrollPosition = Math.max(left.lastScrollPosition ?? 0, right.lastScrollPosition ?? 0);
-  merged.lastParagraphIndex = Math.max(left.lastParagraphIndex ?? 0, right.lastParagraphIndex ?? 0);
-  merged.lastReadAt = Math.max(left.lastReadAt || 0, right.lastReadAt || 0);
-  merged.annotations = { ...(left.annotations || {}), ...(right.annotations || {}) };
-
-  const sL = left.sentenceAnnotations || [];
-  const sR = right.sentenceAnnotations || [];
-  const sIds = new Set(sL.map((s) => s.id));
-  merged.sentenceAnnotations = [...sL, ...sR.filter((s) => !sIds.has(s.id))];
-
-  const bL = left.bookmarks || [];
-  const bR = right.bookmarks || [];
-  const bIds = new Set(bL.map((b) => b.id));
-  merged.bookmarks = [...bL, ...bR.filter((b) => !bIds.has(b.id))];
-
-  if (right.title && !left.title) merged.title = right.title;
-  if (right.tableOfContents && !left.tableOfContents) merged.tableOfContents = right.tableOfContents;
-  merged.processedContent = undefined;
-  return merged;
-}
-
-/** 修复历史同步产生的「同书不同 id」重复条（标题 + 正文长度 + 前缀一致则视为同一本） */
-function dedupeLikelyDuplicateBooks(books: Book[]): Book[] {
-  const samples = books.filter((b) => b.isSample);
-  const nonsample = books.filter((b) => !b.isSample);
-  const buckets = new Map<string, Book>();
-
-  for (const book of nonsample) {
-    const c = book.content || "";
-    const key = `${normalizeBookTitleKey(book.title)}|${c.length}|${c.slice(0, 240)}`;
-    const existing = buckets.get(key);
-    if (!existing) {
-      buckets.set(key, book);
-      continue;
-    }
-    const merged = mergeBookRecordPair(existing, book);
-    merged.id = existing.id;
-    buckets.set(key, merged);
-  }
-
-  return [...Array.from(buckets.values()), ...samples];
-}
-
 const SAMPLE_BOOK: Book = {
   id: "sample-book-1",
   title: "The Art of Learning",
@@ -648,8 +595,9 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
           }
         }
 
-        // 转换回数组并去掉极可能重复的书（历史云端双写 id）
-        let result = dedupeLikelyDuplicateBooks(Array.from(booksMap.values()));
+        // 转换回数组
+        // eslint-disable-next-line prefer-const
+        let result = Array.from(booksMap.values());
         // 按 lastReadAt 排序，非示例书在前，示例书在最后
         result.sort((a, b) => {
           if (a.isSample && !b.isSample) return 1;
