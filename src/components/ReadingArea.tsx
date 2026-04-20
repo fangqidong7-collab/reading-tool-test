@@ -4,7 +4,6 @@ import React, {
   useCallback,
   useRef,
   useEffect,
-  useLayoutEffect,
   useState,
   forwardRef,
   useImperativeHandle,
@@ -148,23 +147,6 @@ function trimAfterPageTurnPreferTop(
     const before = scrollEl.scrollTop;
     trimHalfLineAtTop(scrollEl, contentRoot, minMainLineHeight);
     trimHalfLineOffBottomForNextPage(scrollEl, contentRoot, minMainLineHeight);
-    if (Math.abs(scrollEl.scrollTop - before) < 0.5) break;
-  }
-}
-
-/**
- * 仅顶边整行对齐，不裁视口底边。用于安卓 VIA 等「原生滚一屏 + 事后 trim」：
- * 向下翻时虚拟列表刚挂载，行框若未稳定，`trimHalfLineOffBottomForNextPage` 易误判，
- * 把 scrollTop 大幅上提，表现为「向下只能翻一页 / 翻不动」。
- */
-function trimTopAlignedOnly(
-  scrollEl: HTMLElement,
-  contentRoot: HTMLElement,
-  minMainLineHeight: number
-): void {
-  for (let i = 0; i < 8; i++) {
-    const before = scrollEl.scrollTop;
-    trimHalfLineAtTop(scrollEl, contentRoot, minMainLineHeight);
     if (Math.abs(scrollEl.scrollTop - before) < 0.5) break;
   }
 }
@@ -581,11 +563,6 @@ export const ReadingArea = forwardRef(function ReadingArea({
   const selectionStartRef = useRef<{ paragraphIndex: number; charIndex: number } | null>(null);
   /** 在阅读区内 pointerdown 时的 scrollTop，用于与 pointerup 对比，区分滚动与文本选择 */
   const pointerDownScrollTopRef = useRef(0);
-  /** 安卓滑动模式：音量键交给浏览器/WebView 原生滚动后，仅做一次 trim（避免与 scrollReadingPage 双重滚动） */
-  const pendingAndroidVolumeTrimRef = useRef(false);
-  const volumeTrimFallbackTimerRef = useRef<number | null>(null);
-  const volumeTrimScrollDebounceRef = useRef<number | null>(null);
-
   const [readProgress, setReadProgress] = useState(0);
   const lastSwipeTimeRef = useRef(0);
   const lastProgrammaticPageTurnAt = useRef(0);
@@ -639,110 +616,14 @@ export const ReadingArea = forwardRef(function ReadingArea({
     [fontSize, lineHeight, processedContent, virtualizer]
   );
 
-  /** 仅整行对齐（与 scrollReadingPage 末尾 trim 一致），供安卓滑动模式音量键原生滚动后调用 */
-  const runTrimAfterVolumeNativeScroll = useCallback(() => {
-    const scrollEl = containerRef.current;
-    const root = contentRef.current;
-    if (!scrollEl || !root || !processedContent?.length) return;
-    const minMain = Math.max(12, Math.round(fontSize * Math.min(lineHeight, 3) * 0.58));
-    const runTrim = () => {
-      const el = containerRef.current;
-      const r = contentRef.current;
-      if (!el || !r) return;
-      trimTopAlignedOnly(el, r, minMain);
-    };
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(runTrim);
-      });
-    });
-  }, [fontSize, lineHeight, processedContent]);
-
-  const isAndroidSwipeScrollMode =
-    typeof navigator !== "undefined" &&
-    /Android/i.test(navigator.userAgent) &&
-    !clickToTurnPage;
-
-  // 安卓 + 滑动模式：原生滚动结束后 debounce trim（仅当本轮为音量键触发）
-  useLayoutEffect(() => {
-    if (!isAndroidSwipeScrollMode) return;
-    const el = containerRef.current;
-    if (!el) return;
-
-    const clearFallback = () => {
-      if (volumeTrimFallbackTimerRef.current !== null) {
-        clearTimeout(volumeTrimFallbackTimerRef.current);
-        volumeTrimFallbackTimerRef.current = null;
-      }
-    };
-
-    const flushTrim = () => {
-      if (!pendingAndroidVolumeTrimRef.current) return;
-      clearFallback();
-      runTrimAfterVolumeNativeScroll();
-      pendingAndroidVolumeTrimRef.current = false;
-    };
-
-    const onScroll = () => {
-      if (!pendingAndroidVolumeTrimRef.current) return;
-      if (volumeTrimScrollDebounceRef.current !== null) {
-        clearTimeout(volumeTrimScrollDebounceRef.current);
-      }
-      volumeTrimScrollDebounceRef.current = window.setTimeout(() => {
-        volumeTrimScrollDebounceRef.current = null;
-        flushTrim();
-      }, 160);
-    };
-
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      el.removeEventListener("scroll", onScroll);
-      if (volumeTrimScrollDebounceRef.current !== null) {
-        clearTimeout(volumeTrimScrollDebounceRef.current);
-        volumeTrimScrollDebounceRef.current = null;
-      }
-      clearFallback();
-    };
-  }, [
-    isAndroidSwipeScrollMode,
-    runTrimAfterVolumeNativeScroll,
-    processedContent?.length,
-  ]);
-
-  // 音量键翻页
+  // 音量键翻页（含安卓 VIA 滑动模式）：统一走程序化 scrollReadingPage。
+  // 依赖 WebView「原生滚一屏」会在虚拟列表 scrollHeight 滞后时卡在假底部，表现为只能下一页；
+  // preventDefault 后由我们单次 scroll + trim，与桌面一致。
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const isVolUp = e.key === "AudioVolumeUp" || e.key === "VolumeUp";
       const isVolDown = e.key === "AudioVolumeDown" || e.key === "VolumeDown";
       if (!isVolUp && !isVolDown) return;
-
-      /**
-       * 桌面 / iOS / 安卓点击翻页：捕获阶段拦截，由 scrollReadingPage 单次翻页 + trim。
-       * 安卓 + 滑动模式（如 VIA「音量键翻页」）：WebView 往往在 native 层已滚一屏，
-       * 若再调用 scrollReadingPage 会双重滚动；此处不 preventDefault、不二次 scroll，只标记
-       * 事后 trim（见 pendingAndroidVolumeTrimRef + scroll 监听）。
-       */
-      if (isAndroidSwipeScrollMode) {
-        e.stopPropagation();
-        /** 不设 220ms 节流：原生滚屏不由我们触发，节流只会漏掉连续音量键或误拦第二轮 keydown */
-
-        pendingAndroidVolumeTrimRef.current = true;
-        /**
-         * 仅在没有兜底定时器时才启动：若每次 keydown 都 clear+重置 400ms，
-         * 第二次音量下若未产生 scroll（VIA 常见），pending 永远不清；
-         * 连续按「下」还会把兜底无限推迟；按「上」产生 scroll 才碰巧 flush——
-         * 与「再上一下才能再下」现象一致。
-         */
-        if (volumeTrimFallbackTimerRef.current === null) {
-          volumeTrimFallbackTimerRef.current = window.setTimeout(() => {
-            volumeTrimFallbackTimerRef.current = null;
-            if (!pendingAndroidVolumeTrimRef.current) return;
-            runTrimAfterVolumeNativeScroll();
-            pendingAndroidVolumeTrimRef.current = false;
-          }, 400);
-        }
-        return;
-      }
 
       e.preventDefault();
       e.stopPropagation();
@@ -751,12 +632,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
 
     window.addEventListener("keydown", handleKeyDown, { capture: true });
     return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
-  }, [
-    scrollReadingPage,
-    isAndroidSwipeScrollMode,
-    runTrimAfterVolumeNativeScroll,
-    clickToTurnPage,
-  ]);
+  }, [scrollReadingPage]);
 
   // 文本选择功能 - 句子翻译
   const handleTextSelection = useCallback(() => {
