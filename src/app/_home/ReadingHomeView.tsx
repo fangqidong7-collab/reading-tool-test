@@ -1126,8 +1126,12 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
         }
 
         .reading-container {
+          flex: 1;
+          min-height: 0;
           height: 100%;
-          overflow-y: auto;
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
         }
 
         .loading-overlay {

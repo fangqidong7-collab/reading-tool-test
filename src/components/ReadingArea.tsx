@@ -5,16 +5,151 @@ import { ProcessedContent, SentenceAnnotation } from "@/hooks/useBookshelf";
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 // Layout constants
-const HEADER_HEIGHT = 56;
-const MOBILE_HEADER_HEIGHT = 48;
 const READING_PADDING_HORIZONTAL = 32;
 const MOBILE_READING_PADDING_HORIZONTAL = 12;
-const PARAGRAPH_GAP = 16;
 const MOBILE_BREAKPOINT = 768;
-const MOBILE_TOP_GAP = 5;
-/** Extra space above bottom safe area so text does not sit under the progress % badge */
-const MOBILE_BOTTOM_SAFE_ZONE = 88;
+/** End padding inside scroll area (footer row below handles progress; keep modest tail spacing) */
+const READING_CONTENT_PADDING_BOTTOM = 32;
 const PAGE_TURN_EDGE_EPS = 3;
+
+/** CSS Custom Highlight name — only paints segment spans, never `.annotation` insertions between words */
+const SENTENCE_SEL_HIGHLIGHT_NAME = 'english-reader-sentence-sel';
+
+export function clearSentenceSelectionHighlight(): void {
+  try {
+    if (typeof CSS !== 'undefined' && CSS.highlights && typeof CSS.highlights.delete === 'function') {
+      CSS.highlights.delete(SENTENCE_SEL_HIGHLIGHT_NAME);
+    }
+  } catch {
+    /* noop */
+  }
+}
+
+function buildRangesForParagraphPlainInterval(
+  paragraphEl: HTMLElement,
+  startChar: number,
+  endChar: number
+): Range[] {
+  const ranges: Range[] = [];
+  paragraphEl.querySelectorAll<HTMLElement>('[data-char-start]').forEach((span) => {
+    const cs = parseInt(span.getAttribute('data-char-start') || '', 10);
+    const ce = parseInt(span.getAttribute('data-char-end') || '', 10);
+    if (Number.isNaN(cs) || Number.isNaN(ce)) return;
+    const lo = Math.max(startChar, cs);
+    const hi = Math.min(endChar, ce);
+    if (lo >= hi) return;
+    const tn = span.firstChild;
+    if (!tn || tn.nodeType !== Node.TEXT_NODE) return;
+    try {
+      const r = document.createRange();
+      r.setStart(tn, lo - cs);
+      r.setEnd(tn, hi - cs);
+      ranges.push(r);
+    } catch {
+      /* skip */
+    }
+  });
+  return ranges;
+}
+
+function applySentenceSelectionHighlight(
+  pc: ProcessedContent,
+  contentRoot: HTMLElement,
+  startP: number,
+  startC: number,
+  endP: number,
+  endC: number
+): { ok: boolean; rangeCount: number } {
+  clearSentenceSelectionHighlight();
+  const HL =
+    typeof globalThis !== 'undefined'
+      ? (globalThis as unknown as { Highlight?: typeof Highlight }).Highlight
+      : undefined;
+  if (
+    typeof CSS === 'undefined' ||
+    !HL ||
+    !CSS.highlights ||
+    typeof CSS.highlights.set !== 'function'
+  ) {
+    return { ok: false, rangeCount: 0 };
+  }
+  const allRanges: Range[] = [];
+  for (let p = startP; p <= endP; p++) {
+    const paraEl = contentRoot.querySelector(`[data-index="${p}"] .paragraph`) as HTMLElement | null;
+    if (!paraEl) continue;
+    const lo = p === startP ? startC : 0;
+    const hi = p === endP ? endC : paragraphPlainLenFromPc(pc, p);
+    allRanges.push(...buildRangesForParagraphPlainInterval(paraEl, lo, hi));
+  }
+  if (allRanges.length === 0) return { ok: false, rangeCount: 0 };
+  try {
+    const h = new HL(...allRanges);
+    CSS.highlights.set(SENTENCE_SEL_HIGHLIGHT_NAME, h);
+    return { ok: true, rangeCount: allRanges.length };
+  } catch {
+    return { ok: false, rangeCount: 0 };
+  }
+}
+
+/** Max plain-text offset in paragraph (exclusive upper bound) */
+function getParagraphPlainLength(paragraphEl: HTMLElement): number {
+  let maxEnd = 0;
+  paragraphEl.querySelectorAll<HTMLElement>("[data-char-end]").forEach((el) => {
+    const v = parseInt(el.getAttribute("data-char-end") || "", 10);
+    if (!Number.isNaN(v)) maxEnd = Math.max(maxEnd, v);
+  });
+  return maxEnd;
+}
+
+/** Plain characters contributed by one direct child of .paragraph */
+function plainCharsInParagraphChild(el: HTMLElement): number {
+  const spans = el.querySelectorAll<HTMLElement>("[data-char-start]");
+  if (spans.length === 0) return 0;
+  let sum = 0;
+  spans.forEach((s) => {
+    const ds = parseInt(s.getAttribute("data-char-start") || "0", 10);
+    const de = parseInt(s.getAttribute("data-char-end") || "0", 10);
+    if (!Number.isNaN(ds) && !Number.isNaN(de)) sum += de - ds;
+  });
+  return sum;
+}
+
+function paragraphPlainLenFromPc(pc: ProcessedContent, pi: number): number {
+  const p = pc[pi];
+  if (!p) return 0;
+  return p.segments.map((s) => s.text).join("").length;
+}
+
+function extractPlainBetween(
+  processedContent: ProcessedContent,
+  startP: number,
+  startC: number,
+  endP: number,
+  endC: number
+): string {
+  if (startP === endP) {
+    const para = processedContent[startP];
+    if (!para) return "";
+    const full = para.segments.map((s) => s.text).join("");
+    return full.slice(startC, endC);
+  }
+  const parts: string[] = [];
+  const first = processedContent[startP];
+  if (first) {
+    const full = first.segments.map((s) => s.text).join("");
+    parts.push(full.slice(startC));
+  }
+  for (let p = startP + 1; p < endP; p++) {
+    const para = processedContent[p];
+    if (para) parts.push(para.segments.map((s) => s.text).join(""));
+  }
+  const last = processedContent[endP];
+  if (last) {
+    const full = last.segments.map((s) => s.text).join("");
+    parts.push(full.slice(0, endC));
+  }
+  return parts.join("\n\n");
+}
 
 /** Keep selection endpoints on plain-text spans (.word / punctuation), not .annotation overlays */
 function clampSelectionBoundaryToPlainSpan(
@@ -47,6 +182,20 @@ function plainCharOffsetFromBoundary(
   boundaryNode: Node,
   boundaryOffset: number
 ): number | null {
+  // 选区落在「段落节点 + 子节点下标」时（常见于拖到段尾/段首），必须按子树累计字数
+  if (boundaryNode === paragraphEl && boundaryNode.nodeType === Node.ELEMENT_NODE) {
+    const pe = boundaryNode as HTMLElement;
+    const kids = pe.children;
+    const idx = boundaryOffset;
+    if (idx <= 0) return 0;
+    if (idx >= kids.length) return getParagraphPlainLength(pe);
+    let sum = 0;
+    for (let i = 0; i < idx; i++) {
+      sum += plainCharsInParagraphChild(kids[i] as HTMLElement);
+    }
+    return sum;
+  }
+
   const { node, offset } = clampSelectionBoundaryToPlainSpan(paragraphEl, boundaryNode, boundaryOffset);
   let scan: HTMLElement | null =
     node.nodeType === Node.TEXT_NODE ? node.parentElement : (node as HTMLElement);
@@ -157,6 +306,8 @@ export interface ReadingAreaRef {
   addBookmark: () => void;
   restoreScrollPosition: (percent: number) => void;
   restoreByParagraphIndex: (index: number) => void;
+  /** Clear CSS Custom Highlight used for sentence selection (does not affect native selection) */
+  clearSentenceHighlight: () => void;
 }
 
 
@@ -566,7 +717,6 @@ export const ReadingArea = forwardRef(function ReadingArea({
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const [readProgress, setReadProgress] = useState(0);
-  const [containerHeight, setContainerHeight] = useState(600);
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const lastSwipeTimeRef = useRef(0);
 
@@ -576,6 +726,20 @@ export const ReadingArea = forwardRef(function ReadingArea({
     estimateSize: () => 80,
     overscan: 20,
   });
+
+  /** Turbopack/CSS parser rejects `::highlight()` in globals.css — inject so the browser parses it */
+  useEffect(() => {
+    const id = 'english-reader-sentence-highlight-style';
+    if (typeof document === 'undefined') return;
+    if (document.getElementById(id)) return;
+    const style = document.createElement('style');
+    style.id = id;
+    style.textContent = `::highlight(${SENTENCE_SEL_HIGHLIGHT_NAME}) { background-color: rgba(74, 144, 217, 0.22); }`;
+    document.head.appendChild(style);
+    return () => {
+      document.getElementById(id)?.remove();
+    };
+  }, []);
 
   const scrollReadingPage = useCallback(
     (direction: "next" | "prev") => {
@@ -611,22 +775,6 @@ export const ReadingArea = forwardRef(function ReadingArea({
     [pageTurnRatio, processedContent, virtualizer]
   );
 
-  useEffect(() => {
-    const calcHeight = () => {
-      const mobile = window.innerWidth <= MOBILE_BREAKPOINT;
-      const headerH = mobile ? MOBILE_HEADER_HEIGHT : HEADER_HEIGHT;
-      const PAGER_HEIGHT = 0;
-      const h = mobile
-        ? window.innerHeight - headerH - MOBILE_TOP_GAP - MOBILE_BOTTOM_SAFE_ZONE - PAGER_HEIGHT
-        : window.innerHeight - headerH - PAGER_HEIGHT;
-      setContainerHeight(Math.max(h, 200));
-    };
-
-    calcHeight();
-    window.addEventListener('resize', calcHeight);
-    return () => window.removeEventListener('resize', calcHeight);
-  }, []);
-
   // 音量键翻页
   useEffect(() => {
     // 方法1：监听 keydown（部分安卓浏览器会把音量键映射为 keydown 事件）
@@ -646,7 +794,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [scrollReadingPage]);
 
-  // 文本选择功能 - 句子翻译（偏移量与 processedContent 段落纯文本一致，避免整段被选满）
+  // 文本选择功能 - 句子翻译（偏移量与 processedContent 一致；修正浏览器「拖尾」选区）
   const handleTextSelection = useCallback(() => {
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || !selection.toString().trim()) return;
@@ -654,12 +802,22 @@ export const ReadingArea = forwardRef(function ReadingArea({
     const container = containerRef.current;
     if (!container) return;
 
-    const selectedText = selection.toString().trim();
-    if (selectedText.split(/\s+/).length < 2) return;
     if (!processedContent) return;
 
     const range = selection.getRangeAt(0);
     if (!container.contains(range.commonAncestorContainer)) return;
+
+    // #region agent log
+    {
+      const ep = range.endContainer as Node;
+      const isEndPara =
+        ep.nodeType === Node.ELEMENT_NODE &&
+        (ep as HTMLElement).classList?.contains('paragraph');
+      const kidsLen =
+        isEndPara ? (ep as HTMLElement).children.length : -1;
+      fetch('http://127.0.0.1:7255/ingest/7d7c023a-6e5d-4158-bc13-c8ca1b19f6f9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'bfc262'},body:JSON.stringify({sessionId:'bfc262',location:'ReadingArea.tsx:handleTextSelection:rawRange',message:'native range before offset calc',data:{applyingSkipped:false,startN:(range.startContainer as Node).nodeName,endN:ep.nodeName,startOff:range.startOffset,endOff:range.endOffset,isEndParagraph:isEndPara,endOffEqNumChildren:isEndPara&&kidsLen===range.endOffset,childrenLen:kidsLen,rangeLen:range.toString().length,rangeWordCount:range.toString().trim().split(/\s+/).filter(Boolean).length},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+    }
+    // #endregion
 
     const findParagraphEl = (node: Node): { el: HTMLElement; pIndex: number } | null => {
       let el: HTMLElement | null = node.nodeType === Node.TEXT_NODE ? node.parentElement : node as HTMLElement;
@@ -689,56 +847,115 @@ export const ReadingArea = forwardRef(function ReadingArea({
 
     if (startCharIndex === null || endCharIndex === null) return;
 
-    if (
-      startParaInfo.pIndex === endParaInfo.pIndex &&
-      endCharIndex < startCharIndex
-    ) {
-      const t = startCharIndex;
-      startCharIndex = endCharIndex;
-      endCharIndex = t;
+    // #region agent log
+    fetch('http://127.0.0.1:7255/ingest/7d7c023a-6e5d-4158-bc13-c8ca1b19f6f9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'bfc262'},body:JSON.stringify({sessionId:'bfc262',location:'ReadingArea.tsx:handleTextSelection:afterPlainOffset',message:'computed char offsets pre-reorder',data:{startCharIndex,endCharIndex,startP0:startParaInfo.pIndex,endP0:endParaInfo.pIndex},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
+    // #endregion
+
+    let startP = startParaInfo.pIndex;
+    let endP = endParaInfo.pIndex;
+    let startC = startCharIndex;
+    let endC = endCharIndex;
+
+    if (startP > endP || (startP === endP && endC < startC)) {
+      const tP = startP;
+      startP = endP;
+      endP = tP;
+      const tC = startC;
+      startC = endC;
+      endC = tC;
     }
+
+    const contentRoot =
+      (container.querySelector(".reader-content") as HTMLElement | null) ?? container;
+    const startScrollEl = contentRoot.querySelector(
+      `[data-index="${startP}"] .paragraph`
+    ) as HTMLElement | null;
+    const endScrollEl = contentRoot.querySelector(
+      `[data-index="${endP}"] .paragraph`
+    ) as HTMLElement | null;
+
+    const endLenDom = endScrollEl ? getParagraphPlainLength(endScrollEl) : paragraphPlainLenFromPc(processedContent, endP);
+    endC = Math.min(endC, endLenDom);
+    if (startP === endP) {
+      startC = Math.max(0, Math.min(startC, endC));
+    }
+
+    const plainSelected = extractPlainBetween(processedContent, startP, startC, endP, endC).trim();
+    // #region agent log
+    fetch('http://127.0.0.1:7255/ingest/7d7c023a-6e5d-4158-bc13-c8ca1b19f6f9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'bfc262'},body:JSON.stringify({sessionId:'bfc262',location:'ReadingArea.tsx:handleTextSelection:afterClamp',message:'final indices and plain slice',data:{startP,endP,startC,endC,endLenDom,plainLen:plainSelected.length,plainWords:plainSelected.split(/\s+/).filter(Boolean).length,plainPreview:plainSelected.slice(0,160)},timestamp:Date.now(),hypothesisId:'H5'})}).catch(()=>{});
+    // #endregion
+    if (plainSelected.split(/\s+/).filter(Boolean).length < 2) {
+      clearSentenceSelectionHighlight();
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      const hl = applySentenceSelectionHighlight(
+        processedContent,
+        contentRoot,
+        startP,
+        startC,
+        endP,
+        endC
+      );
+      // #region agent log
+      fetch('http://127.0.0.1:7255/ingest/7d7c023a-6e5d-4158-bc13-c8ca1b19f6f9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'bfc262'},body:JSON.stringify({sessionId:'bfc262',location:'ReadingArea.tsx:applySentenceSelectionHighlight',message:'CSS highlight applied (no annotation bleed)',data:{ok:hl.ok,rangeCount:hl.rangeCount,nativeSelLenAfterClear:hl.ok?(typeof window !== 'undefined'?((window.getSelection()?.toString().length)??-1):-1):undefined},timestamp:Date.now(),hypothesisId:'H3-post'})}).catch(()=>{});
+      // #endregion
+      if (hl.ok) {
+        window.getSelection()?.removeAllRanges();
+      }
+    });
 
     if (onTextSelect) {
       onTextSelect({
-        text: selectedText,
-        startParagraphIndex: startParaInfo.pIndex,
-        startCharIndex,
-        endParagraphIndex: endParaInfo.pIndex,
-        endCharIndex,
+        text: plainSelected,
+        startParagraphIndex: startP,
+        startCharIndex: startC,
+        endParagraphIndex: endP,
+        endCharIndex: endC,
       });
     }
   }, [onTextSelect, processedContent]);
 
-  // 文本选择：桌面 mouseup + 移动端 touchend / selectionchange（长划选时无 mouseup）
+  // 仅在_pointer 释放后_再处理选区：不在 selectionchange 里弹出（否则拖选中途就会出翻译窗）
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    const run = () => {
-      setTimeout(handleTextSelection, 10);
+    let finalizeTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleFinalizeSelection = () => {
+      if (finalizeTimer) clearTimeout(finalizeTimer);
+      finalizeTimer = setTimeout(() => {
+        finalizeTimer = null;
+        handleTextSelection();
+      }, 150);
     };
 
-    let selectionDebounce: ReturnType<typeof setTimeout> | null = null;
-    const onSelectionChange = () => {
+    /** 捕获阶段：手指/鼠标松开后 WebKit 才稳定 selection */
+    const onPointerUpCapture = () => {
       const sel = window.getSelection();
       if (!sel || sel.isCollapsed || !sel.rangeCount) return;
-      const r = sel.getRangeAt(0);
-      if (!container.contains(r.commonAncestorContainer)) return;
-      if (selectionDebounce) clearTimeout(selectionDebounce);
-      selectionDebounce = setTimeout(() => {
-        selectionDebounce = null;
-        handleTextSelection();
-      }, 120);
+      try {
+        const r = sel.getRangeAt(0);
+        if (!container.contains(r.commonAncestorContainer)) return;
+      } catch {
+        return;
+      }
+      scheduleFinalizeSelection();
     };
 
-    container.addEventListener("mouseup", run);
-    container.addEventListener("touchend", run, { passive: true });
-    document.addEventListener("selectionchange", onSelectionChange);
+    document.addEventListener("pointerup", onPointerUpCapture, true);
+
+    /** 少数环境无 PointerEvent 或行为异常时兜底 */
+    const fallbackEnd = () => scheduleFinalizeSelection();
+    container.addEventListener("touchend", fallbackEnd, { passive: true });
+    container.addEventListener("mouseup", fallbackEnd);
+
     return () => {
-      container.removeEventListener("mouseup", run);
-      container.removeEventListener("touchend", run);
-      document.removeEventListener("selectionchange", onSelectionChange);
-      if (selectionDebounce) clearTimeout(selectionDebounce);
+      document.removeEventListener("pointerup", onPointerUpCapture, true);
+      container.removeEventListener("touchend", fallbackEnd);
+      container.removeEventListener("mouseup", fallbackEnd);
+      if (finalizeTimer) clearTimeout(finalizeTimer);
     };
   }, [handleTextSelection]);
 
@@ -1006,6 +1223,7 @@ const getFirstVisibleIndex = useCallback(() => {
 
   useEffect(() => {
     hasRestoredRef.current = false;
+    clearSentenceSelectionHighlight();
   }, [bookId]);
 
 
@@ -1030,6 +1248,9 @@ const getFirstVisibleIndex = useCallback(() => {
     restoreByParagraphIndex: (index: number) => {
       virtualizer.scrollToIndex(index, { align: 'start' });
     },
+    clearSentenceHighlight: () => {
+      clearSentenceSelectionHighlight();
+    },
   }));
 
 
@@ -1043,13 +1264,14 @@ const getFirstVisibleIndex = useCallback(() => {
         className="reading-wrapper" 
         style={{ 
           backgroundColor,
-          height: "100vh",
+          height: "100%",
+          minHeight: 0,
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
         }}
       >
-        {/* 阅读容器 - 滚动模式 */}
+        {/* 上方：仅正文滚动区；下方：进度条单独一行，不与正文叠在同一层 */}
         <div 
           ref={containerRef}
           className="reading-container"
@@ -1085,14 +1307,16 @@ const getFirstVisibleIndex = useCallback(() => {
             const halfWidth = rect.width / 2;
             const el = containerRef.current;
             if (!el) return;
+            const vh = el.clientHeight;
             if (clickX < halfWidth) {
-              el.scrollBy({ top: -(containerHeight * pageTurnRatio), behavior: "smooth" });
+              el.scrollBy({ top: -(vh * pageTurnRatio), behavior: "smooth" });
             } else {
-              el.scrollBy({ top: containerHeight * pageTurnRatio, behavior: "smooth" });
+              el.scrollBy({ top: vh * pageTurnRatio, behavior: "smooth" });
             }
           }}
           style={{
-            height: containerHeight,
+            flex: 1,
+            minHeight: 0,
             overflowY: "auto",
             overflowX: "hidden",
             position: "relative",
@@ -1108,6 +1332,8 @@ const getFirstVisibleIndex = useCallback(() => {
               height: `${virtualizer.getTotalSize()}px`,
               width: "100%",
               position: "relative",
+              paddingBottom: READING_CONTENT_PADDING_BOTTOM,
+              boxSizing: "content-box",
             }}
           >
             {virtualizer.getVirtualItems().map((virtualRow) => {
@@ -1152,31 +1378,41 @@ const getFirstVisibleIndex = useCallback(() => {
 
         </div>
 
-        {/* 左下角阅读进度 */}
-        <div style={{
-          position: "fixed",
-          bottom: 12,
-          left: 16,
-          backgroundColor: isDarkMode ? "rgba(30,30,46,0.85)" : "rgba(255,255,255,0.85)",
-          color: isDarkMode ? "#888" : "#999",
-          fontSize: "12px",
-          padding: "4px 8px",
-          borderRadius: "4px",
-          zIndex: 100,
-          pointerEvents: "none",
-          backdropFilter: "blur(4px)",
-        }}>
-          {readProgress.toFixed(2)}%
+        <div
+          style={{
+            flexShrink: 0,
+            paddingLeft: 14,
+            paddingRight: 14,
+            paddingTop: 4,
+            paddingBottom: "max(10px, env(safe-area-inset-bottom, 0px))",
+            pointerEvents: "none",
+          }}
+        >
+          <div
+            style={{
+              display: "inline-block",
+              backgroundColor: isDarkMode ? "rgba(30,30,46,0.85)" : "rgba(255,255,255,0.85)",
+              color: isDarkMode ? "#888" : "#999",
+              fontSize: "12px",
+              padding: "4px 8px",
+              borderRadius: "4px",
+              backdropFilter: "blur(4px)",
+            }}
+          >
+            {readProgress.toFixed(2)}%
+          </div>
         </div>
 
         <style jsx>{`
           .reading-wrapper {
-            height: 100vh;
+            height: 100%;
+            min-height: 0;
             position: relative;
           }
 
           .reading-container {
             flex: 1;
+            min-height: 0;
           }
 
           .reader-content {
@@ -1216,7 +1452,8 @@ const getFirstVisibleIndex = useCallback(() => {
 
           @media (max-width: 768px) {
             .reading-wrapper {
-              height: 100dvh !important;
+              height: 100%;
+              min-height: 0;
             }
           }
         `}</style>

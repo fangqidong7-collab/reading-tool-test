@@ -865,6 +865,7 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
       setTranslatingSelection(false);
       setPendingSelection(null);
       window.getSelection()?.removeAllRanges();
+      readingAreaRef.current?.clearSentenceHighlight();
     }
   }, [pendingSelection, currentBook, addSentenceAnnotation]);
 
@@ -872,6 +873,7 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
   const closePendingSelection = useCallback(() => {
     setPendingSelection(null);
     window.getSelection()?.removeAllRanges();
+    readingAreaRef.current?.clearSentenceHighlight();
   }, []);
 
   // Handle remove sentence annotation
