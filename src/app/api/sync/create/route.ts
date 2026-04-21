@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { kv } from '@/lib/kv';
 
+export const maxDuration = 60;
+
 // 生成 6 位随机同步码
 function generateSyncCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 去掉容易混淆的 0OI1

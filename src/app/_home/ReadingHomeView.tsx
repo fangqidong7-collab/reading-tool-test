@@ -7,8 +7,6 @@ import { VocabularySidebar } from "@/components/VocabularySidebar";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { SyncPanel } from "@/components/SyncPanel";
 import type { Book, ProcessedContent, SentenceAnnotation } from "@/hooks/useBookshelf";
-import { lemmatize } from "@/lib/dictionary";
-
 interface AnnotatedWord {
   root: string;
   meaning: string;
@@ -52,7 +50,7 @@ export interface ReadingHomeViewProps {
   pendingSelection: { text: string; position: { x: number; y: number } } | null;
   translatingSelection: boolean;
   // Selected word
-  selectedWord: { word: string; position: { x: number; y: number } } | null;
+  selectedWord: { word: string; lemma: string; position: { x: number; y: number } } | null;
   // Theme
   backgroundColor: string;
   headerBg: string;
@@ -91,7 +89,7 @@ export interface ReadingHomeViewProps {
   getWordAnnotation: (word: string) => AnnotatedWord | null;
   isClickable: (word: string) => boolean;
   annotateAll: (word: string) => Promise<void>;
-  removeAnnotation: (word: string) => void;
+  removeAnnotation: (word: string, lemma?: string) => void;
   clearAllAnnotations: () => void;
   scrollToWord: (word: string) => void;
   scrollToSentence: (annotation: SentenceAnnotation) => void;
@@ -888,6 +886,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
           onClose={() => setSidebarOpen(false)}
           onClearAll={clearAllAnnotations}
           onWordClick={scrollToWord}
+          onRemoveWord={removeAnnotation}
           sentenceAnnotations={currentBook?.sentenceAnnotations ?? []}
           onSentenceClick={scrollToSentence}
           onRemoveSentence={handleRemoveSentenceAnnotation}
@@ -904,12 +903,15 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
       {selectedWord && (
         <WordTooltip
           word={selectedWord.word}
+          lemma={selectedWord.lemma}
           position={selectedWord.position}
           onAnnotateAll={annotateAll}
-          onRemoveAnnotation={removeAnnotation}
+          onRemoveAnnotation={() =>
+            removeAnnotation(selectedWord.word, selectedWord.lemma)
+          }
           onClose={closeTooltip}
-          isAnnotated={!!annotations[lemmatize(selectedWord.word.toLowerCase())]}
-          annotation={annotations[lemmatize(selectedWord.word.toLowerCase())] || null}
+          isAnnotated={!!mergedAnnotationsForRender[selectedWord.lemma]}
+          annotation={mergedAnnotationsForRender[selectedWord.lemma] ?? null}
           dictMode={dictMode}
           isDarkMode={isDarkMode}
           textColor={textColor}

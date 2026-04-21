@@ -17,6 +17,8 @@ interface VocabularySidebarProps {
   onClose: () => void;
   onClearAll: () => void;
   onWordClick: (word: string) => void;
+  /** 删除单个词条（从本书标注与全局词汇表移除，与正文一致） */
+  onRemoveWord?: (root: string) => void;
   // Sentence translation props
   sentenceAnnotations?: SentenceAnnotation[];
   onSentenceClick?: (annotation: SentenceAnnotation) => void;
@@ -36,6 +38,7 @@ export function VocabularySidebar({
   onClose,
   onClearAll,
   onWordClick,
+  onRemoveWord,
   sentenceAnnotations = [],
   onSentenceClick,
   onRemoveSentence,
@@ -50,7 +53,6 @@ export function VocabularySidebar({
   const [sidebarTab, setSidebarTab] = useState<"words" | "sentences">("words");
 
   const annotationList = Object.values(annotations);
-  const totalCount = annotationList.reduce((sum, item) => sum + item.count, 0);
 
   // 搜索过滤
   const filteredList = searchQuery.trim()
@@ -133,12 +135,6 @@ export function VocabularySidebar({
               </span>
               <span className="stat-label" style={{ color: colors.secondaryTextColor }}>词汇数</span>
             </div>
-            <div className="stat-item">
-              <span className="stat-value" style={{ color: colors.accentColor }}>
-                {totalCount}
-              </span>
-              <span className="stat-label" style={{ color: colors.secondaryTextColor }}>标注次数</span>
-            </div>
           </div>
         )}
 
@@ -199,15 +195,6 @@ export function VocabularySidebar({
                       <span className="item-pos" style={{ color: colors.secondaryTextColor }}>
                         {item.pos}
                       </span>
-                      <span
-                        className="item-count"
-                        style={{
-                          color: colors.accentColor,
-                          backgroundColor: `${colors.accentColor}20`,
-                        }}
-                      >
-                        {item.count}次
-                      </span>
                       {/* 发音按钮 */}
                       <button
                         className="sidebar-speak-btn"
@@ -216,13 +203,30 @@ export function VocabularySidebar({
                           speakWord(item.root);
                         }}
                         title="播放发音"
-                        style={{ color: colors.accentColor }}
+                        style={{ color: colors.accentColor, marginLeft: "auto" }}
                       >
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
                           <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
                         </svg>
                       </button>
+                      {onRemoveWord && (
+                        <button
+                          type="button"
+                          className="sidebar-delete-word-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onRemoveWord(item.root);
+                          }}
+                          title="删除此词"
+                          style={{ color: colors.secondaryTextColor }}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polyline points="3 6 5 6 21 6" />
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                          </svg>
+                        </button>
+                      )}
                     </div>
                     <div className="item-meaning" style={{ color: annotationColor }}>
                       {item.meaning}
@@ -507,13 +511,6 @@ export function VocabularySidebar({
 
         .item-pos {
           font-size: 11px;
-        }
-
-        .item-count {
-          margin-left: auto;
-          font-size: 12px;
-          padding: 2px 6px;
-          border-radius: 4px;
         }
 
         .item-meaning {

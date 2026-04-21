@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { kv } from '@/lib/kv';
 
+/** Vercel：允许较长请求体（多本书正文），避免网关过早切断 */
+export const maxDuration = 60;
+
 // 同步数据结构
 interface VocabEntry {
   root: string;
@@ -62,13 +65,16 @@ export async function POST(request: Request) {
     // 合并策略：智能合并词汇表和书籍进度
     const existingData: SyncData = JSON.parse(existing as string);
     const merged = mergeData(existingData, data);
-
-    await kv.set(key, JSON.stringify({
+    const updatedAt = Date.now();
+    const payload = {
       ...merged,
-      updatedAt: Date.now(),
-    }), { ex: 90 * 24 * 60 * 60 });
+      updatedAt,
+    };
 
-    return NextResponse.json({ success: true, updatedAt: Date.now() });
+    await kv.set(key, JSON.stringify(payload), { ex: 90 * 24 * 60 * 60 });
+
+    // 与 GET/PULL 一致的结构，客户端可省略第二次 pull，省一半往返与下行流量
+    return NextResponse.json({ success: true, updatedAt, data: payload });
   } catch (error) {
     if (process.env.NODE_ENV !== 'production') {
       console.error('[sync/push]', error);

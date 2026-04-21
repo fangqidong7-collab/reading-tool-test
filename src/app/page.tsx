@@ -83,6 +83,8 @@ export default function Home() {
   >({});
   const [selectedWord, setSelectedWord] = useState<{
     word: string;
+    /** 与正文分词一致的词根键，用于查词与合并标注（全局词汇 + 本书） */
+    lemma: string;
     position: { x: number; y: number };
   } | null>(null);
   const [loading, setLoading] = useState(false);
@@ -598,8 +600,11 @@ export default function Home() {
         clearTimeout(clickTimerRef.current);
       }
       clickTimerRef.current = setTimeout(() => {
+        const lemmaKey =
+          lemma && lemma.trim().length > 0 ? lemma.trim() : lemmatize(cleanWord);
         setSelectedWord({
           word: cleanWord,
+          lemma: lemmaKey,
           position: {
             x: rect.left + rect.width / 2,
             y: rect.top - 10,
@@ -803,8 +808,11 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
   );
 
   // Remove annotation
-  const removeAnnotation = useCallback((word: string) => {
-    const root = lemmatize(word.toLowerCase());
+  const removeAnnotation = useCallback((word: string, lemmaOverride?: string) => {
+    const root =
+      lemmaOverride !== undefined && lemmaOverride.trim().length > 0
+        ? lemmaOverride.trim()
+        : lemmatize(word.toLowerCase());
     setAnnotations((prev) => {
       const next = { ...prev };
       delete next[root];

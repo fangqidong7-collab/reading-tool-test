@@ -782,18 +782,35 @@ export const ReadingArea = forwardRef(function ReadingArea({
     // 保留4位小数，避免长文档精度丢失
     return parseFloat(((el.scrollTop / (el.scrollHeight - el.clientHeight)) * 100).toFixed(4));
   }, []);
+  /** 视区内占据面积最大的段落 —— 比「首个可见段落」更接近用户正在读的那一段，避免进度偏上一段 */
   const getFirstVisibleIndex = useCallback(() => {
     if (!containerRef.current) return 0;
     const scrollTop = containerRef.current.scrollTop;
+    const clientHeight = containerRef.current.clientHeight;
+    const viewportTop = scrollTop;
+    const viewportBottom = scrollTop + clientHeight;
+    const viewportCenter = scrollTop + clientHeight / 2;
+
     const items = virtualizer.getVirtualItems();
     if (items.length === 0) return 0;
 
+    let bestIndex = items[0].index;
+    let bestScore = Number.NEGATIVE_INFINITY;
+
     for (const item of items) {
-      if (item.start + item.size > scrollTop) {
-        return item.index;
+      const top = item.start;
+      const bottom = item.start + item.size;
+      const overlap = Math.min(bottom, viewportBottom) - Math.max(top, viewportTop);
+      const o = overlap > 0 ? overlap : 0;
+      const mid = (top + bottom) / 2;
+      const score = o * 1e9 - Math.abs(mid - viewportCenter);
+      if (score > bestScore) {
+        bestScore = score;
+        bestIndex = item.index;
       }
     }
-    return items[0].index;
+
+    return bestIndex;
   }, [virtualizer]);
 
 
@@ -966,31 +983,49 @@ export const ReadingArea = forwardRef(function ReadingArea({
     hasRestoredRef.current = true;
 
     const doRestore = () => {
-      // 核心策略：用保存的段落文字在 processedContent 中搜索，找到真实索引
+      const el = containerRef.current;
+      if (!el || !processedContent?.length) return;
+
+      const applyScrollPercent = (): boolean => {
+        const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
+        if (initialScrollPercent > 0 && maxScroll > 0) {
+          el.scrollTop = (initialScrollPercent / 100) * maxScroll;
+          return true;
+        }
+        return false;
+      };
+
+      // 优先按百分比恢复，与离开前屏幕位置一致（避免仅用段落对齐导致「往上偏一段」）
+      if (applyScrollPercent()) {
+        requestAnimationFrame(() => {
+          applyScrollPercent();
+        });
+        setTimeout(() => applyScrollPercent(), 450);
+        setTimeout(() => applyScrollPercent(), 1200);
+        return;
+      }
+
       let targetIndex = initialParagraphIndex;
 
       if (initialParagraphText && processedContent) {
-        // 在 processedContent 中查找匹配的段落
         const savedText = initialParagraphText;
-        
-        // 先在保存索引附近搜索（前后200段范围）
+
         const searchRadius = 200;
         const startSearch = Math.max(0, initialParagraphIndex - searchRadius);
         const endSearch = Math.min(processedContent.length, initialParagraphIndex + searchRadius);
-        
+
         let foundIndex = -1;
         for (let i = startSearch; i < endSearch; i++) {
-          const paraText = processedContent[i].segments.map(s => s.text).join('').substring(0, 80);
+          const paraText = processedContent[i].segments.map((s) => s.text).join("").substring(0, 80);
           if (paraText === savedText) {
             foundIndex = i;
             break;
           }
         }
 
-        // 如果附近没找到，全文搜索
         if (foundIndex === -1) {
           for (let i = 0; i < processedContent.length; i++) {
-            const paraText = processedContent[i].segments.map(s => s.text).join('').substring(0, 80);
+            const paraText = processedContent[i].segments.map((s) => s.text).join("").substring(0, 80);
             if (paraText === savedText) {
               foundIndex = i;
               break;
@@ -1000,32 +1035,17 @@ export const ReadingArea = forwardRef(function ReadingArea({
 
         if (foundIndex >= 0) {
           targetIndex = foundIndex;
-          console.log('ReadingArea 文字匹配成功: 保存索引=', initialParagraphIndex, ', 实际索引=', foundIndex);
-        } else {
-          console.log('ReadingArea 文字匹配失败，使用原始索引:', initialParagraphIndex);
         }
       }
 
       if (targetIndex >= 0) {
         virtualizer.scrollToIndex(targetIndex, { align: "start" });
-        console.log("ReadingArea 段落恢复 第1次:", targetIndex);
-
         const corrections = [300, 700, 1500];
         corrections.forEach((delay) => {
           setTimeout(() => {
             virtualizer.scrollToIndex(targetIndex, { align: "start" });
-            console.log(`ReadingArea 段落修正(${delay}ms):`, targetIndex);
           }, delay);
         });
-      } else if (initialScrollPercent > 0) {
-        // 回退到百分比
-        const el = containerRef.current;
-        if (el) {
-          const maxScroll = el.scrollHeight - el.clientHeight;
-          if (maxScroll > 0) {
-            el.scrollTop = (initialScrollPercent / 100) * maxScroll;
-          }
-        }
       }
     };
 
@@ -1065,7 +1085,12 @@ export const ReadingArea = forwardRef(function ReadingArea({
 
   if (processedContent && processedContent.length > 0) {
     const isMobile = window.innerWidth <= MOBILE_BREAKPOINT;
-    const currentHorizPadding = isMobile ? MOBILE_READING_PADDING_HORIZONTAL : READING_PADDING_HORIZONTAL;
+    const padLeft = isMobile
+      ? `max(${MOBILE_READING_PADDING_HORIZONTAL}px, env(safe-area-inset-left, 0px))`
+      : `${READING_PADDING_HORIZONTAL}px`;
+    const padRight = isMobile
+      ? `max(${MOBILE_READING_PADDING_HORIZONTAL}px, env(safe-area-inset-right, 0px))`
+      : `${READING_PADDING_HORIZONTAL}px`;
 
     return (
       <div 
@@ -1157,8 +1182,8 @@ export const ReadingArea = forwardRef(function ReadingArea({
                     left: 0,
                     width: "100%",
                     transform: `translateY(${virtualRow.start}px)`,
-                    paddingLeft: `${currentHorizPadding}px`,
-                    paddingRight: `${currentHorizPadding}px`,
+                    paddingLeft: padLeft,
+                    paddingRight: padRight,
                   }}
                 >
                   <MemoizedParagraph
@@ -1248,6 +1273,16 @@ export const ReadingArea = forwardRef(function ReadingArea({
           @media (max-width: 768px) {
             .reading-wrapper {
               height: 100dvh !important;
+            }
+            /* 隐藏纵向滚动条占位，避免右侧多出一条空隙导致视觉不居中 */
+            .reading-container {
+              scrollbar-width: none;
+              -ms-overflow-style: none;
+            }
+            .reading-container::-webkit-scrollbar {
+              width: 0;
+              height: 0;
+              background: transparent;
             }
             /* 移动端 justify 易导致跨行拖选时选区被拉满；左对齐可减轻 WebKit 行为 */
             .reader-content {

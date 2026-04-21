@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { kv } from '@/lib/kv';
 
+export const maxDuration = 60;
+
 export async function POST(request: Request) {
   try {
     const { syncCode } = await request.json();

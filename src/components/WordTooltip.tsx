@@ -8,9 +8,11 @@ import { speakWord } from "@/lib/speak";
 
 interface WordTooltipProps {
   word: string;
+  /** 与正文 data-lemma 一致；不传则用 lemmatize(word) */
+  lemma?: string;
   position: { x: number; y: number };
   onAnnotateAll: (word: string) => void;
-  onRemoveAnnotation: (word: string) => void;
+  onRemoveAnnotation: () => void;
   onClose: () => void;
   isAnnotated: boolean;
   annotation?: {
@@ -75,6 +77,7 @@ function shortenTranslation(text: string): string {
 
 export function WordTooltip({
   word,
+  lemma,
   position,
   onAnnotateAll,
   onRemoveAnnotation,
@@ -89,7 +92,8 @@ export function WordTooltip({
 }: WordTooltipProps) {
 
   const [visible, setVisible] = useState(false);
-  const root = lemmatize(word);
+  const root =
+    lemma !== undefined && lemma.trim().length > 0 ? lemma.trim() : lemmatize(word);
   
   // 智能查词：先查内置词典，再查外部词典，最后精简
 const internalZhEntry = annotation || getWordMeaning(root);
@@ -214,7 +218,7 @@ const displayEntry = displayMeaning
           {isAnnotated ? (
             <button
               className="tooltip-btn tooltip-btn-remove"
-              onClick={() => onRemoveAnnotation(word)}
+              onClick={() => onRemoveAnnotation()}
             >
               取消标注
             </button>

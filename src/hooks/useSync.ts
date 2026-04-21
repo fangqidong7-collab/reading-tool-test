@@ -30,6 +30,18 @@ export interface SyncData {
   books?: Book[];
 }
 
+/** 服务端合并后的负载（push 返回或 pull 返回的 data） */
+export type SyncMergedPayload = {
+  vocabulary?: Record<
+    string,
+    { root: string; meaning: string; pos: string; correctCount?: number }
+  >;
+  bookProgress?: Record<string, unknown>;
+  books?: Book[];
+  updatedAt?: number;
+  createdAt?: number;
+};
+
 export function useSync() {
   const [syncCode, setSyncCode] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -165,41 +177,71 @@ export function useSync() {
     vocabulary: Record<string, unknown>;
     bookProgress: Record<string, unknown>;
     books?: Book[];
-  }) => {
+  }): Promise<SyncMergedPayload | null> => {
     if (!syncCode) return null;
     setSyncing(true);
     setSyncError(null);
+
+    const SYNC_MS = 180000;
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), SYNC_MS);
+
     try {
       const pushRes = await fetch('/api/sync/push', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ syncCode, data: localData }),
+        signal: controller.signal,
       });
       if (!pushRes.ok) {
         const p = await readErrJson(pushRes);
         throw new Error(apiFailMessage('同步上传失败', pushRes, p));
       }
 
-      const pullRes = await fetch('/api/sync/pull', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ syncCode }),
-      });
-      if (!pullRes.ok) {
-        const p = await readErrJson(pullRes);
-        throw new Error(apiFailMessage('同步下载失败', pullRes, p));
+      const pushJson: unknown = await pushRes.json();
+      let merged: unknown = null;
+      if (typeof pushJson === 'object' && pushJson !== null && 'data' in pushJson) {
+        merged = (pushJson as { data: unknown }).data;
       }
 
-      const result = await pullRes.json();
+      // 兼容旧部署：push 未返回 data 时再 pull 一次（仍比失败好）
+      if (merged === undefined || merged === null) {
+        const pullRes = await fetch('/api/sync/pull', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ syncCode }),
+          signal: controller.signal,
+        });
+        if (!pullRes.ok) {
+          const p = await readErrJson(pullRes);
+          throw new Error(apiFailMessage('同步下载失败', pullRes, p));
+        }
+        const pullJson: unknown = await pullRes.json();
+        if (typeof pullJson === 'object' && pullJson !== null && 'data' in pullJson) {
+          merged = (pullJson as { data: unknown }).data;
+        }
+      }
+
+      if (merged === undefined || merged === null) {
+        setSyncError('同步完成但未收到合并数据');
+        return null;
+      }
+
       const now = Date.now();
       setLastSyncAt(now);
       localStorage.setItem(LAST_SYNC_KEY, String(now));
-      return result.data;
+      return merged as SyncMergedPayload;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '同步失败';
+      const msg =
+        err instanceof Error && err.name === 'AbortError'
+          ? `同步超时（超过 ${SYNC_MS / 1000} 秒），请检查网络或减少书籍体积后重试`
+          : err instanceof Error
+            ? err.message
+            : '同步失败';
       setSyncError(msg);
       return null;
     } finally {
+      window.clearTimeout(timeoutId);
       setSyncing(false);
     }
   }, [syncCode]);
