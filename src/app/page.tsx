@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useEffect, useRef } from "react";
+import React, { useState, useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { type ReadingAreaRef } from "@/components/ReadingArea";
 import { BookshelfHomeView } from "@/app/_home/BookshelfHomeView";
 import { ReadingHomeView } from "@/app/_home/ReadingHomeView";
@@ -64,7 +64,6 @@ export default function Home() {
     setFontSize,
     setLineHeight,
     setBackgroundTheme,
-    getSidebarState,
     setSidebarState,
     resetToDefault,
     dictMode,
@@ -123,6 +122,10 @@ export default function Home() {
   const currentBookAnnotationsRef = useRef<
     Record<string, { root: string; meaning: string; pos: string; count: number }>
   >({});
+  /** 最近一次由页面写入书架的 annotations 引用，用于跳过「写回书本 → effect 又 setAnnotations」的回声，减轻取消标注时闪烁 */
+  const lastPersistedAnnotationsRef = useRef<
+    Record<string, { root: string; meaning: string; pos: string; count: number }> | null
+  >(null);
 
   // Dictionary loading status
   const [dictLoadStatus, setDictLoadStatus] = useState<DictLoadStatus>('idle');
@@ -429,6 +432,7 @@ export default function Home() {
       currentBookIdRef.current = null;
       currentBookContentRef.current = "";
       currentBookAnnotationsRef.current = {};
+      lastPersistedAnnotationsRef.current = null;
       lastProcessedBookIdRef.current = null;
       setProcessedContent(null);
       setLoading(false);
@@ -442,10 +446,16 @@ export default function Home() {
       setText(currentBook.content);
     }
 
-    // Annotations: compare by reference (immutable updates from useBookshelf)
+    // Annotations：从书架载入 / 云端合并后的书本对象；跳过刚由 useLayoutEffect 持久化产生的同一引用回声，避免取消标注闪烁
     if (currentBookAnnotationsRef.current !== currentBook.annotations) {
-      currentBookAnnotationsRef.current = currentBook.annotations;
-      setAnnotations(currentBook.annotations);
+      const incoming = currentBook.annotations;
+      const isEcho =
+        lastPersistedAnnotationsRef.current !== null &&
+        incoming === lastPersistedAnnotationsRef.current;
+      currentBookAnnotationsRef.current = incoming;
+      if (!isEcho) {
+        setAnnotations(incoming);
+      }
     }
 
     // Only process segments on first open (bookId change)
@@ -473,15 +483,14 @@ export default function Home() {
     }
   }, [currentBook?.id, currentBook?.content, currentBook?.annotations]);
 
-  // Effect-sidebar: restore sidebar open state when book changes
+  // 打开/切换书籍时不自动弹出词汇表侧栏（仍可通过按钮手动打开）
   useEffect(() => {
     if (!currentBook) {
       setSidebarOpen(false);
       return;
     }
-    const shouldOpen = getSidebarState(currentBook.id);
-    setSidebarOpen(shouldOpen);
-  }, [currentBook?.id, getSidebarState]);  // Handle sidebar toggle with localStorage memory
+    setSidebarOpen(false);
+  }, [currentBook?.id]);
   const handleSidebarToggle = useCallback(() => {
     const newState = !sidebarOpen;
     setSidebarOpen(newState);
@@ -575,11 +584,12 @@ export default function Home() {
     }
   }, [currentBook, currentScrollPercent, addBookmark, removeBookmark]);
 
-  // Save annotations when they change
-  useEffect(() => {
+  // 先于浏览器绘制把标注写回书架，缩短「页面 state 已删、书本对象仍是旧引用」的窗口；并记录引用供上方 effect 识别回声
+  useLayoutEffect(() => {
     const bookId = currentBookIdRef.current;
     if (bookId) {
       updateBookAnnotations(bookId, annotations);
+      lastPersistedAnnotationsRef.current = annotations;
     }
   }, [annotations, updateBookAnnotations]);
 
