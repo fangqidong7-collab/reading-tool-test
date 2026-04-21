@@ -227,13 +227,11 @@ function mergeBooks(remoteBooks: Book[], localBooks: Book[]): Book[] {
 
     const localBook = localBooks.find(b => b.title === remoteBook.title && !usedLocal.has(b.id));
     if (localBook) {
-      // 按 title 匹配成功，合并后双份存储
+      // 按 title 匹配成功：只存一本合并结果，避免 Redis 与客户端书架出现同名双份
+      // bookProgress 仍可按两端 id 双键存储，阅读进度不丢
       const merged = mergeTwoBooks(remoteBook, localBook);
-      // 用本地的 bookId 存一份
       result.push({ ...merged, id: localBook.id });
       usedLocal.add(localBook.id);
-      // 用远端的 bookId 也存一份
-      result.push({ ...merged, id: remoteBook.id });
       usedRemote.add(remoteBook.id);
     } else {
       // 远端有但本地没有，直接添加

@@ -64,6 +64,88 @@ export interface Book {
   bookmarks?: BookmarkEntry[]; // User bookmarks
 }
 
+/** 同步后因「同书名、不同 bookId」会在云端与本地各保留一条；用于折叠重复的键 */
+function normalizeBookTitleForDedupe(title: string): string {
+  return title.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function mergeTwoBookRecords(a: Book, b: Book): Book {
+  const merged: Book = { ...a };
+  const ac = a.content || "";
+  const bc = b.content || "";
+  merged.content = bc.length >= ac.length ? b.content : a.content;
+  merged.lastScrollPosition = Math.max(a.lastScrollPosition ?? 0, b.lastScrollPosition ?? 0);
+  merged.lastParagraphIndex = Math.max(a.lastParagraphIndex ?? 0, b.lastParagraphIndex ?? 0);
+  merged.lastReadAt = Math.max(a.lastReadAt || 0, b.lastReadAt || 0);
+  merged.annotations = { ...(a.annotations || {}), ...(b.annotations || {}) };
+
+  const sA = a.sentenceAnnotations || [];
+  const sB = b.sentenceAnnotations || [];
+  if (sB.length > 0) {
+    const ids = new Set(sA.map((s) => s.id));
+    merged.sentenceAnnotations = [...sA, ...sB.filter((s) => !ids.has(s.id))];
+  } else {
+    merged.sentenceAnnotations = sA.length ? [...sA] : undefined;
+  }
+
+  const bmA = a.bookmarks || [];
+  const bmB = b.bookmarks || [];
+  if (bmB.length > 0) {
+    const ids = new Set(bmA.map((x) => x.id));
+    merged.bookmarks = [...bmA, ...bmB.filter((x) => !ids.has(x.id))];
+  } else {
+    merged.bookmarks = bmA.length ? [...bmA] : undefined;
+  }
+
+  if (b.title && !a.title) merged.title = b.title;
+  if (b.tableOfContents && !a.tableOfContents) merged.tableOfContents = b.tableOfContents;
+
+  return merged;
+}
+
+/**
+ * 云端 merge 曾为同书名不同 id 存两份正文；拉取后按书名合并为一本。
+ * preferExistingIds：优先保留当前书架已有 id，减少点击记录错位。
+ */
+function dedupeBooksByNormalizedTitle(books: Book[], preferExistingIds: Set<string>): Book[] {
+  const samples = books.filter((b) => b.isSample);
+  const nonSample = books.filter((b) => !b.isSample);
+
+  const groups = new Map<string, Book[]>();
+  for (const book of nonSample) {
+    const n = normalizeBookTitleForDedupe(book.title || "");
+    const groupKey = n.length > 0 ? n : `__empty_title__${book.id}`;
+    if (!groups.has(groupKey)) groups.set(groupKey, []);
+    groups.get(groupKey)!.push(book);
+  }
+
+  const folded: Book[] = [];
+  for (const group of groups.values()) {
+    if (group.length === 1) {
+      folded.push(group[0]);
+      continue;
+    }
+    let merged = group[0];
+    for (let i = 1; i < group.length; i++) {
+      merged = mergeTwoBookRecords(merged, group[i]);
+    }
+    const preferred =
+      group.find((bk) => preferExistingIds.has(bk.id)) ??
+      group.reduce((best, cur) =>
+        (cur.lastReadAt || 0) > (best.lastReadAt || 0) ? cur : best
+      );
+    folded.push({ ...merged, id: preferred.id });
+  }
+
+  const combined = [...folded, ...samples];
+  combined.sort((a, b) => {
+    if (a.isSample && !b.isSample) return 1;
+    if (!a.isSample && b.isSample) return -1;
+    return b.lastReadAt - a.lastReadAt;
+  });
+  return combined;
+}
+
 const STORAGE_KEY = "english-reader-books";
 const GLOBAL_VOCAB_KEY = "english-reader-global-vocabulary";
 const SAMPLE_BOOK: Book = {
@@ -124,10 +206,14 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
               bookmarks: b.bookmarks || [],
             }));
             const hasSample = booksWithContent.some((b) => b.id === SAMPLE_BOOK.id);
+            const withoutDupes = dedupeBooksByNormalizedTitle(
+              booksWithContent,
+              new Set()
+            );
             if (hasSample) {
-              setBooks(booksWithContent);
+              setBooks(withoutDupes);
             } else {
-              setBooks([SAMPLE_BOOK, ...booksWithContent]);
+              setBooks([SAMPLE_BOOK, ...withoutDupes]);
             }
           } catch {
             setBooks([SAMPLE_BOOK]);
@@ -595,17 +681,13 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
           }
         }
 
-        // 转换回数组
-        // eslint-disable-next-line prefer-const
-        let result = Array.from(booksMap.values());
-        // 按 lastReadAt 排序，非示例书在前，示例书在最后
-        result.sort((a, b) => {
-          if (a.isSample && !b.isSample) return 1;
-          if (!a.isSample && b.isSample) return -1;
-          return b.lastReadAt - a.lastReadAt;
-        });
+        // 转换回数组；再按书名折叠同一本书的多份 bookId（云同步历史上会为同书存两条）
+        const mergedList = dedupeBooksByNormalizedTitle(
+          Array.from(booksMap.values()),
+          new Set(prev.map((b) => b.id))
+        );
 
-        return result;
+        return mergedList;
       });
     },
     []
