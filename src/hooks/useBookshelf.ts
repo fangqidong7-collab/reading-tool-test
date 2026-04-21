@@ -50,6 +50,8 @@ export interface SentenceAnnotation {
 export interface Book {
   id: string;
   title: string;
+  /** 上次成功同步后本地正文的 SHA-256；一致时可省略正文上传 */
+  syncContentHash?: string;
   content: string;
   annotations: Record<string, { root: string; meaning: string; pos: string; count: number }>;
   sentenceAnnotations?: SentenceAnnotation[];
@@ -753,6 +755,16 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
     });
   }, []);
 
+  /** 同步成功后写入正文哈希，便于下次省略上传未改书籍 */
+  const updateBooksSyncHashes = useCallback((hashes: Record<string, string>) => {
+    setBooks((prev) =>
+      prev.map((b) => {
+        const h = hashes[b.id];
+        return h !== undefined ? { ...b, syncContentHash: h } : b;
+      })
+    );
+  }, []);
+
   return {
     books,
     currentBook,
@@ -782,6 +794,7 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
     removeSentenceAnnotation,
     mergeBookProgress,
     mergeBooksFromRemote,
+    updateBooksSyncHashes,
   };
 
 }

@@ -6,12 +6,6 @@ import { useEffect, useRef, useCallback } from "react";
 // 仅前台 + 每小时 + 需 syncCode
 const AUTO_SYNC_INTERVAL_MS = 60 * 60 * 1000;
 
-interface SyncData {
-  vocabulary: Record<string, unknown>;
-  bookProgress: Record<string, unknown>;
-  books?: unknown[];
-}
-
 interface RemoteSyncData {
   vocabulary?: Record<string, unknown>;
   bookProgress?: Record<string, unknown>;
@@ -23,9 +17,7 @@ interface UsePeriodicSyncOptions {
   syncCode: string | null;
   // 是否正在同步中
   syncing: boolean;
-  // 构建同步数据
-  buildSyncData: () => SyncData;
-  // 执行双向同步（与手动同步一致）
+  // 执行双向同步（与手动同步一致；负载在 performSync 内部构建）
   performSync: () => Promise<RemoteSyncData | null | undefined>;
   // 是否启用自动同步（默认 true）
   enabled?: boolean;
@@ -50,14 +42,13 @@ interface UsePeriodicSyncReturn {
 export function usePeriodicSync({
   syncCode,
   syncing,
-  buildSyncData,
   performSync,
   enabled = true,
 }: UsePeriodicSyncOptions): UsePeriodicSyncReturn {
   // 使用 ref 保存定时器 ID，便于清理
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // 使用 ref 保存同步逻辑的最新值
-  const logicRef = useRef({ syncCode, syncing, buildSyncData, performSync });
+  const logicRef = useRef({ syncCode, syncing, performSync });
   // 使用 ref 标记是否需要立即同步（页面从隐藏变为可见时检查）
   const needImmediateSyncRef = useRef(false);
   // 使用 ref 标记页面是否可见
@@ -65,8 +56,8 @@ export function usePeriodicSync({
 
   // 更新 logic ref
   useEffect(() => {
-    logicRef.current = { syncCode, syncing, buildSyncData, performSync };
-  }, [syncCode, syncing, buildSyncData, performSync]);
+    logicRef.current = { syncCode, syncing, performSync };
+  }, [syncCode, syncing, performSync]);
 
   // 执行一次同步的函数（通过 ref 访问最新值）
   const doSyncRef = useRef<(() => Promise<void>) | null>(null);

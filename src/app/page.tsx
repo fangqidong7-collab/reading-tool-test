@@ -4,16 +4,27 @@ import React, { useState, useCallback, useEffect, useLayoutEffect, useRef } from
 import { type ReadingAreaRef } from "@/components/ReadingArea";
 import { BookshelfHomeView } from "@/app/_home/BookshelfHomeView";
 import { ReadingHomeView } from "@/app/_home/ReadingHomeView";
-import { useSync } from "@/hooks/useSync";
 import { usePeriodicSync } from "@/hooks/usePeriodicSync";
 import JSLibLoader from "@/components/JSLibLoader";
-import { useBookshelf, ProcessedContent, SentenceAnnotation } from "@/hooks/useBookshelf";
+import { useBookshelf, ProcessedContent, SentenceAnnotation, type Book } from "@/hooks/useBookshelf";
+import { useSync, type SyncData } from "@/hooks/useSync";
+import { sha256Utf8 } from "@/lib/syncSha256";
 import { useReadingSettings } from "@/hooks/useReadingSettings";
 import { lemmatize, getWordMeaning, getWordMeaningEn, findWordFamily, loadBuiltinDictionary, loadBuiltinDictionaryEn } from "@/lib/dictionary";
 import { translateWord, translateWordEn, translateSentence } from "@/lib/translate";
 import { forceReloadDictionary, lookupExternalDict, lookupExternalDictEn, loadExternalDictionaryEn, type DictLoadStatus } from "@/lib/dictLoader";
 import { cleanTranslation, shortenTranslation } from "@/lib/annotationText";
 import { processTextToSegmentsAsync } from "@/lib/processBookContent";
+
+async function hashesFromMergedBooks(bookList: Book[]): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  await Promise.all(
+    bookList.map(async (b) => {
+      out[b.id] = await sha256Utf8(typeof b.content === "string" ? b.content : "");
+    })
+  );
+  return out;
+}
 
 export default function Home() {
   const {
@@ -37,6 +48,7 @@ export default function Home() {
     clearGlobalVocabulary,
     mergeGlobalVocabulary,
     mergeBooksFromRemote,
+    updateBooksSyncHashes,
     incrementCorrectCount,
     clearMasteredWords,
     addSentenceAnnotation,
@@ -160,44 +172,74 @@ export default function Home() {
     setSyncPanelOpen(true);
   }, []);
 
-  // Build sync data from current state
-  const buildSyncData = useCallback(() => {
+  // Build sync data from current state（正文未改时省略 content，gzip 压缩由 useSync 侧处理）
+  const buildSyncData = useCallback(async (): Promise<{
+    data: SyncData;
+    contentHashes: Record<string, string>;
+  }> => {
+    const contentHashes: Record<string, string> = {};
+    const booksPayload = await Promise.all(
+      books.map(async (book) => {
+        const { processedContent, syncContentHash, ...rest } = book;
+        void processedContent;
+        const contentStr = typeof rest.content === "string" ? rest.content : "";
+        const hash = await sha256Utf8(contentStr);
+        contentHashes[rest.id] = hash;
+
+        const prevSynced = syncContentHash;
+        if (prevSynced && hash === prevSynced && contentStr.length > 0) {
+          const { content, ...withoutContent } = rest;
+          void content;
+          return {
+            ...withoutContent,
+            _contentOmitted: true as const,
+            _contentHash: hash,
+          };
+        }
+
+        return { ...rest, _contentHash: hash };
+      })
+    );
+
     return {
-      vocabulary: globalVocabulary,
-      bookProgress: books.reduce((acc: Record<string, {
-        title: string;
-        lastScrollPosition: number;
-        lastParagraphIndex: number;
-        lastReadAt: number;
-        annotations: Record<string, unknown>;
-        sentenceAnnotations?: unknown[];
-        bookmarks?: unknown[];
-      }>, book) => {
-        acc[book.id] = {
-          title: book.title,
-          lastScrollPosition: book.lastScrollPosition || 0,
-          lastParagraphIndex: book.lastParagraphIndex || 0,
-          lastReadAt: book.lastReadAt,
-          annotations: book.annotations,
-          sentenceAnnotations: book.sentenceAnnotations || [],
-          bookmarks: book.bookmarks || [],
-        };
-        return acc;
-      }, {}),
-      // 同步完整书籍内容（不含 processedContent）
-      books: books.map(({ processedContent, ...rest }) => rest),
+      data: {
+        vocabulary: globalVocabulary,
+        bookProgress: books.reduce((acc: Record<string, {
+          title: string;
+          lastScrollPosition: number;
+          lastParagraphIndex: number;
+          lastReadAt: number;
+          annotations: Record<string, unknown>;
+          sentenceAnnotations?: unknown[];
+          bookmarks?: unknown[];
+        }>, book) => {
+          acc[book.id] = {
+            title: book.title,
+            lastScrollPosition: book.lastScrollPosition || 0,
+            lastParagraphIndex: book.lastParagraphIndex || 0,
+            lastReadAt: book.lastReadAt,
+            annotations: book.annotations,
+            sentenceAnnotations: book.sentenceAnnotations || [],
+            bookmarks: book.bookmarks || [],
+          };
+          return acc;
+        }, {}),
+        books: booksPayload as SyncData["books"],
+      },
+      contentHashes,
     };
   }, [globalVocabulary, books]);
 
   // Handle create sync - push current local data to cloud
   const handleCreateSync = useCallback(async () => {
-    const data = buildSyncData();
+    const { data, contentHashes } = await buildSyncData();
     const code = await createSync(data);
     if (code) {
       console.log('已生成同步码:', code);
       setSyncJustCreated(true);
+      updateBooksSyncHashes(contentHashes);
     }
-  }, [buildSyncData, createSync]);
+  }, [buildSyncData, createSync, updateBooksSyncHashes]);
 
   // Handle bind existing sync code - pull data from cloud and merge
   const handleBindSync = useCallback(async (code: string) => {
@@ -250,14 +292,26 @@ export default function Home() {
       }
       // 合并远端书籍列表（upsert + 智能合并）
       if (remoteData.books && mergeBooksFromRemote) {
-        mergeBooksFromRemote(remoteData.books as import("@/hooks/useBookshelf").Book[]);
+        mergeBooksFromRemote(remoteData.books as Book[]);
+        const hashes = await hashesFromMergedBooks(remoteData.books as Book[]);
+        updateBooksSyncHashes(hashes);
       }
     }
-  }, [bindSyncCode, globalVocabulary, addToGlobalVocabulary, books, updateScrollPosition, mergeBookProgress, mergeBooksFromRemote]);
+  }, [
+    bindSyncCode,
+    globalVocabulary,
+    addToGlobalVocabulary,
+    books,
+    updateScrollPosition,
+    mergeBookProgress,
+    mergeBooksFromRemote,
+    updateBooksSyncHashes,
+  ]);
 
   // Handle sync - bidirectional sync (push local then pull merged result)
   const handleSync = useCallback(async () => {
-    const remoteData = await syncBoth(buildSyncData());
+    const { data: localPayload } = await buildSyncData();
+    const remoteData = await syncBoth(localPayload);
     if (!remoteData) return;
 
     // 用服务端合并后的数据更新本地
@@ -295,14 +349,25 @@ export default function Home() {
 
     // 用服务端合并后的书籍列表更新本地
     if (remoteData.books && mergeBooksFromRemote) {
-      mergeBooksFromRemote(remoteData.books as import("@/hooks/useBookshelf").Book[]);
+      mergeBooksFromRemote(remoteData.books as Book[]);
+      const hashes = await hashesFromMergedBooks(remoteData.books as Book[]);
+      updateBooksSyncHashes(hashes);
     }
-  }, [syncBoth, buildSyncData, books, mergeGlobalVocabulary, mergeBookProgress, mergeBooksFromRemote]);
+  }, [
+    syncBoth,
+    buildSyncData,
+    books,
+    mergeGlobalVocabulary,
+    mergeBookProgress,
+    mergeBooksFromRemote,
+    updateBooksSyncHashes,
+  ]);
 
   // 自动同步专用：仅返回远程数据，不做本地合并（由 hook 调用方决定何时合并）
   // 这里复用 handleSync 的逻辑，但通过回调通知外部有新的远程数据
   const performSyncForPeriodic = useCallback(async () => {
-    const remoteData = await syncBoth(buildSyncData());
+    const { data: localPayload } = await buildSyncData();
+    const remoteData = await syncBoth(localPayload);
     if (!remoteData) return null;
 
     // 复用 handleSync 的合并逻辑
@@ -336,17 +401,26 @@ export default function Home() {
     }
 
     if (remoteData.books && mergeBooksFromRemote) {
-      mergeBooksFromRemote(remoteData.books as import("@/hooks/useBookshelf").Book[]);
+      mergeBooksFromRemote(remoteData.books as Book[]);
+      const hashes = await hashesFromMergedBooks(remoteData.books as Book[]);
+      updateBooksSyncHashes(hashes);
     }
 
     return remoteData;
-  }, [syncBoth, buildSyncData, books, mergeGlobalVocabulary, mergeBookProgress, mergeBooksFromRemote]);
+  }, [
+    syncBoth,
+    buildSyncData,
+    books,
+    mergeGlobalVocabulary,
+    mergeBookProgress,
+    mergeBooksFromRemote,
+    updateBooksSyncHashes,
+  ]);
 
   // 启用自动定时同步（仅前台 + 每小时 + 需 syncCode）
   usePeriodicSync({
     syncCode,
     syncing,
-    buildSyncData,
     performSync: performSyncForPeriodic,
   });
 
@@ -691,14 +765,12 @@ export default function Home() {
           ...prev,
           [root]: newAnnotation,
         }));
-        updateBookAnnotations(currentBook!.id, {
-          ...annotations,
-          [root]: newAnnotation,
-        });
+        // 勿在此处再调用 updateBookAnnotations：会与 useLayoutEffect 持久化打架（两份额外 annotations 引用），
+        // 触发 book 同步 effect 反复 setAnnotations → Maximum update depth exceeded
         addToGlobalVocabulary(root, shortMeaning, "");
       }
     },
-    [annotations, currentBook, dictMode, updateBookAnnotations, addToGlobalVocabulary]
+    [annotations, currentBook, dictMode, addToGlobalVocabulary]
   );
 
   // Annotate all occurrences of a word

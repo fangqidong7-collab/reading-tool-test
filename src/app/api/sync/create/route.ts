@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { kv } from '@/lib/kv';
+import { parseJsonRequestBody } from '@/lib/syncRequest.server';
 
 export const maxDuration = 60;
 
@@ -15,7 +16,8 @@ function generateSyncCode(): string {
 
 export async function POST(request: Request) {
   try {
-    const { data } = await request.json();
+    const parsed = (await parseJsonRequestBody(request)) as { data?: unknown };
+    const { data } = parsed;
 
     // data 包含: { vocabulary, bookProgress, settings, updatedAt }
     if (!data) {

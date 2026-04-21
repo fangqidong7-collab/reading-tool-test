@@ -2,17 +2,18 @@
 
 import { useState, useCallback, useEffect } from "react";
 import type { Book } from "@/hooks/useBookshelf";
+import { parseSyncJsonResponse, postSyncJson } from "@/lib/syncFetch";
 
 const SYNC_CODE_KEY = "english-reader-sync-code";
 const LAST_SYNC_KEY = "english-reader-last-sync";
 
 async function readErrJson(res: Response): Promise<{ error?: string; code?: string }> {
   try {
-    const j: unknown = await res.json();
-    if (typeof j !== 'object' || j === null) return {};
+    const j: unknown = await parseSyncJsonResponse(res);
+    if (typeof j !== "object" || j === null) return {};
     const rec = j as Record<string, unknown>;
-    const error = typeof rec.error === 'string' ? rec.error : undefined;
-    const code = typeof rec.code === 'string' ? rec.code : undefined;
+    const error = typeof rec.error === "string" ? rec.error : undefined;
+    const code = typeof rec.code === "string" ? rec.code : undefined;
     return { error, code };
   } catch {
     return {};
@@ -61,17 +62,16 @@ export function useSync() {
     setSyncing(true);
     setSyncError(null);
     try {
-      const res = await fetch('/api/sync/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data }),
-      });
+      const res = await postSyncJson("/api/sync/create", { data });
       if (!res.ok) {
         const p = await readErrJson(res);
         throw new Error(apiFailMessage('创建同步失败', res, p));
       }
-      const result = await res.json();
+      const result = (await parseSyncJsonResponse(res)) as { syncCode?: string };
       const code = result.syncCode;
+      if (typeof code !== "string" || code.length === 0) {
+        throw new Error("创建同步失败：未返回同步码");
+      }
       setSyncCode(code);
       localStorage.setItem(SYNC_CODE_KEY, code);
       const now = Date.now();
@@ -91,17 +91,13 @@ export function useSync() {
     setSyncing(true);
     setSyncError(null);
     try {
-      const res = await fetch('/api/sync/pull', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ syncCode: code.toUpperCase() }),
-      });
+      const res = await postSyncJson("/api/sync/pull", { syncCode: code.toUpperCase() });
       if (!res.ok) {
         if (res.status === 404) throw new Error('同步码无效或已过期');
         const p = await readErrJson(res);
         throw new Error(apiFailMessage('拉取数据失败', res, p));
       }
-      const result = await res.json();
+      const result = (await parseSyncJsonResponse(res)) as { data: SyncMergedPayload };
       const upperCode = code.toUpperCase();
       setSyncCode(upperCode);
       localStorage.setItem(SYNC_CODE_KEY, upperCode);
@@ -123,11 +119,7 @@ export function useSync() {
     setSyncing(true);
     setSyncError(null);
     try {
-      const res = await fetch('/api/sync/push', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ syncCode, data }),
-      });
+      const res = await postSyncJson("/api/sync/push", { syncCode, data });
       if (!res.ok) {
         const p = await readErrJson(res);
         throw new Error(apiFailMessage('推送失败', res, p));
@@ -150,16 +142,12 @@ export function useSync() {
     setSyncing(true);
     setSyncError(null);
     try {
-      const res = await fetch('/api/sync/pull', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ syncCode }),
-      });
+      const res = await postSyncJson("/api/sync/pull", { syncCode });
       if (!res.ok) {
         const p = await readErrJson(res);
         throw new Error(apiFailMessage('拉取失败', res, p));
       }
-      const result = await res.json();
+      const result = (await parseSyncJsonResponse(res)) as { data: unknown };
       const now = Date.now();
       setLastSyncAt(now);
       localStorage.setItem(LAST_SYNC_KEY, String(now));
@@ -187,18 +175,17 @@ export function useSync() {
     const timeoutId = window.setTimeout(() => controller.abort(), SYNC_MS);
 
     try {
-      const pushRes = await fetch('/api/sync/push', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ syncCode, data: localData }),
-        signal: controller.signal,
-      });
+      const pushRes = await postSyncJson(
+        "/api/sync/push",
+        { syncCode, data: localData },
+        { signal: controller.signal }
+      );
       if (!pushRes.ok) {
         const p = await readErrJson(pushRes);
         throw new Error(apiFailMessage('同步上传失败', pushRes, p));
       }
 
-      const pushJson: unknown = await pushRes.json();
+      const pushJson: unknown = await parseSyncJsonResponse(pushRes);
       let merged: unknown = null;
       if (typeof pushJson === 'object' && pushJson !== null && 'data' in pushJson) {
         merged = (pushJson as { data: unknown }).data;
@@ -206,17 +193,16 @@ export function useSync() {
 
       // 兼容旧部署：push 未返回 data 时再 pull 一次（仍比失败好）
       if (merged === undefined || merged === null) {
-        const pullRes = await fetch('/api/sync/pull', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ syncCode }),
-          signal: controller.signal,
-        });
+        const pullRes = await postSyncJson(
+          "/api/sync/pull",
+          { syncCode },
+          { signal: controller.signal }
+        );
         if (!pullRes.ok) {
           const p = await readErrJson(pullRes);
           throw new Error(apiFailMessage('同步下载失败', pullRes, p));
         }
-        const pullJson: unknown = await pullRes.json();
+        const pullJson: unknown = await parseSyncJsonResponse(pullRes);
         if (typeof pullJson === 'object' && pullJson !== null && 'data' in pullJson) {
           merged = (pullJson as { data: unknown }).data;
         }

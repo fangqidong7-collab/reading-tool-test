@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { kv } from '@/lib/kv';
+import { parseJsonRequestBody, jsonResponseMaybeGzip } from '@/lib/syncRequest.server';
 
 /** Vercel：允许较长请求体（多本书正文），避免网关过早切断 */
 export const maxDuration = 60;
@@ -22,10 +23,12 @@ interface BookProgress {
   bookmarks?: Array<{ id: string; [key: string]: unknown }>;
 }
 
-// 书籍完整内容（不含 processedContent）
+// 书籍完整内容（客户端含 content；合并时可带 _contentOmitted 省略正文上传）
 interface Book {
   id: string;
   title: string;
+  /** 正文（客户端）；可在未改时省略，仅传 _contentHash */
+  content?: string;
   author?: string;
   language?: string;
   paragraphs?: string[];
@@ -39,6 +42,8 @@ interface Book {
   annotations?: Record<string, VocabEntry>;
   sentenceAnnotations?: Array<{ id: string; [key: string]: unknown }>;
   bookmarks?: Array<{ id: string; [key: string]: unknown }>;
+  _contentOmitted?: boolean;
+  _contentHash?: string;
 }
 
 interface SyncData {
@@ -47,9 +52,20 @@ interface SyncData {
   books?: Book[];
 }
 
+function normalizeBookForKv(book: Book): Book {
+  const copy = { ...(book as unknown as Record<string, unknown>) };
+  delete copy._contentOmitted;
+  delete copy._contentHash;
+  return copy as unknown as Book;
+}
+
 export async function POST(request: Request) {
   try {
-    const { syncCode, data } = await request.json();
+    const parsed = (await parseJsonRequestBody(request)) as {
+      syncCode?: string;
+      data?: SyncData;
+    };
+    const { syncCode, data } = parsed;
 
     if (!syncCode || !data) {
       return NextResponse.json({ error: 'syncCode and data required' }, { status: 400 });
@@ -73,8 +89,8 @@ export async function POST(request: Request) {
 
     await kv.set(key, JSON.stringify(payload), { ex: 90 * 24 * 60 * 60 });
 
-    // 与 GET/PULL 一致的结构，客户端可省略第二次 pull，省一半往返与下行流量
-    return NextResponse.json({ success: true, updatedAt, data: payload });
+    // 与 GET/PULL 一致的结构；gzip 减小合并结果下行体积
+    return jsonResponseMaybeGzip({ success: true, updatedAt, data: payload });
   } catch (error) {
     if (process.env.NODE_ENV !== 'production') {
       console.error('[sync/push]', error);
@@ -216,7 +232,7 @@ function mergeBooks(remoteBooks: Book[], localBooks: Book[]): Book[] {
       titleMatched.push({ localBook, remoteBook, merged });
     } else {
       // 本地有但远端没有，保留
-      result.push(localBook);
+      result.push(normalizeBookForKv(localBook));
       usedLocal.add(localBook.id);
     }
   }
@@ -230,12 +246,12 @@ function mergeBooks(remoteBooks: Book[], localBooks: Book[]): Book[] {
       // 按 title 匹配成功：只存一本合并结果，避免 Redis 与客户端书架出现同名双份
       // bookProgress 仍可按两端 id 双键存储，阅读进度不丢
       const merged = mergeTwoBooks(remoteBook, localBook);
-      result.push({ ...merged, id: localBook.id });
+      result.push(normalizeBookForKv({ ...merged, id: localBook.id }));
       usedLocal.add(localBook.id);
       usedRemote.add(remoteBook.id);
     } else {
       // 远端有但本地没有，直接添加
-      result.push(remoteBook);
+      result.push(normalizeBookForKv(remoteBook));
       usedRemote.add(remoteBook.id);
     }
   }
@@ -245,11 +261,24 @@ function mergeBooks(remoteBooks: Book[], localBooks: Book[]): Book[] {
 
 // 合并两本书的内容
 function mergeTwoBooks(remote: Book, local: Book): Book {
-  // 基础字段优先取本地（用户可能对 title 有修改）
+  const localOmits =
+    local._contentOmitted === true &&
+    typeof local._contentHash === 'string';
+
+  const lc = typeof local.content === 'string' ? local.content : '';
+  const rc = typeof remote.content === 'string' ? remote.content : '';
+
+  let mergedContent: string;
+  if (localOmits) {
+    mergedContent = rc;
+  } else {
+    mergedContent = lc.length >= rc.length ? lc : rc;
+  }
+
   const merged: Book = {
     ...remote,
     ...local,
-    // paragraphs 取较长的（内容更完整）
+    content: mergedContent,
     paragraphs: (local.paragraphs?.length || 0) >= (remote.paragraphs?.length || 0)
       ? local.paragraphs
       : remote.paragraphs,
@@ -282,5 +311,5 @@ function mergeTwoBooks(remote: Book, local: Book): Book {
   merged.lastParagraphIndex = Math.max(local.lastParagraphIndex || 0, remote.lastParagraphIndex || 0);
   merged.lastReadAt = Math.max(local.lastReadAt || 0, remote.lastReadAt || 0);
 
-  return merged;
+  return normalizeBookForKv(merged);
 }

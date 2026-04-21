@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
 import { kv } from '@/lib/kv';
+import { parseJsonRequestBody, jsonResponseMaybeGzip } from '@/lib/syncRequest.server';
 
 export const maxDuration = 60;
 
 export async function POST(request: Request) {
   try {
-    const { syncCode } = await request.json();
+    const parsed = (await parseJsonRequestBody(request)) as { syncCode?: string };
+    const { syncCode } = parsed;
 
     if (!syncCode) {
       return NextResponse.json({ error: 'syncCode required' }, { status: 400 });
@@ -18,7 +20,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid sync code or expired' }, { status: 404 });
     }
 
-    return NextResponse.json({ data: JSON.parse(data as string) });
+    return jsonResponseMaybeGzip({ data: JSON.parse(data as string) });
   } catch (error) {
     if (process.env.NODE_ENV !== 'production') {
       console.error('[sync/pull]', error);
