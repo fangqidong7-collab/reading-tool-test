@@ -1284,9 +1284,12 @@ export const ReadingArea = forwardRef(function ReadingArea({
               height: 0;
               background: transparent;
             }
-            /* 移动端 justify 易导致跨行拖选时选区被拉满；左对齐可减轻 WebKit 行为 */
             .reader-content {
-              text-align: left;
+              text-align: justify;
+              word-break: break-word;
+              overflow-wrap: break-word;
+              -webkit-hyphens: auto;
+              hyphens: auto;
             }
           }
         `}</style>

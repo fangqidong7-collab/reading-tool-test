@@ -1,28 +1,17 @@
-import { gunzipSync, gzipSync } from "zlib";
 import { NextResponse } from "next/server";
 
-/** 解析 POST JSON：支持 Content-Encoding: gzip（由客户端压缩同步负载） */
+/**
+ * 解析 POST JSON 请求体。
+ * 不做手动 gzip 解压——Vercel 平台不支持客户端 Content-Encoding: gzip 请求体。
+ */
 export async function parseJsonRequestBody(request: Request): Promise<unknown> {
-  const enc = request.headers.get("content-encoding") || "";
-  const buf = Buffer.from(await request.arrayBuffer());
-  const jsonBuf = enc.toLowerCase().includes("gzip") ? gunzipSync(buf) : buf;
-  return JSON.parse(jsonBuf.toString("utf-8"));
+  return request.json();
 }
 
-const GZIP_JSON_MIN_BYTES = 2048;
-
-/** 较大 JSON 响应 gzip，减小 pull / push 下行体积 */
+/**
+ * 返回 JSON 响应。
+ * Vercel 自动按 Accept-Encoding 压缩响应，无需手动 gzip。
+ */
 export function jsonResponseMaybeGzip(payload: unknown): NextResponse {
-  const json = JSON.stringify(payload);
-  if (Buffer.byteLength(json, "utf-8") < GZIP_JSON_MIN_BYTES) {
-    return NextResponse.json(payload);
-  }
-  const compressed = gzipSync(Buffer.from(json, "utf-8"));
-  return new NextResponse(compressed, {
-    status: 200,
-    headers: {
-      "Content-Type": "application/json",
-      "Content-Encoding": "gzip",
-    },
-  });
+  return NextResponse.json(payload);
 }
