@@ -52,8 +52,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '同步码不存在或已过期，请重新生成' }, { status: 404 });
     }
 
+    step = 'parse-kv';
+    let cloudData: SyncData;
+    if (typeof existing === 'string') {
+      cloudData = JSON.parse(existing) as SyncData;
+    } else {
+      cloudData = existing as SyncData;
+    }
+
     step = 'merge';
-    const cloudData: SyncData = JSON.parse(existing as string);
     const cloudBooks = cloudData.books ?? [];
 
     const cloudById = new Map<string, number>();
