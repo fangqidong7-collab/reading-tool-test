@@ -50,6 +50,7 @@ export interface BookshelfHomeViewProps {
   formatLastRead: (timestamp: number) => string;
   addBook: (title: string, content: string, tableOfContents?: TocEntry[]) => Book;
   deleteBook: (id: string) => void;
+  renameBook: (id: string, newTitle: string) => void;
   openBook: (id: string) => void;
   // Vocabulary
   globalVocabulary: Record<string, { root: string; meaning: string; pos: string; correctCount: number }>;
@@ -84,6 +85,7 @@ export function BookshelfHomeView({
   formatLastRead,
   addBook,
   deleteBook,
+  renameBook,
   openBook,
   globalVocabulary,
   removeFromGlobalVocabulary,
@@ -107,6 +109,7 @@ export function BookshelfHomeView({
             formatLastRead={formatLastRead}
             onAddBook={addBook}
             onDeleteBook={deleteBook}
+            onRenameBook={renameBook}
             onOpenBook={openBook}
             onSyncClick={() => setSyncPanelOpen(true)}
             onAddSuccess={() => {

@@ -35,6 +35,7 @@ export default function Home() {
     formatLastRead,
     addBook,
     deleteBook,
+    renameBook,
     updateBookAnnotations,
     updateScrollPosition,
     updateReadPage,
@@ -1169,6 +1170,7 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
         formatLastRead={formatLastRead}
         addBook={addBook}
         deleteBook={deleteBook}
+        renameBook={renameBook}
         openBook={openBook}
         globalVocabulary={globalVocabulary}
         removeFromGlobalVocabulary={removeFromGlobalVocabulary}

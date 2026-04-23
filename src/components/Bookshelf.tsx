@@ -12,6 +12,7 @@ interface BookshelfProps {
   formatLastRead: (timestamp: number) => string;
   onAddBook: (title: string, content: string, tableOfContents?: TocEntry[]) => Book;
   onDeleteBook: (id: string) => void;
+  onRenameBook: (id: string, newTitle: string) => void;
   onOpenBook: (id: string) => void;
   onSyncClick: () => void;
   onAddSuccess?: () => void;
@@ -23,6 +24,7 @@ export function Bookshelf({
   formatLastRead,
   onAddBook,
   onDeleteBook,
+  onRenameBook,
   onOpenBook,
   onSyncClick,
   onAddSuccess,
@@ -65,9 +67,10 @@ export function Bookshelf({
           onDelete={() => {}}
         />
 
-        {/* User books (sorted by last read) */}
-        {books
+        {/* User books sorted by last opened (most recent first) */}
+        {[...books]
           .filter((b) => !b.isSample)
+          .sort((a, b) => (b.lastReadAt || 0) - (a.lastReadAt || 0))
           .map((book) => (
             <BookCard
               key={book.id}
@@ -76,6 +79,7 @@ export function Bookshelf({
               lastRead={formatLastRead(book.lastReadAt)}
               onOpen={() => onOpenBook(book.id)}
               onDelete={() => onDeleteBook(book.id)}
+              onRename={(newTitle) => onRenameBook(book.id, newTitle)}
             />
           ))}
 

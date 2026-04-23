@@ -728,7 +728,14 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
   );
 
 
-  // Open a book for reading
+  const renameBook = useCallback((id: string, newTitle: string) => {
+    const trimmed = newTitle.trim();
+    if (!trimmed) return;
+    setBooks((prev) =>
+      prev.map((b) => (b.id === id ? { ...b, title: trimmed } : b))
+    );
+  }, []);
+
   const openBook = useCallback((id: string) => {
     setBooks((prev) =>
       prev.map((b) =>
@@ -856,6 +863,7 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
     formatLastRead,
     addBook,
     deleteBook,
+    renameBook,
     updateBookAnnotations,
     updateBookContent,
     updateScrollPosition,

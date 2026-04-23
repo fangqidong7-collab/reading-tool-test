@@ -409,16 +409,20 @@ rt {
     height: 10px;
   }
 
-  .delete-btn {
-    width: 22px;
-    height: 22px;
+  .card-actions {
+    opacity: 1;
     top: 3px;
     right: 3px;
   }
 
-  .delete-btn svg {
-    width: 12px;
-    height: 12px;
+  .card-actions button {
+    width: 22px;
+    height: 22px;
+  }
+
+  .card-actions button svg {
+    width: 11px;
+    height: 11px;
   }
 }
 
@@ -588,13 +592,24 @@ rt {
   flex-shrink: 0;
 }
 
-/* Delete Button */
-.delete-btn {
+/* Card Action Buttons */
+.card-actions {
   position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 28px;
-  height: 28px;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.book-card:hover .card-actions {
+  opacity: 1;
+}
+
+.card-actions button {
+  width: 26px;
+  height: 26px;
   border: none;
   background: rgba(0, 0, 0, 0.4);
   border-radius: 6px;
@@ -603,12 +618,11 @@ rt {
   align-items: center;
   justify-content: center;
   color: white;
-  opacity: 0;
-  transition: all 0.15s ease;
+  transition: background 0.15s ease;
 }
 
-.book-card:hover .delete-btn {
-  opacity: 1;
+.rename-btn:hover {
+  background: #4a90d9;
 }
 
 .delete-btn:hover {
