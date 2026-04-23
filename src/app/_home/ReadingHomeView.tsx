@@ -125,6 +125,7 @@ export interface ReadingHomeViewProps {
   setCurrentScrollPercent: (percent: number) => void;
   setCurrentParagraphIndex: (index: number) => void;
   setCurrentParagraphText: (text: string) => void;
+  setCurrentParagraphOffsetRatio: (ratio: number) => void;
   setCurrentChapterTitle: (title: string) => void;
   setSidebarOpen: (open: boolean) => void;
   setSettingsPanelOpen: (open: boolean) => void;
@@ -232,6 +233,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
     setCurrentScrollPercent,
     setCurrentParagraphIndex,
     setCurrentParagraphText,
+    setCurrentParagraphOffsetRatio,
     setCurrentChapterTitle,
     setSidebarOpen,
     setSettingsPanelOpen,
@@ -849,8 +851,9 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
               onProgressChange={(percent) => {
                 setCurrentScrollPercent(percent);
               }}
-              onParagraphIndexChange={(index) => {
+              onParagraphIndexChange={(index, offsetRatio) => {
                 setCurrentParagraphIndex(index);
+                setCurrentParagraphOffsetRatio(offsetRatio);
                 if (processedContent && index >= 0 && index < processedContent.length) {
                   const paraText = processedContent[index].segments.map((s) => s.text).join("").substring(0, 80);
                   setCurrentParagraphText(paraText);
@@ -868,7 +871,8 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
                 }
               }}
               initialParagraphIndex={currentBook?.lastParagraphIndex ?? -1}
-              initialParagraphText={currentParagraphText}
+              initialParagraphText={currentBook?.lastParagraphText || ""}
+              initialParagraphOffsetRatio={currentBook?.lastParagraphOffsetRatio ?? 0}
               initialScrollPercent={currentBook?.lastScrollPosition || 0}
               pageTurnRatio={pageTurnRatio}
               onTextSelect={handleTextSelect}

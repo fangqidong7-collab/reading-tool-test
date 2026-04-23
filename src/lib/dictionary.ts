@@ -9,7 +9,6 @@ export async function loadBuiltinDictionary(): Promise<void> {
     if (resp.ok) {
       englishDictionary = await resp.json();
       builtinDictLoaded = true;
-      console.log('内置词典加载完成, 词条数:', Object.keys(englishDictionary).length);
     }
   } catch (e) {
     console.warn('内置词典加载失败:', e);
@@ -1140,7 +1139,6 @@ export async function loadBuiltinDictionaryEn(): Promise<void> {
     if (resp.ok) {
       englishDictionaryEn = await resp.json();
       builtinDictEnLoaded = true;
-      console.log('内置英英词典加载完成, 词条数:', Object.keys(englishDictionaryEn).length);
     }
   } catch (e) {
     console.warn('内置英英词典加载失败:', e);

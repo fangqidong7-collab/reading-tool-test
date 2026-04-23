@@ -103,7 +103,7 @@ export interface ReadingAreaRef {
   jumpToParagraph: (paragraphIndex: number) => void;
   jumpToSearchResult: (result: { paragraphIndex: number; charIndex: number }) => void;
   getScrollPercent: () => number;
-  getFirstVisibleIndex: () => number;
+  getFirstVisibleIndex: () => { index: number; offsetRatio: number };
   addBookmark: () => void;
   restoreScrollPosition: (percent: number) => void;
   restoreByParagraphIndex: (index: number) => void;
@@ -462,12 +462,13 @@ interface ReadingAreaProps {
   currentSearchIndex?: number;
   bookId?: string;
   onProgressChange?: (percent: number) => void;
-  onParagraphIndexChange?: (index: number) => void;
+  onParagraphIndexChange?: (index: number, offsetRatio: number) => void;
   onWordDoubleClick?: (word: string, lemma: string, event: React.MouseEvent) => void;
   onAddBookmark?: () => void;
   initialScrollPercent?: number;
   initialParagraphIndex?: number;
   initialParagraphText?: string;
+  initialParagraphOffsetRatio?: number;
   pageTurnRatio?: number;
   onTextSelect?: (selection: { text: string; startParagraphIndex: number; endParagraphIndex: number; startCharIndex: number; endCharIndex: number }) => void;
   sentenceAnnotations?: SentenceAnnotation[];
@@ -502,6 +503,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
   initialScrollPercent = 0,
   initialParagraphIndex = -1,
   initialParagraphText = "",
+  initialParagraphOffsetRatio = 0,
   pageTurnRatio = 1,
   onTextSelect,
   sentenceAnnotations = [],
@@ -782,55 +784,65 @@ export const ReadingArea = forwardRef(function ReadingArea({
     // 保留4位小数，避免长文档精度丢失
     return parseFloat(((el.scrollTop / (el.scrollHeight - el.clientHeight)) * 100).toFixed(4));
   }, []);
-  /** 视区内占据面积最大的段落 —— 比「首个可见段落」更接近用户正在读的那一段，避免进度偏上一段 */
-  const getFirstVisibleIndex = useCallback(() => {
-    if (!containerRef.current) return 0;
+  /** 视口顶部第一个可见段落 + 段内偏移比例 */
+  const getFirstVisibleInfo = useCallback((): { index: number; offsetRatio: number } => {
+    if (!containerRef.current) return { index: 0, offsetRatio: 0 };
     const scrollTop = containerRef.current.scrollTop;
     const clientHeight = containerRef.current.clientHeight;
     const viewportTop = scrollTop;
     const viewportBottom = scrollTop + clientHeight;
-    const viewportCenter = scrollTop + clientHeight / 2;
 
     const items = virtualizer.getVirtualItems();
-    if (items.length === 0) return 0;
-
-    let bestIndex = items[0].index;
-    let bestScore = Number.NEGATIVE_INFINITY;
+    if (items.length === 0) return { index: 0, offsetRatio: 0 };
 
     for (const item of items) {
       const top = item.start;
       const bottom = item.start + item.size;
       const overlap = Math.min(bottom, viewportBottom) - Math.max(top, viewportTop);
-      const o = overlap > 0 ? overlap : 0;
-      const mid = (top + bottom) / 2;
-      const score = o * 1e9 - Math.abs(mid - viewportCenter);
-      if (score > bestScore) {
-        bestScore = score;
-        bestIndex = item.index;
+      if (overlap > item.size * 0.3 || overlap > clientHeight * 0.1) {
+        const offset = Math.max(0, scrollTop - top);
+        const ratio = item.size > 0 ? offset / item.size : 0;
+        return { index: item.index, offsetRatio: Math.min(ratio, 1) };
       }
     }
 
-    return bestIndex;
+    return { index: items[0].index, offsetRatio: 0 };
   }, [virtualizer]);
 
 
 
+  // Restore timers — declared before scroll listener so it can cancel them
+  const hasRestoredRef = useRef(false);
+  const isRestoringRef = useRef(false);
+  const restoreTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const cancelRestoreTimers = useCallback(() => {
+    restoreTimersRef.current.forEach(clearTimeout);
+    restoreTimersRef.current = [];
+    isRestoringRef.current = false;
+  }, []);
+
   // 监听滚动，更新进度
+  const userHasScrolledRef = useRef(false);
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
 
     let ticking = false;
     const onScroll = () => {
+      if (!userHasScrolledRef.current && !isRestoringRef.current) {
+        userHasScrolledRef.current = true;
+        cancelRestoreTimers();
+      }
       if (!ticking) {
         requestAnimationFrame(() => {
           const percent = getScrollPercent();
           setReadProgress(percent);
-          if (onProgressChange) {
+          if (onProgressChange && !isRestoringRef.current) {
             onProgressChange(percent);
           }
-          if (onParagraphIndexChange) {
-            onParagraphIndexChange(getFirstVisibleIndex());
+          if (onParagraphIndexChange && !isRestoringRef.current) {
+            const info = getFirstVisibleInfo();
+            onParagraphIndexChange(info.index, info.offsetRatio);
           }
           ticking = false;
         });
@@ -838,10 +850,13 @@ export const ReadingArea = forwardRef(function ReadingArea({
       }
     };
 
-
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => el.removeEventListener('scroll', onScroll);
-  }, [getScrollPercent, onProgressChange, onParagraphIndexChange, getFirstVisibleIndex]);
+  }, [getScrollPercent, onProgressChange, onParagraphIndexChange, getFirstVisibleInfo, cancelRestoreTimers]);
+
+  useEffect(() => {
+    userHasScrolledRef.current = false;
+  }, [bookId]);
 
   // 手势翻页
   useEffect(() => {
@@ -961,11 +976,12 @@ export const ReadingArea = forwardRef(function ReadingArea({
     }
   }, [bookId, getScrollPercent, onAddBookmark]);
 
-  // 打开书籍时自动恢复上次滚动位置
-  // 恢复滚动位置
-  // 恢复滚动位置
-  const hasRestoredRef = useRef(false);
-  
+  // 打开书籍时自动恢复上次滚动位置（只运行一次）
+  useEffect(() => {
+    hasRestoredRef.current = false;
+    cancelRestoreTimers();
+  }, [bookId, cancelRestoreTimers]);
+
   useEffect(() => {
     if (
       hasRestoredRef.current ||
@@ -981,77 +997,92 @@ export const ReadingArea = forwardRef(function ReadingArea({
     }
 
     hasRestoredRef.current = true;
+    isRestoringRef.current = true;
+
+    const scheduleTimer = (fn: () => void, ms: number) => {
+      const id = setTimeout(fn, ms);
+      restoreTimersRef.current.push(id);
+    };
+
+    const findTargetParagraph = (): number => {
+      if (!processedContent) return Math.max(0, initialParagraphIndex);
+
+      if (initialParagraphText) {
+        const savedText = initialParagraphText;
+        const searchRadius = 200;
+        const startSearch = Math.max(0, initialParagraphIndex - searchRadius);
+        const endSearch = Math.min(processedContent.length, initialParagraphIndex + searchRadius);
+
+        for (let i = startSearch; i < endSearch; i++) {
+          const paraText = processedContent[i].segments.map((s) => s.text).join("").substring(0, 80);
+          if (paraText === savedText) {
+            return i;
+          }
+        }
+
+        for (let i = 0; i < processedContent.length; i++) {
+          const paraText = processedContent[i].segments.map((s) => s.text).join("").substring(0, 80);
+          if (paraText === savedText) {
+            return i;
+          }
+        }
+      }
+
+      return Math.max(0, initialParagraphIndex);
+    };
+
+    const applyParagraphOffset = (targetIndex: number) => {
+      const el = containerRef.current;
+      if (!el) return;
+      const items = virtualizer.getVirtualItems();
+      const targetItem = items.find(item => item.index === targetIndex);
+      if (targetItem && initialParagraphOffsetRatio > 0) {
+        el.scrollTop = targetItem.start + initialParagraphOffsetRatio * targetItem.size;
+      }
+    };
 
     const doRestore = () => {
       const el = containerRef.current;
       if (!el || !processedContent?.length) return;
 
-      // 优先用段落索引 + 文字匹配恢复（跨设备/不同窗口大小都准确）
       if (initialParagraphIndex >= 0) {
-        let targetIndex = initialParagraphIndex;
+        const targetIndex = findTargetParagraph();
 
-        if (initialParagraphText && processedContent) {
-          const savedText = initialParagraphText;
-          const searchRadius = 200;
-          const startSearch = Math.max(0, initialParagraphIndex - searchRadius);
-          const endSearch = Math.min(processedContent.length, initialParagraphIndex + searchRadius);
-
-          let foundIndex = -1;
-          for (let i = startSearch; i < endSearch; i++) {
-            const paraText = processedContent[i].segments.map((s) => s.text).join("").substring(0, 80);
-            if (paraText === savedText) {
-              foundIndex = i;
-              break;
-            }
-          }
-
-          if (foundIndex === -1) {
-            for (let i = 0; i < processedContent.length; i++) {
-              const paraText = processedContent[i].segments.map((s) => s.text).join("").substring(0, 80);
-              if (paraText === savedText) {
-                foundIndex = i;
-                break;
-              }
-            }
-          }
-
-          if (foundIndex >= 0) {
-            targetIndex = foundIndex;
-          }
-        }
-
-        virtualizer.scrollToIndex(targetIndex, { align: "start" });
-        const corrections = [300, 700, 1500];
-        corrections.forEach((delay) => {
-          setTimeout(() => {
-            virtualizer.scrollToIndex(targetIndex, { align: "start" });
-          }, delay);
-        });
-        return;
-      }
-
-      // 回退：如果没有段落索引，用百分比恢复
-      if (initialScrollPercent > 0) {
-        const applyScrollPercent = () => {
+        // Phase 1
+        if (initialScrollPercent > 0) {
           const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
           if (maxScroll > 0) {
             el.scrollTop = (initialScrollPercent / 100) * maxScroll;
           }
-        };
-        applyScrollPercent();
-        requestAnimationFrame(applyScrollPercent);
-        setTimeout(applyScrollPercent, 450);
-        setTimeout(applyScrollPercent, 1200);
+        }
+
+        // Phase 2
+        scheduleTimer(() => {
+          virtualizer.scrollToIndex(targetIndex, { align: "start" });
+
+          // Phase 3
+          scheduleTimer(() => {
+            applyParagraphOffset(targetIndex);
+            cancelRestoreTimers();
+          }, 300);
+        }, 200);
+        return;
+      }
+
+      // Fallback: percentage only
+      if (initialScrollPercent > 0) {
+        const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
+        if (maxScroll > 0) {
+          el.scrollTop = (initialScrollPercent / 100) * maxScroll;
+        }
+        cancelRestoreTimers();
       }
     };
 
-    setTimeout(doRestore, 200);
+    scheduleTimer(doRestore, 200);
 
-  }, [initialParagraphIndex, initialParagraphText, initialScrollPercent, processedContent, virtualizer]);
-
-  useEffect(() => {
-    hasRestoredRef.current = false;
-  }, [bookId]);
+    return cancelRestoreTimers;
+  }, [initialParagraphIndex, initialParagraphText, initialParagraphOffsetRatio, initialScrollPercent, processedContent, virtualizer, cancelRestoreTimers]);
 
 
 
@@ -1063,7 +1094,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
       jumpToParagraph(result.paragraphIndex);
     },
     getScrollPercent,
-    getFirstVisibleIndex,
+    getFirstVisibleIndex: getFirstVisibleInfo,
     addBookmark: addBookmarkFn,
     restoreScrollPosition: (percent: number) => {
       const el = containerRef.current;

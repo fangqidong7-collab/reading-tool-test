@@ -39,10 +39,7 @@ const CACHE_KEY_EN = 'reading_assistant_ext_dict_en';
  * Always fetches from server to check for updates
  */
 export async function loadExternalDictionary(): Promise<DictLoadStatus> {
-  console.log('loadExternalDictionary 被调用, 当前状态:', { loadStatus, externalDictKeys: Object.keys(externalDict).length });
-  
   if (loadStatus === 'loaded' || loadStatus === 'loading') {
-    console.log('loadExternalDictionary 直接返回, 状态:', loadStatus);
     return loadStatus;
   }
 
@@ -51,11 +48,9 @@ export async function loadExternalDictionary(): Promise<DictLoadStatus> {
 
   try {
     // Always fetch from server to check if dict.json has been updated
-    console.log('开始从 /dict.json 加载外部词典...');
     const fetchUrl = typeof window !== 'undefined' && window.location.hostname !== 'localhost' 
       ? `${window.location.protocol}//${window.location.host}/dict.json` 
       : '/dict.json';
-    console.log('fetch URL:', fetchUrl);
     const response = await fetch(fetchUrl, {
       headers: {
         'Cache-Control': 'no-cache',
@@ -68,10 +63,6 @@ export async function loadExternalDictionary(): Promise<DictLoadStatus> {
     }
 
     const data: DictData = await response.json();
-    console.log('dict.json 加载成功, fetch URL:', fetchUrl);
-    console.log('响应状态:', response.status);
-    console.log('数据键数量:', Object.keys(data).length);
-    console.log('数据是否包含 craft:', 'craft' in data, 'data["craft"] =', data['craft']);
     
     // Handle new simple format (word -> meaning string)
     // or legacy format (entries: { word -> { meaning, pos } })
@@ -87,13 +78,11 @@ export async function loadExternalDictionary(): Promise<DictLoadStatus> {
       externalDict = data as unknown as Record<string, string>;
     }
     
-    console.log('externalDict 初始化完成, 词条数:', Object.keys(externalDict).length, 'craft =', externalDict['craft']);
     
     // Save to cache (this will overwrite any old cache)
     saveToCache(externalDict);
     
     loadStatus = 'loaded';
-    console.log('loadStatus 设置为 loaded');
     return 'loaded';
   } catch (error) {
     console.error('Failed to load external dictionary:', error);
@@ -102,7 +91,6 @@ export async function loadExternalDictionary(): Promise<DictLoadStatus> {
     // If we have cache, use it even if fetch fails
     const cached = loadFromCache();
     if (cached) {
-      console.log('从缓存恢复 externalDict, 词条数:', Object.keys(cached).length);
       externalDict = cached;
       loadStatus = 'loaded';
       return 'loaded';
@@ -383,16 +371,7 @@ function getStemVariantsExternal(word: string): string[] {
 export function smartLookupExternal(word: string): string | null {
 	const lower = word.toLowerCase().trim();
 	
-	// 调试日志
-	console.log('smartLookupExternal 被调用');
-	console.log('  传入的查询词:', lower);
-	console.log('  externalDict 是否已加载:', externalDict !== null && Object.keys(externalDict).length > 0);
-	console.log('  externalDict 词条数:', Object.keys(externalDict).length);
-	console.log('  直接查找 craft:', externalDict['craft']);
-	
-	// 1. 先查原始单词
 	if (externalDict[lower]) {
-		console.log('  找到匹配词条:', externalDict[lower]);
 		return externalDict[lower];
 	}
 	
@@ -411,9 +390,6 @@ export function smartLookupExternal(word: string): string | null {
 			return externalDict[variant];
 		}
 	}
-	
-	// Debug: log words not found
-	// console.log('词典未找到:', word, '尝试过的候选词:', [...new Set([lower, ...variants, ...prefixVariants])]);
 	
 	return null;
 }
@@ -442,12 +418,6 @@ function getPrefixVariants(word: string): string[] {
  * Look up a word in the external dictionary
  */
 export function lookupExternalDict(word: string): string | null {
-	console.log('lookupExternalDict 被调用, word =', word);
-	console.log('externalDict 当前状态:', {
-		keysCount: Object.keys(externalDict).length,
-		hasCraft: 'craft' in externalDict,
-		craftValue: externalDict['craft']
-	});
 	return smartLookupExternal(word);
 }
 
@@ -469,7 +439,6 @@ export function getExternalDictSize(): number {
  * Reset dictionary state (useful for testing)
  */
 export function resetDictState(): void {
-  console.log('resetDictState 被调用, 清空 externalDict');
   externalDict = {};
   loadStatus = 'idle';
   loadError = null;
@@ -535,10 +504,7 @@ export async function reloadExternalDictionary(): Promise<DictLoadStatus> {
  * Load external English-English dictionary from server or cache
  */
 export async function loadExternalDictionaryEn(): Promise<DictLoadStatus> {
-  console.log('loadExternalDictionaryEn 被调用, 当前状态:', { loadStatusEn, externalDictEnKeys: Object.keys(externalDictEn).length });
-  
   if (loadStatusEn === 'loaded' || loadStatusEn === 'loading') {
-    console.log('loadExternalDictionaryEn 直接返回, 状态:', loadStatusEn);
     return loadStatusEn;
   }
 
@@ -564,7 +530,6 @@ export async function loadExternalDictionaryEn(): Promise<DictLoadStatus> {
     const data: DictData = await response.json();
     externalDictEn = data as unknown as Record<string, string>;
     
-    console.log('dict_en.json 加载成功, 词条数:', Object.keys(externalDictEn).length);
     
     // Save to cache
     if (typeof window !== 'undefined') {

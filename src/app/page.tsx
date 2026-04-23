@@ -54,6 +54,7 @@ export default function Home() {
     clearMasteredWords,
     addSentenceAnnotation,
     removeSentenceAnnotation,
+    flushBooksToStorage,
   } = useBookshelf();
 
 
@@ -199,6 +200,7 @@ export default function Home() {
           lastScrollPosition: number;
           lastParagraphIndex: number;
           lastParagraphText?: string;
+          lastParagraphOffsetRatio?: number;
           lastReadAt: number;
           annotations: Record<string, unknown>;
           sentenceAnnotations?: unknown[];
@@ -209,6 +211,7 @@ export default function Home() {
             lastScrollPosition: book.lastScrollPosition || 0,
             lastParagraphIndex: book.lastParagraphIndex || 0,
             lastParagraphText: book.lastParagraphText || "",
+            lastParagraphOffsetRatio: book.lastParagraphOffsetRatio ?? 0,
             lastReadAt: book.lastReadAt,
             annotations: book.annotations,
             sentenceAnnotations: book.sentenceAnnotations || [],
@@ -263,6 +266,7 @@ export default function Home() {
           lastScrollPosition: number;
           lastParagraphIndex: number;
           lastParagraphText?: string;
+          lastParagraphOffsetRatio?: number;
           lastReadAt: number;
           annotations: Record<string, unknown>;
           sentenceAnnotations?: unknown[];
@@ -273,6 +277,7 @@ export default function Home() {
             lastScrollPosition: book.lastScrollPosition || 0,
             lastParagraphIndex: book.lastParagraphIndex || 0,
             lastParagraphText: book.lastParagraphText || "",
+            lastParagraphOffsetRatio: book.lastParagraphOffsetRatio ?? 0,
             lastReadAt: book.lastReadAt,
             annotations: book.annotations,
             sentenceAnnotations: book.sentenceAnnotations || [],
@@ -377,11 +382,13 @@ export default function Home() {
     updateBooksSyncHashes,
   ]);
 
-  // 启用自动定时同步（仅前台 + 每小时 + 需 syncCode）
+  // 启用自动定时同步（仅书架页面 + 每10分钟 + 需 syncCode）
+  // 阅读中不自动同步，避免 replaceAllFromRemote 导致 currentBook 丢失
   usePeriodicSync({
     syncCode,
     syncing,
     performSync: performSyncForPeriodic,
+    enabled: !currentBook,
   });
 
   // Sentence translation state
@@ -420,7 +427,6 @@ export default function Home() {
         }
       }
       const totalMB = (totalSize * 2 / 1024 / 1024).toFixed(2);
-      console.log('localStorage 使用量:', totalMB, 'MB');
       
       if (totalSize * 2 > 4 * 1024 * 1024) {
         console.warn('localStorage 使用量接近上限，考虑删除部分书籍');
@@ -440,7 +446,6 @@ export default function Home() {
       forceReloadDictionary(),
       loadExternalDictionaryEn()
     ]).then(([zhStatus, enStatus]) => {
-      console.log("词典加载完成:", { zh: zhStatus, en: enStatus });
       setDictLoadStatus(zhStatus);
 
       // Auto-dismiss status after 3 seconds
@@ -561,11 +566,20 @@ export default function Home() {
   // Current scroll percent for bookmarks
   const [currentScrollPercent, setCurrentScrollPercent] = useState(0);
   const [currentParagraphIndex, setCurrentParagraphIndex] = useState(-1);
-  const [currentParagraphText, setCurrentParagraphText] = useState("");  // 新增这一行
+  const [currentParagraphText, setCurrentParagraphText] = useState("");
+  const [currentParagraphOffsetRatio, setCurrentParagraphOffsetRatio] = useState(0);
   const [currentChapterTitle, setCurrentChapterTitle] = useState("");
 
+  // Always-current refs for scroll position — used for flush-on-close
+  const scrollPercentRef = useRef(0);
+  const paragraphIndexRef = useRef(-1);
+  const paragraphTextRef = useRef("");
+  const paragraphOffsetRatioRef = useRef(0);
+  useEffect(() => { scrollPercentRef.current = currentScrollPercent; }, [currentScrollPercent]);
+  useEffect(() => { paragraphIndexRef.current = currentParagraphIndex; }, [currentParagraphIndex]);
+  useEffect(() => { paragraphTextRef.current = currentParagraphText; }, [currentParagraphText]);
+  useEffect(() => { paragraphOffsetRatioRef.current = currentParagraphOffsetRatio; }, [currentParagraphOffsetRatio]);
 
-  
   // Save scroll percent to Book object when it changes
   // 延迟保存，避免恢复跳转过程中的中间值覆盖真实位置
   const hasInitializedRef = useRef(false);
@@ -577,13 +591,12 @@ export default function Home() {
       if (initTimerRef.current) clearTimeout(initTimerRef.current);
       initTimerRef.current = setTimeout(() => {
         hasInitializedRef.current = true;
-        console.log('保存保护期结束');
       }, 3000);
     }
     return () => {
       if (initTimerRef.current) clearTimeout(initTimerRef.current);
     };
-  }, [currentBook?.id]);
+  }, [currentBook?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const bookId = currentBookIdRef.current;
@@ -592,14 +605,42 @@ export default function Home() {
     if (currentScrollPercent === 0 && currentParagraphIndex <= 0) return;
 
     const timeout = setTimeout(() => {
-      updateScrollPosition(bookId, currentScrollPercent, currentParagraphIndex, currentParagraphText || undefined);
+      updateScrollPosition(bookId, currentScrollPercent, currentParagraphIndex, currentParagraphText || undefined, currentParagraphOffsetRatio);
     }, 1000);
 
     return () => clearTimeout(timeout);
-  }, [currentScrollPercent, currentParagraphIndex, currentParagraphText, updateScrollPosition]);
+  }, [currentScrollPercent, currentParagraphIndex, currentParagraphText, currentParagraphOffsetRatio, updateScrollPosition]);
 
+  const flushScrollPosition = useCallback(() => {
+    const bookId = currentBookIdRef.current;
+    if (!bookId) return;
+    const pct = scrollPercentRef.current;
+    const idx = paragraphIndexRef.current;
+    const txt = paragraphTextRef.current;
+    const oRatio = paragraphOffsetRatioRef.current;
+    if (pct === 0 && idx <= 0) return;
+    updateScrollPosition(bookId, pct, idx, txt || undefined, oRatio);
+    flushBooksToStorage({
+      bookId, percent: pct, paragraphIndex: idx, paragraphText: txt || undefined, paragraphOffsetRatio: oRatio,
+    });
+  }, [updateScrollPosition, flushBooksToStorage]);
 
-
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      flushScrollPosition();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        flushScrollPosition();
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [flushScrollPosition]);
 
 
   // Toggle bookmark for current position
@@ -1109,6 +1150,7 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
 
   // Handle return to bookshelf
   const handleReturnToBookshelf = useCallback(() => {
+    flushScrollPosition();
     isProgrammaticScrollRef.current = true;
     lastProcessedBookIdRef.current = null;
     closeBook();
@@ -1117,7 +1159,7 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
     setSelectedWord(null);
     setProcessedContent(null);
     setSettingsPanelOpen(false);
-  }, [closeBook]);
+  }, [closeBook, flushScrollPosition]);
 
   // Load JSZip library for EPUB parsing
   <JSLibLoader />
@@ -1277,6 +1319,7 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
       setCurrentScrollPercent={setCurrentScrollPercent}
       setCurrentParagraphIndex={setCurrentParagraphIndex}
       setCurrentParagraphText={setCurrentParagraphText}
+      setCurrentParagraphOffsetRatio={setCurrentParagraphOffsetRatio}
       setCurrentChapterTitle={setCurrentChapterTitle}
       setSidebarOpen={setSidebarOpen}
       setSettingsPanelOpen={setSettingsPanelOpen}

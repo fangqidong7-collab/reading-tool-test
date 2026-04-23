@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { idbGet, idbSet } from "@/lib/storage";
 
 // Processed content segment type
@@ -61,6 +61,7 @@ export interface Book {
   lastScrollPosition?: number;
   lastParagraphIndex?: number;
   lastParagraphText?: string;
+  lastParagraphOffsetRatio?: number;
   lastReadPage?: number;
   processedContent?: ProcessedContent;
   tableOfContents?: TocEntry[]; // Extracted TOC from EPUB
@@ -79,6 +80,9 @@ function mergeTwoBookRecords(a: Book, b: Book): Book {
   merged.content = bc.length >= ac.length ? b.content : a.content;
   merged.lastScrollPosition = Math.max(a.lastScrollPosition ?? 0, b.lastScrollPosition ?? 0);
   merged.lastParagraphIndex = Math.max(a.lastParagraphIndex ?? 0, b.lastParagraphIndex ?? 0);
+  const moreRecent = (a.lastReadAt || 0) >= (b.lastReadAt || 0) ? a : b;
+  merged.lastParagraphOffsetRatio = moreRecent.lastParagraphOffsetRatio ?? 0;
+  merged.lastParagraphText = moreRecent.lastParagraphText;
   merged.lastReadAt = Math.max(a.lastReadAt || 0, b.lastReadAt || 0);
   merged.annotations = { ...(a.annotations || {}), ...(b.annotations || {}) };
 
@@ -182,13 +186,60 @@ So whether you are a student in a classroom or an adult pursuing a hobby, rememb
   bookmarks: [],
 };
 
+const CURRENT_BOOK_KEY = "english-reader-current-book";
+
 export function useBookshelf() {
   const [books, setBooks] = useState<Book[]>([]);
-  const [currentBookId, setCurrentBookId] = useState<string | null>(null);
+  const [currentBookId, setCurrentBookId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return sessionStorage.getItem(CURRENT_BOOK_KEY) || null;
+  });
   const [isLoaded, setIsLoaded] = useState(false);
+
+  useEffect(() => {
+    if (currentBookId) {
+      sessionStorage.setItem(CURRENT_BOOK_KEY, currentBookId);
+    } else {
+      sessionStorage.removeItem(CURRENT_BOOK_KEY);
+    }
+  }, [currentBookId]);
 const [globalVocabulary, setGlobalVocabulary] = useState<
   Record<string, { root: string; meaning: string; pos: string; correctCount: number }>
 >({});
+
+  const booksRef = useRef(books);
+  useEffect(() => { booksRef.current = books; }, [books]);
+
+  /**
+   * Immediately persist books to IndexedDB.
+   * Optionally applies a last-second scroll position update for a given bookId
+   * so the state update + IDB write happen atomically (no race condition).
+   */
+  const flushBooksToStorage = useCallback((pendingScroll?: {
+    bookId: string; percent: number; paragraphIndex: number; paragraphText?: string; paragraphOffsetRatio?: number;
+  }) => {
+    if (typeof window === "undefined") return;
+    let snapshot = booksRef.current;
+    if (pendingScroll && pendingScroll.bookId) {
+      snapshot = snapshot.map((b) =>
+        b.id === pendingScroll.bookId
+          ? {
+              ...b,
+              lastScrollPosition: pendingScroll.percent,
+              ...(pendingScroll.paragraphIndex >= 0 ? { lastParagraphIndex: pendingScroll.paragraphIndex } : {}),
+              ...(pendingScroll.paragraphText ? { lastParagraphText: pendingScroll.paragraphText } : {}),
+              ...(pendingScroll.paragraphOffsetRatio !== undefined ? { lastParagraphOffsetRatio: pendingScroll.paragraphOffsetRatio } : {}),
+            }
+          : b
+      );
+    }
+    const toSave = snapshot.map((book) => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { processedContent: _pc, ...rest } = book;
+      return rest;
+    });
+    idbSet(STORAGE_KEY, JSON.stringify(toSave)).catch(() => {});
+  }, []);
 
   // Load books from IndexedDB (异步加载)
   useEffect(() => {
@@ -406,7 +457,7 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
     );
   }, []);
 
-  const updateScrollPosition = useCallback((id: string, position: number, paragraphIndex?: number, paragraphText?: string) => {
+  const updateScrollPosition = useCallback((id: string, position: number, paragraphIndex?: number, paragraphText?: string, paragraphOffsetRatio?: number) => {
     setBooks((prev) =>
       prev.map((b) =>
         b.id === id
@@ -415,6 +466,7 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
               lastScrollPosition: position,
               ...(paragraphIndex !== undefined && paragraphIndex >= 0 ? { lastParagraphIndex: paragraphIndex } : {}),
               ...(paragraphText !== undefined ? { lastParagraphText: paragraphText } : {}),
+              ...(paragraphOffsetRatio !== undefined ? { lastParagraphOffsetRatio: paragraphOffsetRatio } : {}),
             }
           : b
       )
@@ -628,7 +680,6 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
               ? remoteContent
               : localContent;
 
-            // lastScrollPosition / lastParagraphIndex：取数值较大的
             merged.lastScrollPosition = Math.max(
               remoteBook.lastScrollPosition ?? 0,
               existing.lastScrollPosition ?? 0
@@ -637,8 +688,10 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
               remoteBook.lastParagraphIndex ?? 0,
               existing.lastParagraphIndex ?? 0
             );
+            const moreRecentBook = (remoteBook.lastReadAt || 0) >= (existing.lastReadAt || 0) ? remoteBook : existing;
+            merged.lastParagraphOffsetRatio = moreRecentBook.lastParagraphOffsetRatio ?? 0;
+            merged.lastParagraphText = moreRecentBook.lastParagraphText;
 
-            // lastReadAt：取 Math.max
             merged.lastReadAt = Math.max(
               remoteBook.lastReadAt || 0,
               existing.lastReadAt || 0
@@ -805,12 +858,14 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
             lastScrollPosition?: number;
             lastParagraphIndex?: number;
             lastParagraphText?: string;
+            lastParagraphOffsetRatio?: number;
             lastReadAt?: number;
           } | undefined;
           if (prog) {
             rb.lastScrollPosition = prog.lastScrollPosition ?? rb.lastScrollPosition ?? 0;
             rb.lastParagraphIndex = prog.lastParagraphIndex ?? rb.lastParagraphIndex ?? 0;
             if (prog.lastParagraphText) rb.lastParagraphText = prog.lastParagraphText;
+            if (prog.lastParagraphOffsetRatio !== undefined) rb.lastParagraphOffsetRatio = prog.lastParagraphOffsetRatio;
             if (prog.lastReadAt) rb.lastReadAt = prog.lastReadAt;
           }
         }
@@ -820,6 +875,16 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
         const sample = prev.find((b) => b.isSample);
         const hasSampleInRemote = remoteBooks.some((b) => b.id === SAMPLE_BOOK.id);
         const base = hasSampleInRemote ? remoteBooks : (sample ? [sample, ...remoteBooks] : remoteBooks);
+
+        // Preserve the currently open book so it's never dropped mid-reading
+        if (currentBookId) {
+          const inBase = base.some((b) => b.id === currentBookId);
+          if (!inBase) {
+            const openBook = prev.find((b) => b.id === currentBookId);
+            if (openBook) base.push(openBook);
+          }
+        }
+
         base.sort((a, b) => {
           if (a.isSample && !b.isSample) return 1;
           if (!a.isSample && b.isSample) return -1;
@@ -834,6 +899,7 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
           lastScrollPosition?: number;
           lastParagraphIndex?: number;
           lastParagraphText?: string;
+          lastParagraphOffsetRatio?: number;
           lastReadAt?: number;
           annotations?: Record<string, unknown>;
           sentenceAnnotations?: unknown[];
@@ -845,6 +911,7 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
           lastScrollPosition: prog.lastScrollPosition ?? book.lastScrollPosition ?? 0,
           lastParagraphIndex: prog.lastParagraphIndex ?? book.lastParagraphIndex ?? 0,
           lastParagraphText: prog.lastParagraphText ?? book.lastParagraphText,
+          lastParagraphOffsetRatio: prog.lastParagraphOffsetRatio ?? book.lastParagraphOffsetRatio,
           lastReadAt: prog.lastReadAt ?? book.lastReadAt,
           annotations: (prog.annotations ?? book.annotations) as Book['annotations'],
           sentenceAnnotations: (prog.sentenceAnnotations ?? book.sentenceAnnotations) as Book['sentenceAnnotations'],
@@ -886,6 +953,7 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
     mergeBooksFromRemote,
     updateBooksSyncHashes,
     replaceAllFromRemote,
+    flushBooksToStorage,
   };
 
 }
