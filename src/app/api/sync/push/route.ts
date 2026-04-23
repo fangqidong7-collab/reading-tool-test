@@ -40,8 +40,8 @@ function diffBookManifest(
   const cloudIdSet = new Set<string>();
   const cloudTitleSet = new Set<string>();
   for (const b of cloudBooks) {
-    if (typeof b.id === 'string') cloudIdSet.add(b.id);
-    if (typeof b.title === 'string') cloudTitleSet.add(b.title);
+    if (b.id != null) cloudIdSet.add(String(b.id));
+    if (b.title != null) cloudTitleSet.add(String(b.title));
   }
 
   const missing: string[] = [];

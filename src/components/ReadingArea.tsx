@@ -986,59 +986,40 @@ export const ReadingArea = forwardRef(function ReadingArea({
       const el = containerRef.current;
       if (!el || !processedContent?.length) return;
 
-      const applyScrollPercent = (): boolean => {
-        const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
-        if (initialScrollPercent > 0 && maxScroll > 0) {
-          el.scrollTop = (initialScrollPercent / 100) * maxScroll;
-          return true;
-        }
-        return false;
-      };
+      // 优先用段落索引 + 文字匹配恢复（跨设备/不同窗口大小都准确）
+      if (initialParagraphIndex >= 0) {
+        let targetIndex = initialParagraphIndex;
 
-      // 优先按百分比恢复，与离开前屏幕位置一致（避免仅用段落对齐导致「往上偏一段」）
-      if (applyScrollPercent()) {
-        requestAnimationFrame(() => {
-          applyScrollPercent();
-        });
-        setTimeout(() => applyScrollPercent(), 450);
-        setTimeout(() => applyScrollPercent(), 1200);
-        return;
-      }
+        if (initialParagraphText && processedContent) {
+          const savedText = initialParagraphText;
+          const searchRadius = 200;
+          const startSearch = Math.max(0, initialParagraphIndex - searchRadius);
+          const endSearch = Math.min(processedContent.length, initialParagraphIndex + searchRadius);
 
-      let targetIndex = initialParagraphIndex;
-
-      if (initialParagraphText && processedContent) {
-        const savedText = initialParagraphText;
-
-        const searchRadius = 200;
-        const startSearch = Math.max(0, initialParagraphIndex - searchRadius);
-        const endSearch = Math.min(processedContent.length, initialParagraphIndex + searchRadius);
-
-        let foundIndex = -1;
-        for (let i = startSearch; i < endSearch; i++) {
-          const paraText = processedContent[i].segments.map((s) => s.text).join("").substring(0, 80);
-          if (paraText === savedText) {
-            foundIndex = i;
-            break;
-          }
-        }
-
-        if (foundIndex === -1) {
-          for (let i = 0; i < processedContent.length; i++) {
+          let foundIndex = -1;
+          for (let i = startSearch; i < endSearch; i++) {
             const paraText = processedContent[i].segments.map((s) => s.text).join("").substring(0, 80);
             if (paraText === savedText) {
               foundIndex = i;
               break;
             }
           }
+
+          if (foundIndex === -1) {
+            for (let i = 0; i < processedContent.length; i++) {
+              const paraText = processedContent[i].segments.map((s) => s.text).join("").substring(0, 80);
+              if (paraText === savedText) {
+                foundIndex = i;
+                break;
+              }
+            }
+          }
+
+          if (foundIndex >= 0) {
+            targetIndex = foundIndex;
+          }
         }
 
-        if (foundIndex >= 0) {
-          targetIndex = foundIndex;
-        }
-      }
-
-      if (targetIndex >= 0) {
         virtualizer.scrollToIndex(targetIndex, { align: "start" });
         const corrections = [300, 700, 1500];
         corrections.forEach((delay) => {
@@ -1046,6 +1027,21 @@ export const ReadingArea = forwardRef(function ReadingArea({
             virtualizer.scrollToIndex(targetIndex, { align: "start" });
           }, delay);
         });
+        return;
+      }
+
+      // 回退：如果没有段落索引，用百分比恢复
+      if (initialScrollPercent > 0) {
+        const applyScrollPercent = () => {
+          const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
+          if (maxScroll > 0) {
+            el.scrollTop = (initialScrollPercent / 100) * maxScroll;
+          }
+        };
+        applyScrollPercent();
+        requestAnimationFrame(applyScrollPercent);
+        setTimeout(applyScrollPercent, 450);
+        setTimeout(applyScrollPercent, 1200);
       }
     };
 

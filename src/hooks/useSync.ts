@@ -208,8 +208,12 @@ export function useSync() {
         updatedAt?: number;
       };
 
+      const saveSyncTime = (ts: number) => {
+        setLastSyncAt(ts);
+        localStorage.setItem(LAST_SYNC_KEY, String(ts));
+      };
+
       if (json.action === 'needBooks' && json.missingBookIds) {
-        // Phase 2: push missing books
         const missingBooks = options.getBooksForIds(json.missingBookIds);
         const booksRes = await postSyncJson(
           "/api/sync/push-books",
@@ -220,45 +224,46 @@ export function useSync() {
           const p = await readErrJson(booksRes);
           throw new Error(apiFailMessage('书籍推送失败', booksRes, p));
         }
-
-        const now = Date.now();
-        setLastSyncAt(now);
-        localStorage.setItem(LAST_SYNC_KEY, String(now));
+        const booksJson = (await parseSyncJsonResponse(booksRes)) as { updatedAt?: number };
+        saveSyncTime(booksJson.updatedAt ?? Date.now());
         return null;
       }
 
       if (json.action === 'pull') {
-        const now = Date.now();
-        setLastSyncAt(now);
-        localStorage.setItem(LAST_SYNC_KEY, String(now));
-
         const cloudManifest = json.cloudBookManifest ?? [];
         const localManifest = options.bookManifest;
-
         const booksMatch = checkBooksMatch(localManifest, cloudManifest);
 
         if (booksMatch) {
+          const cloudTs = json.data?.updatedAt ?? Date.now();
+          saveSyncTime(cloudTs);
           return json.data ?? null;
         }
 
-        // Books differ — pull full cloud data via pull route
-        const pullRes = await postSyncJson(
-          "/api/sync/pull",
-          { syncCode },
-          { signal: controller.signal }
-        );
-        if (!pullRes.ok) {
-          const p = await readErrJson(pullRes);
-          throw new Error(apiFailMessage('拉取书籍失败', pullRes, p));
+        // Books differ — try full pull; if it fails, still apply the lightweight data
+        try {
+          const pullRes = await postSyncJson(
+            "/api/sync/pull",
+            { syncCode },
+            { signal: controller.signal }
+          );
+          if (!pullRes.ok) {
+            throw new Error('full pull failed');
+          }
+          const pullJson = (await parseSyncJsonResponse(pullRes)) as { data: SyncMergedPayload };
+          const cloudTs = pullJson.data?.updatedAt ?? Date.now();
+          saveSyncTime(cloudTs);
+          return pullJson.data;
+        } catch {
+          // Graceful fallback: apply the lightweight data we already have (vocab + progress, no books)
+          const cloudTs = json.data?.updatedAt ?? Date.now();
+          saveSyncTime(cloudTs);
+          return json.data ?? null;
         }
-        const pullJson = (await parseSyncJsonResponse(pullRes)) as { data: SyncMergedPayload };
-        return pullJson.data;
       }
 
       // action === 'push'
-      const now = Date.now();
-      setLastSyncAt(now);
-      localStorage.setItem(LAST_SYNC_KEY, String(now));
+      saveSyncTime(json.updatedAt ?? Date.now());
       return null;
     } catch (err) {
       const msg =

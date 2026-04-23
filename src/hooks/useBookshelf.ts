@@ -59,8 +59,9 @@ export interface Book {
   lastReadAt: number;
   isSample: boolean;
   lastScrollPosition?: number;
-    lastParagraphIndex?: number; 
-  lastReadPage?: number; // Track current page for progress calculation
+  lastParagraphIndex?: number;
+  lastParagraphText?: string;
+  lastReadPage?: number;
   processedContent?: ProcessedContent;
   tableOfContents?: TocEntry[]; // Extracted TOC from EPUB
   bookmarks?: BookmarkEntry[]; // User bookmarks
@@ -405,8 +406,7 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
     );
   }, []);
 
-  // Update book scroll position
-  const updateScrollPosition = useCallback((id: string, position: number, paragraphIndex?: number) => {
+  const updateScrollPosition = useCallback((id: string, position: number, paragraphIndex?: number, paragraphText?: string) => {
     setBooks((prev) =>
       prev.map((b) =>
         b.id === id
@@ -414,6 +414,7 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
               ...b, 
               lastScrollPosition: position,
               ...(paragraphIndex !== undefined && paragraphIndex >= 0 ? { lastParagraphIndex: paragraphIndex } : {}),
+              ...(paragraphText !== undefined ? { lastParagraphText: paragraphText } : {}),
             }
           : b
       )
@@ -796,11 +797,13 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
           const prog = (typeof raw === 'object' && raw !== null ? raw : undefined) as {
             lastScrollPosition?: number;
             lastParagraphIndex?: number;
+            lastParagraphText?: string;
             lastReadAt?: number;
           } | undefined;
           if (prog) {
             rb.lastScrollPosition = prog.lastScrollPosition ?? rb.lastScrollPosition ?? 0;
             rb.lastParagraphIndex = prog.lastParagraphIndex ?? rb.lastParagraphIndex ?? 0;
+            if (prog.lastParagraphText) rb.lastParagraphText = prog.lastParagraphText;
             if (prog.lastReadAt) rb.lastReadAt = prog.lastReadAt;
           }
         }
@@ -823,6 +826,7 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
         const prog = (typeof raw === 'object' && raw !== null ? raw : undefined) as {
           lastScrollPosition?: number;
           lastParagraphIndex?: number;
+          lastParagraphText?: string;
           lastReadAt?: number;
           annotations?: Record<string, unknown>;
           sentenceAnnotations?: unknown[];
@@ -833,6 +837,7 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
           ...book,
           lastScrollPosition: prog.lastScrollPosition ?? book.lastScrollPosition ?? 0,
           lastParagraphIndex: prog.lastParagraphIndex ?? book.lastParagraphIndex ?? 0,
+          lastParagraphText: prog.lastParagraphText ?? book.lastParagraphText,
           lastReadAt: prog.lastReadAt ?? book.lastReadAt,
           annotations: (prog.annotations ?? book.annotations) as Book['annotations'],
           sentenceAnnotations: (prog.sentenceAnnotations ?? book.sentenceAnnotations) as Book['sentenceAnnotations'],

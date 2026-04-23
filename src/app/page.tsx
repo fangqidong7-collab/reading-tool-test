@@ -197,6 +197,7 @@ export default function Home() {
           title: string;
           lastScrollPosition: number;
           lastParagraphIndex: number;
+          lastParagraphText?: string;
           lastReadAt: number;
           annotations: Record<string, unknown>;
           sentenceAnnotations?: unknown[];
@@ -206,6 +207,7 @@ export default function Home() {
             title: book.title,
             lastScrollPosition: book.lastScrollPosition || 0,
             lastParagraphIndex: book.lastParagraphIndex || 0,
+            lastParagraphText: book.lastParagraphText || "",
             lastReadAt: book.lastReadAt,
             annotations: book.annotations,
             sentenceAnnotations: book.sentenceAnnotations || [],
@@ -259,6 +261,7 @@ export default function Home() {
           title: string;
           lastScrollPosition: number;
           lastParagraphIndex: number;
+          lastParagraphText?: string;
           lastReadAt: number;
           annotations: Record<string, unknown>;
           sentenceAnnotations?: unknown[];
@@ -268,6 +271,7 @@ export default function Home() {
             title: book.title,
             lastScrollPosition: book.lastScrollPosition || 0,
             lastParagraphIndex: book.lastParagraphIndex || 0,
+            lastParagraphText: book.lastParagraphText || "",
             lastReadAt: book.lastReadAt,
             annotations: book.annotations,
             sentenceAnnotations: book.sentenceAnnotations || [],
@@ -496,18 +500,23 @@ export default function Home() {
       const savedScrollPercent = currentBook.lastScrollPosition || 0;
       const savedParagraphIndex = currentBook.lastParagraphIndex ?? -1;
 
+      const persistedText = currentBook.lastParagraphText || "";
+
       processTextToSegmentsAsync(currentBook.content).then((processed) => {
         setProcessedContent(processed);
         setLoading(false);
 
-        let savedParagraphText = "";
-        if (savedParagraphIndex >= 0 && savedParagraphIndex < processed.length) {
-          savedParagraphText = processed[savedParagraphIndex].segments
+        if (persistedText) {
+          setCurrentParagraphText(persistedText);
+        } else if (savedParagraphIndex >= 0 && savedParagraphIndex < processed.length) {
+          const derived = processed[savedParagraphIndex].segments
             .map((s) => s.text)
             .join("")
             .substring(0, 80);
+          setCurrentParagraphText(derived);
+        } else {
+          setCurrentParagraphText("");
         }
-        setCurrentParagraphText(savedParagraphText);
       });
     }
   }, [currentBook?.id, currentBook?.content, currentBook?.annotations]);
@@ -582,12 +591,11 @@ export default function Home() {
     if (currentScrollPercent === 0 && currentParagraphIndex <= 0) return;
 
     const timeout = setTimeout(() => {
-      updateScrollPosition(bookId, currentScrollPercent, currentParagraphIndex);
-      console.log('已保存: percent=', currentScrollPercent, ', idx=', currentParagraphIndex, ', text=', currentParagraphText.substring(0, 30));
+      updateScrollPosition(bookId, currentScrollPercent, currentParagraphIndex, currentParagraphText || undefined);
     }, 1000);
 
     return () => clearTimeout(timeout);
-  }, [currentScrollPercent, currentParagraphIndex, updateScrollPosition]);
+  }, [currentScrollPercent, currentParagraphIndex, currentParagraphText, updateScrollPosition]);
 
 
 
