@@ -31,6 +31,12 @@ export interface SyncData {
   books?: Book[];
 }
 
+export interface BookManifestEntry {
+  id: string;
+  title: string;
+  contentHash: string;
+}
+
 /** 服务端合并后的负载（push 返回或 pull 返回的 data） */
 export type SyncMergedPayload = {
   vocabulary?: Record<
@@ -161,10 +167,18 @@ export function useSync() {
     }
   }, [syncCode]);
 
-  const syncBoth = useCallback(async (localData: {
-    vocabulary: Record<string, unknown>;
-    bookProgress: Record<string, unknown>;
-    books?: Book[];
+  /**
+   * 两阶段轻量同步：
+   * 1. POST /api/sync/push — 只传 vocab + progress + bookManifest（极小）
+   *    - action:"push"  → 本地数据已写入云端，返回 null
+   *    - action:"needBooks" → 需要补传缺失书籍，进入阶段 2
+   *    - action:"pull" → 云端更新，返回轻量数据，按需拉取书籍
+   * 2. POST /api/sync/push-books — 只传缺失书籍正文
+   */
+  const syncBoth = useCallback(async (options: {
+    data: { vocabulary: Record<string, unknown>; bookProgress: Record<string, unknown> };
+    bookManifest: BookManifestEntry[];
+    getBooksForIds: (ids: string[]) => Book[];
   }): Promise<SyncMergedPayload | null> => {
     if (!syncCode) return null;
     setSyncing(true);
@@ -175,24 +189,59 @@ export function useSync() {
     const timeoutId = window.setTimeout(() => controller.abort(), SYNC_MS);
 
     try {
+      // Phase 1: lightweight push
       const pushRes = await postSyncJson(
         "/api/sync/push",
-        { syncCode, data: localData },
+        { syncCode, data: options.data, lastSyncAt, bookManifest: options.bookManifest },
         { signal: controller.signal }
       );
       if (!pushRes.ok) {
         const p = await readErrJson(pushRes);
-        throw new Error(apiFailMessage('同步上传失败', pushRes, p));
+        throw new Error(apiFailMessage('同步失败', pushRes, p));
       }
 
-      const pushJson: unknown = await parseSyncJsonResponse(pushRes);
-      let merged: unknown = null;
-      if (typeof pushJson === 'object' && pushJson !== null && 'data' in pushJson) {
-        merged = (pushJson as { data: unknown }).data;
+      const json = (await parseSyncJsonResponse(pushRes)) as {
+        action: 'pull' | 'push' | 'needBooks';
+        data?: SyncMergedPayload;
+        cloudBookManifest?: Array<{ id: string; title: string }>;
+        missingBookIds?: string[];
+        updatedAt?: number;
+      };
+
+      if (json.action === 'needBooks' && json.missingBookIds) {
+        // Phase 2: push missing books
+        const missingBooks = options.getBooksForIds(json.missingBookIds);
+        const booksRes = await postSyncJson(
+          "/api/sync/push-books",
+          { syncCode, books: missingBooks },
+          { signal: controller.signal }
+        );
+        if (!booksRes.ok) {
+          const p = await readErrJson(booksRes);
+          throw new Error(apiFailMessage('书籍推送失败', booksRes, p));
+        }
+
+        const now = Date.now();
+        setLastSyncAt(now);
+        localStorage.setItem(LAST_SYNC_KEY, String(now));
+        return null;
       }
 
-      // 兼容旧部署：push 未返回 data 时再 pull 一次（仍比失败好）
-      if (merged === undefined || merged === null) {
+      if (json.action === 'pull') {
+        const now = Date.now();
+        setLastSyncAt(now);
+        localStorage.setItem(LAST_SYNC_KEY, String(now));
+
+        const cloudManifest = json.cloudBookManifest ?? [];
+        const localManifest = options.bookManifest;
+
+        const booksMatch = checkBooksMatch(localManifest, cloudManifest);
+
+        if (booksMatch) {
+          return json.data ?? null;
+        }
+
+        // Books differ — pull full cloud data via pull route
         const pullRes = await postSyncJson(
           "/api/sync/pull",
           { syncCode },
@@ -200,23 +249,17 @@ export function useSync() {
         );
         if (!pullRes.ok) {
           const p = await readErrJson(pullRes);
-          throw new Error(apiFailMessage('同步下载失败', pullRes, p));
+          throw new Error(apiFailMessage('拉取书籍失败', pullRes, p));
         }
-        const pullJson: unknown = await parseSyncJsonResponse(pullRes);
-        if (typeof pullJson === 'object' && pullJson !== null && 'data' in pullJson) {
-          merged = (pullJson as { data: unknown }).data;
-        }
+        const pullJson = (await parseSyncJsonResponse(pullRes)) as { data: SyncMergedPayload };
+        return pullJson.data;
       }
 
-      if (merged === undefined || merged === null) {
-        setSyncError('同步完成但未收到合并数据');
-        return null;
-      }
-
+      // action === 'push'
       const now = Date.now();
       setLastSyncAt(now);
       localStorage.setItem(LAST_SYNC_KEY, String(now));
-      return merged as SyncMergedPayload;
+      return null;
     } catch (err) {
       const msg =
         err instanceof Error && err.name === 'AbortError'
@@ -230,7 +273,7 @@ export function useSync() {
       window.clearTimeout(timeoutId);
       setSyncing(false);
     }
-  }, [syncCode]);
+  }, [syncCode, lastSyncAt]);
 
   const unbind = useCallback(() => {
     setSyncCode(null);
@@ -245,6 +288,7 @@ export function useSync() {
     syncing,
     lastSyncAt,
     syncError,
+    setSyncError,
     createSync,
     bindSyncCode,
     pushData,
@@ -252,4 +296,26 @@ export function useSync() {
     syncBoth,
     unbind,
   };
+}
+
+/**
+ * 比较本地 bookManifest 与云端 bookManifest。
+ * 云端的每本书在本地都能找到（按 ID 或 title）→ booksMatch。
+ */
+function checkBooksMatch(
+  localManifest: BookManifestEntry[],
+  cloudManifest: Array<{ id: string; title: string }>,
+): boolean {
+  const localIdSet = new Set(localManifest.map(e => e.id));
+  const localTitleSet = new Set(localManifest.map(e => e.title));
+
+  for (const cloud of cloudManifest) {
+    if (localIdSet.has(cloud.id)) continue;
+    if (localTitleSet.has(cloud.title)) continue;
+    return false;
+  }
+
+  if (cloudManifest.length !== localManifest.length) return false;
+
+  return true;
 }

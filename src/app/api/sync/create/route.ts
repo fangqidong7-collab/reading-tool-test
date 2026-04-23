@@ -4,9 +4,8 @@ import { parseJsonRequestBody } from '@/lib/syncRequest.server';
 
 export const maxDuration = 60;
 
-// 生成 6 位随机同步码
 function generateSyncCode(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 去掉容易混淆的 0OI1
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
   for (let i = 0; i < 6; i++) {
     code += chars[Math.floor(Math.random() * chars.length)];
@@ -14,17 +13,34 @@ function generateSyncCode(): string {
   return code;
 }
 
+interface SyncDataPayload {
+  vocabulary?: Record<string, unknown>;
+  bookProgress?: Record<string, unknown>;
+  books?: Array<Record<string, unknown>>;
+}
+
+function stripInternalBookFields(data: SyncDataPayload): SyncDataPayload {
+  if (!Array.isArray(data.books)) return data;
+  return {
+    ...data,
+    books: data.books.map((book) => {
+      const copy = { ...book };
+      delete copy._contentOmitted;
+      delete copy._contentHash;
+      return copy;
+    }),
+  };
+}
+
 export async function POST(request: Request) {
   try {
-    const parsed = (await parseJsonRequestBody(request)) as { data?: unknown };
+    const parsed = (await parseJsonRequestBody(request)) as { data?: SyncDataPayload };
     const { data } = parsed;
 
-    // data 包含: { vocabulary, bookProgress, settings, updatedAt }
     if (!data) {
       return NextResponse.json({ error: 'Data is required' }, { status: 400 });
     }
 
-    // 生成唯一同步码（防碰撞）
     let syncCode = generateSyncCode();
     let attempts = 0;
     while (await kv.get(`sync:${syncCode}`) && attempts < 10) {
@@ -32,18 +48,17 @@ export async function POST(request: Request) {
       attempts++;
     }
 
-    // 存储数据，设置 90 天过期
+    const cleaned = stripInternalBookFields(data);
     await kv.set(`sync:${syncCode}`, JSON.stringify({
-      ...data,
+      ...cleaned,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     }), { ex: 90 * 24 * 60 * 60 });
 
     return NextResponse.json({ syncCode });
   } catch (error) {
-    if (process.env.NODE_ENV !== 'production') {
-      console.error('[sync/create]', error);
-    }
-    return NextResponse.json({ error: 'Failed to create sync' }, { status: 500 });
+    console.error('[sync/create]', error);
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ error: `Failed to create sync: ${msg}` }, { status: 500 });
   }
 }

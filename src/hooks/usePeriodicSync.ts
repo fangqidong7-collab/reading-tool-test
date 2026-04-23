@@ -2,9 +2,9 @@
 
 import { useEffect, useRef, useCallback } from "react";
 
-// 自动同步间隔：60 分钟（毫秒）
-// 仅前台 + 每小时 + 需 syncCode
-const AUTO_SYNC_INTERVAL_MS = 60 * 60 * 1000;
+// 自动同步间隔：10 分钟（毫秒）
+// 轻量同步足够快，10 分钟完全可行
+const AUTO_SYNC_INTERVAL_MS = 10 * 60 * 1000;
 
 interface RemoteSyncData {
   vocabulary?: Record<string, unknown>;
@@ -33,7 +33,7 @@ interface UsePeriodicSyncReturn {
  *
  * 行为：
  * - 仅当用户已绑定同步码（syncCode 有值）时才启动定时器
- * - 每隔 AUTO_SYNC_INTERVAL_MS（60分钟）执行一次同步
+ * - 每隔 AUTO_SYNC_INTERVAL_MS（10分钟）执行一次同步
  * - 仅在页面可见时执行（监听 visibilitychange）
  * - 页面不可见时暂停计时，页面恢复可见时重新计时
  * - 若上一次同步尚未完成，跳过本轮触发

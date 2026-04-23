@@ -7,7 +7,7 @@ import { ReadingHomeView } from "@/app/_home/ReadingHomeView";
 import { usePeriodicSync } from "@/hooks/usePeriodicSync";
 import JSLibLoader from "@/components/JSLibLoader";
 import { useBookshelf, ProcessedContent, SentenceAnnotation, type Book } from "@/hooks/useBookshelf";
-import { useSync, type SyncData } from "@/hooks/useSync";
+import { useSync, type SyncData, type BookManifestEntry } from "@/hooks/useSync";
 import { sha256Utf8 } from "@/lib/syncSha256";
 import { useReadingSettings } from "@/hooks/useReadingSettings";
 import { lemmatize, getWordMeaning, getWordMeaningEn, findWordFamily, loadBuiltinDictionary, loadBuiltinDictionaryEn } from "@/lib/dictionary";
@@ -47,13 +47,12 @@ export default function Home() {
     removeFromGlobalVocabulary,
     clearGlobalVocabulary,
     mergeGlobalVocabulary,
-    mergeBooksFromRemote,
     updateBooksSyncHashes,
+    replaceAllFromRemote,
     incrementCorrectCount,
     clearMasteredWords,
     addSentenceAnnotation,
     removeSentenceAnnotation,
-    mergeBookProgress,
   } = useBookshelf();
 
 
@@ -161,6 +160,7 @@ export default function Home() {
     syncing,
     lastSyncAt,
     syncError,
+    setSyncError,
     createSync,
     bindSyncCode,
     syncBoth,
@@ -172,32 +172,83 @@ export default function Home() {
     setSyncPanelOpen(true);
   }, []);
 
-  // Build sync data from current state（正文未改时省略 content，gzip 压缩由 useSync 侧处理）
-  const buildSyncData = useCallback(async (): Promise<{
+  // 轻量同步数据：vocab + progress + bookManifest，不含书籍正文
+  const buildLightSyncData = useCallback(async (): Promise<{
+    data: { vocabulary: Record<string, unknown>; bookProgress: Record<string, unknown> };
+    bookManifest: BookManifestEntry[];
+    contentHashes: Record<string, string>;
+  }> => {
+    const contentHashes: Record<string, string> = {};
+    const bookManifest: BookManifestEntry[] = [];
+
+    await Promise.all(
+      books.map(async (book) => {
+        const contentStr = typeof book.content === "string" ? book.content : "";
+        const hash = await sha256Utf8(contentStr);
+        contentHashes[book.id] = hash;
+        bookManifest.push({ id: book.id, title: book.title, contentHash: hash });
+      })
+    );
+
+    return {
+      data: {
+        vocabulary: globalVocabulary,
+        bookProgress: books.reduce((acc: Record<string, {
+          title: string;
+          lastScrollPosition: number;
+          lastParagraphIndex: number;
+          lastReadAt: number;
+          annotations: Record<string, unknown>;
+          sentenceAnnotations?: unknown[];
+          bookmarks?: unknown[];
+        }>, book) => {
+          acc[book.id] = {
+            title: book.title,
+            lastScrollPosition: book.lastScrollPosition || 0,
+            lastParagraphIndex: book.lastParagraphIndex || 0,
+            lastReadAt: book.lastReadAt,
+            annotations: book.annotations,
+            sentenceAnnotations: book.sentenceAnnotations || [],
+            bookmarks: book.bookmarks || [],
+          };
+          return acc;
+        }, {}),
+      },
+      bookManifest,
+      contentHashes,
+    };
+  }, [globalVocabulary, books]);
+
+  // 按 ID 列表构建完整书籍数据（仅在 needBooks 时调用）
+  const buildBooksPayload = useCallback((bookIds: string[]): Book[] => {
+    const idSet = new Set(bookIds);
+    return books
+      .filter(b => idSet.has(b.id))
+      .map(book => {
+        const { processedContent, syncContentHash, ...rest } = book;
+        void processedContent;
+        void syncContentHash;
+        return rest;
+      });
+  }, [books]);
+
+  // 首次创建同步码时的完整数据（含全部书籍正文）
+  const buildFullSyncData = useCallback(async (): Promise<{
     data: SyncData;
     contentHashes: Record<string, string>;
   }> => {
     const contentHashes: Record<string, string> = {};
-    const booksPayload = await Promise.all(
-      books.map(async (book) => {
-        const { processedContent, syncContentHash, ...rest } = book;
-        void processedContent;
-        const contentStr = typeof rest.content === "string" ? rest.content : "";
-        const hash = await sha256Utf8(contentStr);
-        contentHashes[rest.id] = hash;
+    const booksPayload = books.map((book) => {
+      const { processedContent, syncContentHash, ...rest } = book;
+      void processedContent;
+      void syncContentHash;
+      return rest;
+    });
 
-        const prevSynced = syncContentHash;
-        if (prevSynced && hash === prevSynced && contentStr.length > 0) {
-          const { content, ...withoutContent } = rest;
-          void content;
-          return {
-            ...withoutContent,
-            _contentOmitted: true as const,
-            _contentHash: hash,
-          };
-        }
-
-        return { ...rest, _contentHash: hash };
+    await Promise.all(
+      booksPayload.map(async (book) => {
+        const contentStr = typeof book.content === "string" ? book.content : "";
+        contentHashes[book.id] = await sha256Utf8(contentStr);
       })
     );
 
@@ -230,190 +281,94 @@ export default function Home() {
     };
   }, [globalVocabulary, books]);
 
-  // Handle create sync - push current local data to cloud
+  // Handle create sync - push current local data to cloud (full payload with books)
   const handleCreateSync = useCallback(async () => {
-    const { data, contentHashes } = await buildSyncData();
-    const code = await createSync(data);
-    if (code) {
-      console.log('已生成同步码:', code);
-      setSyncJustCreated(true);
-      updateBooksSyncHashes(contentHashes);
+    try {
+      const { data, contentHashes } = await buildFullSyncData();
+      const code = await createSync(data);
+      if (code) {
+        console.log('已生成同步码:', code);
+        setSyncJustCreated(true);
+        updateBooksSyncHashes(contentHashes);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '创建同步失败';
+      setSyncError(msg);
     }
-  }, [buildSyncData, createSync, updateBooksSyncHashes]);
+  }, [buildFullSyncData, createSync, updateBooksSyncHashes, setSyncError]);
 
-  // Handle bind existing sync code - pull data from cloud and merge
+  // Handle bind existing sync code — 绑定时用云端数据整体覆盖本地
   const handleBindSync = useCallback(async (code: string) => {
     const remoteData = await bindSyncCode(code);
     if (remoteData) {
-      // Merge remote vocabulary into local
-      if (remoteData.vocabulary) {
-        Object.entries(remoteData.vocabulary).forEach(([word, info]) => {
-          const existing = globalVocabulary[word];
-          // 智能合并：词汇表取并集，count 取较大值
-          const infoObj = info as { root?: string; meaning?: string; pos?: string; count?: number } | undefined;
-          const existingCount = existing?.correctCount || 0;
-          const remoteCount = infoObj?.count || 0;
-          if (!existing || remoteCount > existingCount) {
-            addToGlobalVocabulary(
-              infoObj?.root || word,
-              infoObj?.meaning || '',
-              infoObj?.pos || ''
-            );
-          }
-        });
-      }
-      // 进度取较大值，按 bookId 匹配，找不到则按 title 匹配
-      if (remoteData.bookProgress) {
-        Object.entries(remoteData.bookProgress as Record<string, {
-          title?: string;
-          lastScrollPosition?: number;
-          lastParagraphIndex?: number;
-          annotations?: Record<string, unknown>;
-          sentenceAnnotations?: unknown[];
-          bookmarks?: unknown[];
-        }>).forEach(([bookId, progress]) => {
-          // 先按 bookId 查找
-          let localBook = books.find(b => b.id === bookId);
-          // 找不到则按 title 查找
-          if (!localBook && progress.title) {
-            localBook = books.find(b => b.title === progress.title);
-          }
-          if (localBook && progress) {
-            if ((progress.lastScrollPosition ?? 0) > (localBook.lastScrollPosition ?? 0)) {
-              updateScrollPosition(localBook.id, progress.lastScrollPosition ?? 0, progress.lastParagraphIndex ?? 0);
-            }
-            if (progress.annotations) {
-              mergeBookProgress(localBook.id, { 
-                annotations: progress.annotations as Parameters<typeof mergeBookProgress>[1]['annotations']
-              });
-            }
-          }
-        });
-      }
-      // 合并远端书籍列表（upsert + 智能合并）
-      if (remoteData.books && mergeBooksFromRemote) {
-        mergeBooksFromRemote(remoteData.books as Book[]);
+      replaceAllFromRemote(remoteData);
+      if (remoteData.books) {
         const hashes = await hashesFromMergedBooks(remoteData.books as Book[]);
         updateBooksSyncHashes(hashes);
       }
     }
   }, [
     bindSyncCode,
-    globalVocabulary,
-    addToGlobalVocabulary,
-    books,
-    updateScrollPosition,
-    mergeBookProgress,
-    mergeBooksFromRemote,
+    replaceAllFromRemote,
     updateBooksSyncHashes,
   ]);
 
-  // Handle sync - bidirectional sync (push local then pull merged result)
+  // Handle sync — 两阶段轻量同步
+  // syncBoth 返回带 books 的 data → 云端书目变化，整体覆盖
+  // syncBoth 返回不带 books 的 data → 云端只更新了 vocab/progress
+  // syncBoth 返回 null → 本地更新已推送到云端
   const handleSync = useCallback(async () => {
-    const { data: localPayload } = await buildSyncData();
-    const remoteData = await syncBoth(localPayload);
-    if (!remoteData) return;
+    try {
+      const { data: lightData, bookManifest, contentHashes } = await buildLightSyncData();
+      const remoteData = await syncBoth({ data: lightData, bookManifest, getBooksForIds: buildBooksPayload });
 
-    // 用服务端合并后的数据更新本地
-    if (remoteData.vocabulary) {
-      mergeGlobalVocabulary(remoteData.vocabulary);
-    }
-
-    if (remoteData.bookProgress) {
-      for (const [bookId, progress] of Object.entries(remoteData.bookProgress) as [string, {
-        title?: string;
-        lastScrollPosition?: number;
-        lastParagraphIndex?: number;
-        annotations?: Record<string, { root: string; meaning: string; pos: string; count?: number }>;
-        sentenceAnnotations?: unknown[];
-        bookmarks?: unknown[];
-      }][]) {
-        // 先按 bookId 查找本地书籍
-        let localBook = books.find(b => b.id === bookId);
-        // 找不到则按 title 查找
-        if (!localBook && progress.title) {
-          localBook = books.find(b => b.title === progress.title);
+      if (remoteData) {
+        replaceAllFromRemote(remoteData);
+        if (remoteData.books) {
+          const hashes = await hashesFromMergedBooks(remoteData.books as Book[]);
+          updateBooksSyncHashes(hashes);
         }
-        // 服务端返回的数据已经是合并后的，直接使用
-        if (localBook) {
-          mergeBookProgress(localBook.id, {
-            lastScrollPosition: progress.lastScrollPosition,
-            lastParagraphIndex: progress.lastParagraphIndex,
-            annotations: progress.annotations,
-            sentenceAnnotations: progress.sentenceAnnotations as Parameters<typeof mergeBookProgress>[1]['sentenceAnnotations'],
-            bookmarks: progress.bookmarks as Parameters<typeof mergeBookProgress>[1]['bookmarks'],
-          });
-        }
+      } else {
+        updateBooksSyncHashes(contentHashes);
       }
-    }
-
-    // 用服务端合并后的书籍列表更新本地
-    if (remoteData.books && mergeBooksFromRemote) {
-      mergeBooksFromRemote(remoteData.books as Book[]);
-      const hashes = await hashesFromMergedBooks(remoteData.books as Book[]);
-      updateBooksSyncHashes(hashes);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '同步失败';
+      setSyncError(msg);
     }
   }, [
     syncBoth,
-    buildSyncData,
-    books,
-    mergeGlobalVocabulary,
-    mergeBookProgress,
-    mergeBooksFromRemote,
+    buildLightSyncData,
+    buildBooksPayload,
+    replaceAllFromRemote,
     updateBooksSyncHashes,
+    setSyncError,
   ]);
 
-  // 自动同步专用：仅返回远程数据，不做本地合并（由 hook 调用方决定何时合并）
-  // 这里复用 handleSync 的逻辑，但通过回调通知外部有新的远程数据
   const performSyncForPeriodic = useCallback(async () => {
-    const { data: localPayload } = await buildSyncData();
-    const remoteData = await syncBoth(localPayload);
-    if (!remoteData) return null;
+    try {
+      const { data: lightData, bookManifest, contentHashes } = await buildLightSyncData();
+      const remoteData = await syncBoth({ data: lightData, bookManifest, getBooksForIds: buildBooksPayload });
 
-    // 复用 handleSync 的合并逻辑
-    if (remoteData.vocabulary) {
-      mergeGlobalVocabulary(remoteData.vocabulary);
-    }
-
-    if (remoteData.bookProgress) {
-      for (const [bookId, progress] of Object.entries(remoteData.bookProgress) as [string, {
-        title?: string;
-        lastScrollPosition?: number;
-        lastParagraphIndex?: number;
-        annotations?: Record<string, { root: string; meaning: string; pos: string; count?: number }>;
-        sentenceAnnotations?: unknown[];
-        bookmarks?: unknown[];
-      }][]) {
-        let localBook = books.find(b => b.id === bookId);
-        if (!localBook && progress.title) {
-          localBook = books.find(b => b.title === progress.title);
+      if (remoteData) {
+        replaceAllFromRemote(remoteData);
+        if (remoteData.books) {
+          const hashes = await hashesFromMergedBooks(remoteData.books as Book[]);
+          updateBooksSyncHashes(hashes);
         }
-        if (localBook) {
-          mergeBookProgress(localBook.id, {
-            lastScrollPosition: progress.lastScrollPosition,
-            lastParagraphIndex: progress.lastParagraphIndex,
-            annotations: progress.annotations,
-            sentenceAnnotations: progress.sentenceAnnotations as Parameters<typeof mergeBookProgress>[1]['sentenceAnnotations'],
-            bookmarks: progress.bookmarks as Parameters<typeof mergeBookProgress>[1]['bookmarks'],
-          });
-        }
+      } else {
+        updateBooksSyncHashes(contentHashes);
       }
-    }
 
-    if (remoteData.books && mergeBooksFromRemote) {
-      mergeBooksFromRemote(remoteData.books as Book[]);
-      const hashes = await hashesFromMergedBooks(remoteData.books as Book[]);
-      updateBooksSyncHashes(hashes);
+      return remoteData;
+    } catch (err) {
+      console.warn('[PeriodicSync]', err instanceof Error ? err.message : err);
+      return null;
     }
-
-    return remoteData;
   }, [
     syncBoth,
-    buildSyncData,
-    books,
-    mergeGlobalVocabulary,
-    mergeBookProgress,
-    mergeBooksFromRemote,
+    buildLightSyncData,
+    buildBooksPayload,
+    replaceAllFromRemote,
     updateBooksSyncHashes,
   ]);
 

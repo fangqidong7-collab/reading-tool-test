@@ -765,6 +765,83 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
     );
   }, []);
 
+  /**
+   * 云端数据整体覆盖本地（时间戳同步策略：云端更新时调用）。
+   * 词汇表直接替换；书籍列表直接替换（保留本地 sample book）。
+   */
+  const replaceAllFromRemote = useCallback((remote: {
+    vocabulary?: Record<string, { root: string; meaning: string; pos: string; correctCount?: number }>;
+    books?: Book[];
+    bookProgress?: Record<string, unknown>;
+  }) => {
+    if (remote.vocabulary) {
+      const normalized: typeof globalVocabulary = {};
+      for (const [k, v] of Object.entries(remote.vocabulary)) {
+        normalized[k] = { ...v, correctCount: v.correctCount ?? 0 };
+      }
+      setGlobalVocabulary(normalized);
+    }
+
+    if (remote.books) {
+      const remoteBooks: Book[] = remote.books.map((b) => ({
+        ...b,
+        processedContent: undefined,
+        annotations: (b.annotations ?? {}) as Book['annotations'],
+        bookmarks: (b.bookmarks ?? []) as Book['bookmarks'],
+      }));
+
+      if (remote.bookProgress) {
+        for (const rb of remoteBooks) {
+          const raw = remote.bookProgress[rb.id];
+          const prog = (typeof raw === 'object' && raw !== null ? raw : undefined) as {
+            lastScrollPosition?: number;
+            lastParagraphIndex?: number;
+            lastReadAt?: number;
+          } | undefined;
+          if (prog) {
+            rb.lastScrollPosition = prog.lastScrollPosition ?? rb.lastScrollPosition ?? 0;
+            rb.lastParagraphIndex = prog.lastParagraphIndex ?? rb.lastParagraphIndex ?? 0;
+            if (prog.lastReadAt) rb.lastReadAt = prog.lastReadAt;
+          }
+        }
+      }
+
+      setBooks((prev) => {
+        const sample = prev.find((b) => b.isSample);
+        const hasSampleInRemote = remoteBooks.some((b) => b.id === SAMPLE_BOOK.id);
+        const base = hasSampleInRemote ? remoteBooks : (sample ? [sample, ...remoteBooks] : remoteBooks);
+        base.sort((a, b) => {
+          if (a.isSample && !b.isSample) return 1;
+          if (!a.isSample && b.isSample) return -1;
+          return (b.lastReadAt || 0) - (a.lastReadAt || 0);
+        });
+        return base;
+      });
+    } else if (remote.bookProgress) {
+      setBooks((prev) => prev.map((book) => {
+        const raw = remote.bookProgress![book.id];
+        const prog = (typeof raw === 'object' && raw !== null ? raw : undefined) as {
+          lastScrollPosition?: number;
+          lastParagraphIndex?: number;
+          lastReadAt?: number;
+          annotations?: Record<string, unknown>;
+          sentenceAnnotations?: unknown[];
+          bookmarks?: unknown[];
+        } | undefined;
+        if (!prog) return book;
+        return {
+          ...book,
+          lastScrollPosition: prog.lastScrollPosition ?? book.lastScrollPosition ?? 0,
+          lastParagraphIndex: prog.lastParagraphIndex ?? book.lastParagraphIndex ?? 0,
+          lastReadAt: prog.lastReadAt ?? book.lastReadAt,
+          annotations: (prog.annotations ?? book.annotations) as Book['annotations'],
+          sentenceAnnotations: (prog.sentenceAnnotations ?? book.sentenceAnnotations) as Book['sentenceAnnotations'],
+          bookmarks: (prog.bookmarks ?? book.bookmarks) as Book['bookmarks'],
+        };
+      }));
+    }
+  }, [globalVocabulary]);
+
   return {
     books,
     currentBook,
@@ -795,6 +872,7 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
     mergeBookProgress,
     mergeBooksFromRemote,
     updateBooksSyncHashes,
+    replaceAllFromRemote,
   };
 
 }

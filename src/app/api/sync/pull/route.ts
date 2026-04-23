@@ -22,9 +22,8 @@ export async function POST(request: Request) {
 
     return jsonResponseMaybeGzip({ data: JSON.parse(data as string) });
   } catch (error) {
-    if (process.env.NODE_ENV !== 'production') {
-      console.error('[sync/pull]', error);
-    }
-    return NextResponse.json({ error: 'Pull failed' }, { status: 500 });
+    console.error('[sync/pull]', error);
+    const detail = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ error: `Pull failed: ${detail}` }, { status: 500 });
   }
 }
