@@ -146,9 +146,9 @@ export interface ReadingHomeViewProps {
 }
 
 const noteInputColors = {
-  light: { bg: "#4a90d9", text: "#fff" },
-  dark: { bg: "#6ba3e0", text: "#fff" },
-  noteBtn: { light: "#3498db", dark: "#2980b9" },
+  light: { bg: "#8898A8", text: "#fff" },
+  dark: { bg: "#8898A8", text: "#fff" },
+  noteBtn: { light: "#8898A8", dark: "#7A8B9E" },
 };
 
 export function ReadingHomeView(props: ReadingHomeViewProps) {
@@ -335,16 +335,16 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
                 color:
                   leftDrawerTab === "toc"
                     ? isDarkMode
-                      ? "#6ba3e0"
-                      : "#4a90d9"
+                      ? "#8898A8"
+                      : "#8898A8"
                     : isDarkMode
                       ? "#888"
                       : "#666",
                 borderBottomColor:
                   leftDrawerTab === "toc"
                     ? isDarkMode
-                      ? "#6ba3e0"
-                      : "#4a90d9"
+                      ? "#8898A8"
+                      : "#8898A8"
                     : "transparent",
               }}
             >
@@ -357,16 +357,16 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
                 color:
                   leftDrawerTab === "bookmarks"
                     ? isDarkMode
-                      ? "#6ba3e0"
-                      : "#4a90d9"
+                      ? "#8898A8"
+                      : "#8898A8"
                     : isDarkMode
                       ? "#888"
                       : "#666",
                 borderBottomColor:
                   leftDrawerTab === "bookmarks"
                     ? isDarkMode
-                      ? "#6ba3e0"
-                      : "#4a90d9"
+                      ? "#8898A8"
+                      : "#8898A8"
                     : "transparent",
               }}
             >
@@ -443,8 +443,8 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
                         style={{
                           color: isActive
                             ? isDarkMode
-                              ? "#6ba3e0"
-                              : "#4a90d9"
+                              ? "#8898A8"
+                              : "#8898A8"
                             : isDarkMode
                               ? "#ccc"
                               : "#333",
@@ -470,7 +470,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
                         }
                       }}
                       style={{
-                        color: isDarkMode ? "#6ba3e0" : "#4a90d9",
+                        color: isDarkMode ? "#8898A8" : "#8898A8",
                         borderColor: isDarkMode ? "#444" : "#ddd",
                         backgroundColor: isDarkMode ? "#2a2a3e" : "#f8f9fa",
                       }}
@@ -501,7 +501,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
                     onClick={toggleCurrentBookmark}
                     style={{
                       backgroundColor: isDarkMode ? "#3a3a4e" : "#f0f0f0",
-                      color: isDarkMode ? "#6ba3e0" : "#4a90d9",
+                      color: isDarkMode ? "#8898A8" : "#8898A8",
                     }}
                   >
                     {currentBook.bookmarks.some((bm) => bm.page === currentScrollPercent)
@@ -544,7 +544,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
                     onClick={toggleCurrentBookmark}
                     style={{
                       backgroundColor: isDarkMode ? "#3a3a4e" : "#f0f0f0",
-                      color: isDarkMode ? "#6ba3e0" : "#4a90d9",
+                      color: isDarkMode ? "#8898A8" : "#8898A8",
                     }}
                   >
                     添加当前页书签
@@ -574,7 +574,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
             style={{
               height: "100%",
               width: "30%",
-              background: "linear-gradient(90deg, #4a90d9, #6ba3e0, #4a90d9)",
+              background: "linear-gradient(90deg, #8898A8, #8898A8, #8898A8)",
               borderRadius: "0 2px 2px 0",
               animation: "topBarSlide 1.2s ease-in-out infinite",
             }}
@@ -1213,7 +1213,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
         }
 
         .search-input:focus {
-          border-color: #4a90d9;
+          border-color: #8898A8;
         }
 
         .search-results-count {
@@ -1275,7 +1275,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
           width: 40px;
           height: 40px;
           border: 3px solid #e0e0e0;
-          border-top-color: #4a90d9;
+          border-top-color: #8898A8;
           border-radius: 50%;
           animation: spin 0.8s linear infinite;
         }
@@ -1528,7 +1528,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
           width: 12px;
           height: 12px;
           border: 2px solid #e0e0e0;
-          border-top-color: #4a90d9;
+          border-top-color: #8898A8;
           border-radius: 50%;
           animation: spin 0.8s linear infinite;
         }

@@ -41,7 +41,7 @@ export function SyncPanel({
     text: isDarkMode ? "#e0e0e0" : "#333333",
     secondary: isDarkMode ? "#888" : "#666",
     border: isDarkMode ? "#333" : "#e0e0e0",
-    accent: isDarkMode ? "#6ba3e0" : "#4a90d9",
+    accent: isDarkMode ? "#8898A8" : "#8898A8",
     cardBg: isDarkMode ? "#2a2a3e" : "#f8f9fa",
   };
 

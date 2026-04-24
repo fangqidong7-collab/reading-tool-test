@@ -166,9 +166,6 @@ export function BookshelfHomeView({
               <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
             </svg>
             <span>词汇表</span>
-            {Object.keys(globalVocabulary).length > 0 && (
-              <span className="tab-bar-badge">{Object.keys(globalVocabulary).length}</span>
-            )}
           </button>
           <button
             className={`tab-bar-item ${activeTab === "backup" ? "active" : ""}`}
@@ -251,11 +248,11 @@ export function BookshelfHomeView({
           }
 
           .tab-bar-item.active {
-            color: #4a90d9;
+            color: #8898A8;
           }
 
           .tab-bar-item.active svg {
-            stroke: #4a90d9;
+            stroke: #8898A8;
           }
 
           .tab-bar-badge {

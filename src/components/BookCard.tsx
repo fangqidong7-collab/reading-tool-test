@@ -3,25 +3,25 @@
 import React from "react";
 import type { Book } from "@/hooks/useBookshelf";
 
-function getCoverColor(title: string): string {
-  const colors = [
-    "linear-gradient(135deg, #9BC6ED 0%, #86B5DC 100%)",  // Jordy蓝 浅
-    "linear-gradient(135deg, #4E90F5 0%, #3A7DE0 100%)",  // Chefchaouen蓝
-    "linear-gradient(135deg, #94C000 0%, #7EA800 100%)",  // 苹果绿
-    "linear-gradient(135deg, #4B6B03 0%, #3D5902 100%)",  // 苔藓绿
-    "linear-gradient(135deg, #6FA8DC 0%, #5B93C7 100%)",  // 天空蓝
-    "linear-gradient(135deg, #7CB342 0%, #689F38 100%)",  // 草地绿
-    "linear-gradient(135deg, #5C9BE6 0%, #4888D3 100%)",  // 矢车菊蓝
-    "linear-gradient(135deg, #8DB600 0%, #769A00 100%)",  // 黄绿
-    "linear-gradient(135deg, #4A7FC4 0%, #3B6DAF 100%)",  // 钴蓝
-    "linear-gradient(135deg, #66A355 0%, #558B45 100%)",  // 森林绿
-    "linear-gradient(135deg, #87BFEA 0%, #72ABD8 100%)",  // 粉蓝
-    "linear-gradient(135deg, #5E8C31 0%, #4D7528 100%)",  // 橄榄绿
+function getCoverColors(title: string): { bg: string; spine: string } {
+  const palettes = [
+    { bg: "#8EA8B8", spine: "#7A95A5" },
+    { bg: "#9AAE8E", spine: "#889C7D" },
+    { bg: "#A898AB", spine: "#958698" },
+    { bg: "#B0A494", spine: "#9D9183" },
+    { bg: "#8898A8", spine: "#76879A" },
+    { bg: "#93AE9A", spine: "#819C88" },
+    { bg: "#8BA59E", spine: "#7A9490" },
+    { bg: "#7E8F9C", spine: "#6E7F8C" },
+    { bg: "#A89890", spine: "#968680" },
+    { bg: "#9CABA0", spine: "#8A9A8F" },
+    { bg: "#A5A0B0", spine: "#938EA0" },
+    { bg: "#B0A898", spine: "#9E9688" },
   ];
 
   const firstChar = title.trim().charAt(0).toUpperCase();
   const code = firstChar.charCodeAt(0) || 0;
-  return colors[code % colors.length];
+  return palettes[code % palettes.length];
 }
 
 interface BookCardProps {
@@ -79,62 +79,21 @@ export function BookCard({
     }
   };
 
-  const coverBg = getCoverColor(book.title);
+  const { bg, spine } = getCoverColors(book.title);
 
   return (
     <div className="book-card" onClick={onOpen}>
-      <div className="book-cover" style={{ background: coverBg }}>
-        <div className="book-icon">
-          <svg
-            width="48"
-            height="48"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-          >
-            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-          </svg>
+      <div className="book-cover-3d">
+        <div className="book-spine" style={{ background: spine }} />
+        <div className="book-front" style={{ background: bg }}>
+          <span className="book-cover-title">{book.title}</span>
+          <div className="book-cover-progress">
+            {progress >= 0 ? `${progress}%` : ""}
+          </div>
         </div>
       </div>
-      <div className="book-info">
-        <h3 className="book-title" title={book.title}>
-          {book.title}
-        </h3>
-        <div className="book-meta">
-          <div className="progress-bar">
-            {progress >= 0 ? (
-              <div className="progress-fill" style={{ width: `${progress}%` }} />
-            ) : (
-              <div className="progress-fill unread" style={{ width: '2%' }} />
-            )}
-          </div>
-          <div className="progress-text">
-            {progress >= 0 ? (
-              <>
-                <span className="progress-value">{progress}%</span>
-                <span className="progress-label">已读</span>
-              </>
-            ) : (
-              <span className="progress-value unread-text">未读</span>
-            )}
-          </div>
-        </div>
-        <div className="book-time">
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <circle cx="12" cy="12" r="10" />
-            <polyline points="12 6 12 12 16 14" />
-          </svg>
-          <span>{lastRead}</span>
-        </div>
+      <div className="book-time">
+        <span>{lastRead}</span>
       </div>
       {!book.isSample && (
         <div className="card-actions">

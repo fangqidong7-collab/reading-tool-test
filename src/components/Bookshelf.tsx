@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { BookCard } from "./BookCard";
 import { AddBookModal } from "./AddBookModal";
 import type { Book } from "@/hooks/useBookshelf";
@@ -43,6 +43,7 @@ export function Bookshelf({
   lastSyncAt,
 }: BookshelfProps) {
   const [showAddModal, setShowAddModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const handleAddBook = (title: string, content: string, tableOfContents?: TocEntry[]) => {
     const newBook = onAddBook(title, content, tableOfContents);
@@ -50,12 +51,28 @@ export function Bookshelf({
     onAddSuccess?.();
   };
 
+  const userBooks = useMemo(() => {
+    const filtered = books.filter((b) => !b.isSample);
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      return filtered.filter((b) => b.title.toLowerCase().includes(q));
+    }
+    return filtered;
+  }, [books, searchQuery]);
+
+  const sampleBooks = useMemo(() => {
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      return books.filter((b) => b.isSample && b.title.toLowerCase().includes(q));
+    }
+    return books.filter((b) => b.isSample);
+  }, [books, searchQuery]);
+
   return (
     <div className="bookshelf">
       <div className="bookshelf-header">
         <div className="header-left-area">
           <h1 className="bookshelf-title">我的书架</h1>
-
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           {lastSyncAt && (
@@ -76,20 +93,31 @@ export function Bookshelf({
         </div>
       </div>
 
-      <div className="book-grid">
-        {/* Add New Book Card - always first */}
-        <BookCard
-          isAddCard
-          book={{} as Book}
-          progress={0}
-          lastRead=""
-          onOpen={() => setShowAddModal(true)}
-          onDelete={() => {}}
+      {/* Search bar */}
+      <div className="bookshelf-search">
+        <svg className="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="11" cy="11" r="8" />
+          <line x1="21" y1="21" x2="16.65" y2="16.65" />
+        </svg>
+        <input
+          type="text"
+          className="search-input"
+          placeholder="搜索书名..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
         />
+        {searchQuery && (
+          <button className="search-clear" onClick={() => setSearchQuery("")}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        )}
+      </div>
 
-        {/* User books sorted by last opened (most recent first) */}
-        {[...books]
-          .filter((b) => !b.isSample)
+      <div className="book-grid">
+        {[...userBooks]
           .sort((a, b) => (b.lastReadAt || 0) - (a.lastReadAt || 0))
           .map((book) => (
             <BookCard
@@ -103,20 +131,24 @@ export function Bookshelf({
             />
           ))}
 
-        {/* Sample book at the end */}
-        {books
-          .filter((b) => b.isSample)
-          .map((book) => (
-            <BookCard
-              key={book.id}
-              book={book}
-              progress={getProgress(book)}
-              lastRead={formatLastRead(book.lastReadAt)}
-              onOpen={() => onOpenBook(book.id)}
-              onDelete={() => {}}
-            />
-          ))}
+        {sampleBooks.map((book) => (
+          <BookCard
+            key={book.id}
+            book={book}
+            progress={getProgress(book)}
+            lastRead={formatLastRead(book.lastReadAt)}
+            onOpen={() => onOpenBook(book.id)}
+            onDelete={() => {}}
+          />
+        ))}
       </div>
+
+      <button className="fab-add-book" onClick={() => setShowAddModal(true)} title="添加新书">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+          <line x1="12" y1="5" x2="12" y2="19" />
+          <line x1="5" y1="12" x2="19" y2="12" />
+        </svg>
+      </button>
 
       <AddBookModal
         isOpen={showAddModal}
