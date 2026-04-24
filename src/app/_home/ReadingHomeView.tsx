@@ -112,6 +112,7 @@ export interface ReadingHomeViewProps {
     endCharIndex: number;
   }) => void;
   handleTranslateSentence: () => void;
+  handleAddNote: (noteText: string) => void;
   closePendingSelection: () => void;
   // Callbacks - settings
   setFontSize: (size: number) => void;
@@ -143,6 +144,12 @@ export interface ReadingHomeViewProps {
   goToPrevSearchResult: () => void;
   closeSearch: () => void;
 }
+
+const noteInputColors = {
+  light: { bg: "#4a90d9", text: "#fff" },
+  dark: { bg: "#6ba3e0", text: "#fff" },
+  noteBtn: { light: "#3498db", dark: "#2980b9" },
+};
 
 export function ReadingHomeView(props: ReadingHomeViewProps) {
   const {
@@ -222,6 +229,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
     closeTooltip,
     handleTextSelect,
     handleTranslateSentence,
+    handleAddNote,
     closePendingSelection,
     setFontSize,
     setLineHeight,
@@ -250,6 +258,23 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
     goToPrevSearchResult,
     closeSearch,
   } = props;
+
+  const [showNoteInput, setShowNoteInput] = React.useState(false);
+  const [noteText, setNoteText] = React.useState("");
+  const noteInputRef = React.useRef<HTMLTextAreaElement>(null);
+
+  React.useEffect(() => {
+    if (!pendingSelection) {
+      setShowNoteInput(false);
+      setNoteText("");
+    }
+  }, [pendingSelection]);
+
+  React.useEffect(() => {
+    if (showNoteInput) {
+      setTimeout(() => noteInputRef.current?.focus(), 50);
+    }
+  }, [showNoteInput]);
 
   return (
     <div className="app-container" style={{ backgroundColor }}>
@@ -924,7 +949,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
         />
       )}
 
-      {/* 句子翻译浮窗 */}
+      {/* 句子标注浮窗 */}
       {pendingSelection && (
         <>
           <div
@@ -944,8 +969,8 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
               left: Math.max(
                 10,
                 Math.min(
-                  pendingSelection.position.x - 80,
-                  typeof window !== "undefined" ? window.innerWidth - 180 : 300
+                  pendingSelection.position.x - 100,
+                  typeof window !== "undefined" ? window.innerWidth - 260 : 300
                 )
               ),
               top: Math.max(10, pendingSelection.position.y - 50),
@@ -955,41 +980,134 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
               boxShadow: "0 4px 20px rgba(0,0,0,0.25)",
               padding: "10px 14px",
               display: "flex",
-              alignItems: "center",
+              flexDirection: "column",
               gap: "8px",
+              minWidth: showNoteInput ? "240px" : undefined,
             }}
+            onClick={(e) => e.stopPropagation()}
           >
-            <button
-              onClick={handleTranslateSentence}
-              disabled={translatingSelection}
-              style={{
-                background: isDarkMode ? "#6ba3e0" : "#4a90d9",
-                color: "#fff",
-                border: "none",
-                borderRadius: "6px",
-                padding: "8px 16px",
-                fontSize: "13px",
-                cursor: translatingSelection ? "wait" : "pointer",
-                opacity: translatingSelection ? 0.7 : 1,
-                whiteSpace: "nowrap",
-              }}
-            >
-              {translatingSelection ? "翻译中..." : "翻译标注"}
-            </button>
-            <button
-              onClick={closePendingSelection}
-              style={{
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                padding: "4px",
-                color: isDarkMode ? "#888" : "#999",
-                fontSize: "16px",
-                lineHeight: 1,
-              }}
-            >
-              x
-            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <button
+                onClick={handleTranslateSentence}
+                disabled={translatingSelection || showNoteInput}
+                style={{
+                  background: isDarkMode ? noteInputColors.dark.bg : noteInputColors.light.bg,
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "6px",
+                  padding: "8px 14px",
+                  fontSize: "13px",
+                  cursor: translatingSelection ? "wait" : "pointer",
+                  opacity: (translatingSelection || showNoteInput) ? 0.7 : 1,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {translatingSelection ? "翻译中..." : "翻译标注"}
+              </button>
+              <button
+                onClick={() => setShowNoteInput(true)}
+                disabled={translatingSelection || showNoteInput}
+                style={{
+                  background: isDarkMode ? noteInputColors.noteBtn.dark : noteInputColors.noteBtn.light,
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "6px",
+                  padding: "8px 14px",
+                  fontSize: "13px",
+                  cursor: "pointer",
+                  opacity: (translatingSelection || showNoteInput) ? 0.7 : 1,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                添加笔记
+              </button>
+              <button
+                onClick={closePendingSelection}
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: "4px",
+                  color: isDarkMode ? "#888" : "#999",
+                  fontSize: "16px",
+                  lineHeight: 1,
+                }}
+              >
+                x
+              </button>
+            </div>
+            {showNoteInput && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <textarea
+                  ref={noteInputRef}
+                  value={noteText}
+                  onChange={(e) => setNoteText(e.target.value)}
+                  placeholder="输入笔记内容..."
+                  style={{
+                    width: "100%",
+                    minHeight: "60px",
+                    padding: "8px",
+                    borderRadius: "6px",
+                    border: `1px solid ${isDarkMode ? "#555" : "#ddd"}`,
+                    backgroundColor: isDarkMode ? "#1e1e2e" : "#fff",
+                    color: isDarkMode ? "#ddd" : "#333",
+                    fontSize: "13px",
+                    lineHeight: "1.5",
+                    resize: "vertical",
+                    outline: "none",
+                    fontFamily: "inherit",
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      if (noteText.trim()) {
+                        handleAddNote(noteText);
+                        setShowNoteInput(false);
+                        setNoteText("");
+                      }
+                    }
+                  }}
+                />
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: "6px" }}>
+                  <button
+                    onClick={() => { setShowNoteInput(false); setNoteText(""); }}
+                    style={{
+                      background: "none",
+                      border: `1px solid ${isDarkMode ? "#555" : "#ddd"}`,
+                      borderRadius: "4px",
+                      padding: "4px 12px",
+                      fontSize: "12px",
+                      color: isDarkMode ? "#aaa" : "#666",
+                      cursor: "pointer",
+                    }}
+                  >
+                    取消
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (noteText.trim()) {
+                        handleAddNote(noteText);
+                        setShowNoteInput(false);
+                        setNoteText("");
+                      }
+                    }}
+                    disabled={!noteText.trim()}
+                    style={{
+                      background: isDarkMode ? noteInputColors.noteBtn.dark : noteInputColors.noteBtn.light,
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: "4px",
+                      padding: "4px 12px",
+                      fontSize: "12px",
+                      cursor: noteText.trim() ? "pointer" : "not-allowed",
+                      opacity: noteText.trim() ? 1 : 0.5,
+                    }}
+                  >
+                    确定
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </>
       )}

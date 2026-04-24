@@ -89,7 +89,7 @@ export function VocabularySidebar({
         >
           <div className="sidebar-header-row">
             <h3 className="sidebar-title" style={{ color: textColor }}>
-              {sidebarTab === "words" ? "已标注词汇" : "句子翻译"}
+              {sidebarTab === "words" ? "已标注词汇" : "翻译与笔记"}
               <span className="sidebar-count" style={{ backgroundColor: colors.accentColor }}>
                 {sidebarTab === "words" ? annotationList.length : sentenceAnnotations.length}
               </span>
@@ -272,7 +272,7 @@ export function VocabularySidebar({
                   style={{ backgroundColor: colors.highlightBg }}
                 >
                   <div className="sentence-meta" style={{ color: colors.secondaryTextColor }}>
-                    第 {item.startParagraphIndex + 1} 段
+                    {item.type === 'note' ? '📝 ' : ''}第 {item.startParagraphIndex + 1} 段
                   </div>
                   <div
                     className="sentence-original"
@@ -281,7 +281,7 @@ export function VocabularySidebar({
                   >
                     {item.originalText}
                   </div>
-                  <div className="sentence-translation" style={{ color: annotationColor }}>
+                  <div className="sentence-translation" style={{ color: item.type === 'note' ? '#3498db' : annotationColor }}>
                     {item.translation}
                   </div>
                   <button
@@ -305,10 +305,10 @@ export function VocabularySidebar({
             <div className="empty-state" style={{ color: colors.emptyIconColor }}>
               <div className="empty-icon">💬</div>
               <p style={{ color: colors.secondaryTextColor }}>
-                选中句子使用翻译后，句子会出现在这里
+                选中文本后可翻译或添加笔记
               </p>
               <p className="empty-hint" style={{ color: isDarkMode ? "#555" : "#aaa" }}>
-                长按选中文本后点击「翻译」即可保存
+                长按选中文本后点击「翻译标注」或「添加笔记」
               </p>
             </div>
           )

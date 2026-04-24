@@ -307,7 +307,7 @@ const Paragraph = React.memo(({
               {showTranslation && matchedSA && (
                 <span
                   className="sentence-annotation"
-                  title={`点击删除翻译标注\n原文: ${matchedSA.originalText}`}
+                  title={`点击删除${matchedSA.type === 'note' ? '笔记' : '翻译标注'}\n原文: ${matchedSA.originalText}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     if (onRemoveSentenceAnnotation) {
@@ -315,14 +315,14 @@ const Paragraph = React.memo(({
                     }
                   }}
                   style={{
-                    color: annotationColor,
+                    color: matchedSA.type === 'note' ? '#3498db' : annotationColor,
                     fontSize: '0.75em',
                     fontFamily: '"Microsoft YaHei", "微软雅黑", sans-serif',
                     cursor: 'pointer',
                     marginLeft: '2px',
                   }}
                 >
-                  【{matchedSA.translation}】
+                  {matchedSA.type === 'note' ? `〔${matchedSA.translation}〕` : `【${matchedSA.translation}】`}
                 </span>
               )}
             </React.Fragment>
@@ -366,7 +366,7 @@ const Paragraph = React.memo(({
             {showTranslation && matchedSA && (
               <span
                 className="sentence-annotation"
-                title={`点击删除翻译标注\n原文: ${matchedSA.originalText}`}
+                title={`点击删除${matchedSA.type === 'note' ? '笔记' : '翻译标注'}\n原文: ${matchedSA.originalText}`}
                 onClick={(e) => {
                   e.stopPropagation();
                   if (onRemoveSentenceAnnotation) {
@@ -374,14 +374,14 @@ const Paragraph = React.memo(({
                   }
                 }}
                 style={{
-                  color: annotationColor,
+                  color: matchedSA.type === 'note' ? '#3498db' : annotationColor,
                   fontSize: '0.75em',
                   fontFamily: '"Microsoft YaHei", "微软雅黑", sans-serif',
                   cursor: 'pointer',
                   marginLeft: '2px',
                 }}
               >
-                【{matchedSA.translation}】
+                {matchedSA.type === 'note' ? `〔${matchedSA.translation}〕` : `【${matchedSA.translation}】`}
               </span>
             )}
           </React.Fragment>

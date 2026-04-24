@@ -44,6 +44,7 @@ export interface SentenceAnnotation {
   endCharIndex: number;
   originalText: string;
   translation: string;
+  type?: "translation" | "note";
   createdAt: number;
 }
 

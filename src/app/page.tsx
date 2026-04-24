@@ -1001,6 +1001,27 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
     }
   }, [pendingSelection, currentBook, addSentenceAnnotation]);
 
+  // 添加笔记
+  const handleAddNote = useCallback((noteText: string) => {
+    if (!pendingSelection || !currentBook || !noteText.trim()) return;
+
+    const annotation: SentenceAnnotation = {
+      id: `sa-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      startParagraphIndex: pendingSelection.startParagraphIndex,
+      startCharIndex: pendingSelection.startCharIndex,
+      endParagraphIndex: pendingSelection.endParagraphIndex,
+      endCharIndex: pendingSelection.endCharIndex,
+      originalText: pendingSelection.text,
+      translation: noteText.trim(),
+      type: "note",
+      createdAt: Date.now(),
+    };
+
+    addSentenceAnnotation(currentBook.id, annotation);
+    setPendingSelection(null);
+    window.getSelection()?.removeAllRanges();
+  }, [pendingSelection, currentBook, addSentenceAnnotation]);
+
   // 关闭浮窗
   const closePendingSelection = useCallback(() => {
     setPendingSelection(null);
@@ -1344,6 +1365,7 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
       closeTooltip={closeTooltip}
       handleTextSelect={handleTextSelect}
       handleTranslateSentence={handleTranslateSentence}
+      handleAddNote={handleAddNote}
       closePendingSelection={closePendingSelection}
       setFontSize={setFontSize}
       setLineHeight={setLineHeight}
