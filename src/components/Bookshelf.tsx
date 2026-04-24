@@ -16,6 +16,18 @@ interface BookshelfProps {
   onOpenBook: (id: string) => void;
   onSyncClick: () => void;
   onAddSuccess?: () => void;
+  lastSyncAt?: number | null;
+}
+
+function formatSyncTime(ts: number): string {
+  const now = Date.now();
+  const diffMin = Math.floor((now - ts) / 60000);
+  if (diffMin < 1) return "刚刚同步";
+  if (diffMin < 60) return `${diffMin}分钟前`;
+  const diffHour = Math.floor(diffMin / 60);
+  if (diffHour < 24) return `${diffHour}小时前`;
+  const d = new Date(ts);
+  return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
 }
 
 export function Bookshelf({
@@ -28,6 +40,7 @@ export function Bookshelf({
   onOpenBook,
   onSyncClick,
   onAddSuccess,
+  lastSyncAt,
 }: BookshelfProps) {
   const [showAddModal, setShowAddModal] = useState(false);
 
@@ -44,16 +57,23 @@ export function Bookshelf({
           <h1 className="bookshelf-title">我的书架</h1>
 
         </div>
-        <button
-          className="cloud-sync-btn"
-          onClick={onSyncClick}
-          title="同步"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9V3m0 18v-6m0-6a9 9 0 0 0 9-9" />
-          </svg>
-          <span>同步</span>
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {lastSyncAt && (
+            <span className="sync-time-label">
+              {formatSyncTime(lastSyncAt)}
+            </span>
+          )}
+          <button
+            className="cloud-sync-btn"
+            onClick={onSyncClick}
+            title="同步"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9V3m0 18v-6m0-6a9 9 0 0 0 9-9" />
+            </svg>
+            <span>同步</span>
+          </button>
+        </div>
       </div>
 
       <div className="book-grid">

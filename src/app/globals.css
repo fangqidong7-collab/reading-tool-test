@@ -275,6 +275,12 @@ rt {
   transform: translateY(0);
 }
 
+.sync-time-label {
+  font-size: 12px;
+  color: #888;
+  white-space: nowrap;
+}
+
 /* Book Grid - fixed column width on desktop */
 .book-grid {
   display: flex;
@@ -305,6 +311,10 @@ rt {
 
   .cloud-sync-btn span {
     display: none;
+  }
+
+  .sync-time-label {
+    font-size: 11px;
   }
 
   .cloud-sync-btn svg {

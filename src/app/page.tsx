@@ -166,6 +166,7 @@ export default function Home() {
     createSync,
     bindSyncCode,
     syncBoth,
+    pushData,
     unbind,
   } = useSync();
 
@@ -385,6 +386,18 @@ export default function Home() {
     setSyncError,
   ]);
 
+  // 阅读中使用的轻量推送：只上传进度/词汇/标注，不拉取远端数据
+  const performLightPushOnly = useCallback(async () => {
+    try {
+      const { data: lightData } = await buildLightSyncData();
+      await pushData(lightData);
+      return null;
+    } catch (err) {
+      console.warn('[LightPush]', err instanceof Error ? err.message : err);
+      return null;
+    }
+  }, [buildLightSyncData, pushData]);
+
   const performSyncForPeriodic = useCallback(async () => {
     try {
       const { data: lightData, bookManifest, contentHashes } = await buildLightSyncData();
@@ -418,13 +431,13 @@ export default function Home() {
     updateBooksSyncHashes,
   ]);
 
-  // 启用自动定时同步（仅书架页面 + 每10分钟 + 需 syncCode）
-  // 阅读中不自动同步，避免 replaceAllFromRemote 导致 currentBook 丢失
+  // 自动定时同步（每10分钟）
+  // 书架：完整双向同步；阅读中：仅推送进度/词汇/标注，不拉取远端数据
   usePeriodicSync({
     syncCode,
     syncing,
-    performSync: performSyncForPeriodic,
-    enabled: !currentBook,
+    performSync: currentBook ? performLightPushOnly : performSyncForPeriodic,
+    enabled: true,
   });
 
   // Sentence translation state

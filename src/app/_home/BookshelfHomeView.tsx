@@ -118,6 +118,7 @@ export function BookshelfHomeView({
                 setTimeout(() => setShowImportSyncTip(false), 5000);
               }
             }}
+            lastSyncAt={lastSyncAt}
           />
         ) : activeTab === "vocabulary" ? (
           <GlobalVocabularyPage
