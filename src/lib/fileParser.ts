@@ -25,8 +25,9 @@ export interface ParseResult {
   error?: string;
 }
 
-// File size limit (5MB)
-const MAX_FILE_SIZE = 5 * 1024 * 1024;
+// File size limits
+const MAX_FILE_SIZE_TEXT = 5 * 1024 * 1024; // 5MB for TXT/EPUB
+const MAX_FILE_SIZE_PDF = 20 * 1024 * 1024; // 20MB for PDF
 
 // Update progress callback type
 type ProgressCallback = (progress: ParseProgress) => void;
@@ -475,6 +476,228 @@ async function extractEpubToc(zip: any, opfContent: string, opfPrefix: string, t
   }
 }
 
+// Parse PDF file
+async function parsePdf(file: File, onProgress: ProgressCallback): Promise<{ title: string; content: string }> {
+  onProgress({ stage: "reading", percent: 5, message: "正在读取PDF文件..." });
+
+  const arrayBuffer = await file.arrayBuffer();
+
+  onProgress({ stage: "parsing", percent: 10, message: "正在加载PDF引擎..." });
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let pdfjsLib: any;
+  try {
+    pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  } catch {
+    pdfjsLib = await import('pdfjs-dist');
+  }
+
+  onProgress({ stage: "parsing", percent: 15, message: "正在配置PDF引擎..." });
+
+  const version: string = pdfjsLib.version;
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    `https://cdn.jsdelivr.net/npm/pdfjs-dist@${version}/legacy/build/pdf.worker.min.mjs`;
+
+  onProgress({ stage: "parsing", percent: 20, message: "正在解析PDF..." });
+
+  let loadingTask;
+  try {
+    loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+  } catch {
+    // If worker fails, retry without worker
+    pdfjsLib.GlobalWorkerOptions.workerSrc = '';
+    loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+  }
+  const pdfDoc = await loadingTask.promise;
+  const totalPages: number = pdfDoc.numPages;
+
+  onProgress({ stage: "parsing", percent: 25, message: `共 ${totalPages} 页，正在提取文本...` });
+
+  // Phase 1: extract lines per page (structured + fallback)
+  const pageLines: string[][] = [];
+  let skippedPages = 0;
+
+  for (let i = 1; i <= totalPages; i++) {
+    try {
+      const page = await pdfDoc.getPage(i);
+      const textContent = await page.getTextContent();
+
+      // Structured approach: collect items with coordinates
+      const positioned: { str: string; x: number; y: number }[] = [];
+      const unpositioned: string[] = [];
+
+      for (const item of textContent.items) {
+        if (!("str" in item)) continue;
+        const str: string = item.str;
+        if (!str.trim()) continue;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const t = (item as any).transform;
+        if (t && typeof t[4] === "number" && typeof t[5] === "number") {
+          positioned.push({ str, x: t[4], y: t[5] });
+        } else {
+          unpositioned.push(str);
+        }
+      }
+
+      const lines: string[] = [];
+
+      if (positioned.length > 0) {
+        // Sort: top-to-bottom (Y descending), then left-to-right (X ascending)
+        positioned.sort((a, b) => b.y - a.y || a.x - b.x);
+
+        let curLine = "";
+        let curY: number | null = null;
+
+        for (const it of positioned) {
+          if (curY !== null && Math.abs(it.y - curY) > 5) {
+            if (curLine.trim()) lines.push(curLine.trim());
+            curLine = it.str;
+          } else {
+            if (curLine && !curLine.endsWith(" ") && !it.str.startsWith(" ")) {
+              curLine += " ";
+            }
+            curLine += it.str;
+          }
+          curY = it.y;
+        }
+        if (curLine.trim()) lines.push(curLine.trim());
+      }
+
+      // Append any items without positioning
+      if (unpositioned.length > 0) {
+        lines.push(...unpositioned.filter(s => s.trim().length > 0));
+      }
+
+      // Fallback: if structured extraction yielded nothing, use hasEOL-based splitting
+      if (lines.length === 0 && textContent.items.length > 0) {
+        let rawLine = "";
+        for (const item of textContent.items) {
+          if (!("str" in item)) continue;
+          rawLine += item.str;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          if ((item as any).hasEOL) {
+            if (rawLine.trim()) lines.push(rawLine.trim());
+            rawLine = "";
+          }
+        }
+        if (rawLine.trim()) lines.push(rawLine.trim());
+      }
+
+      pageLines.push(lines);
+    } catch (pageErr) {
+      console.warn(`PDF第${i}页解析失败，已跳过:`, pageErr);
+      skippedPages++;
+      pageLines.push([]);
+    }
+
+    const pct = 25 + Math.round((i / totalPages) * 50);
+    onProgress({ stage: "parsing", percent: pct, message: `正在提取文本... (${i}/${totalPages})` });
+  }
+
+  if (skippedPages > 0) {
+    console.warn(`PDF解析完成，共跳过 ${skippedPages}/${totalPages} 页`);
+  }
+
+  // Phase 2: detect and remove headers / footers / page numbers
+  const headerFooterCount: Record<string, number> = {};
+  for (const lines of pageLines) {
+    if (lines.length === 0) continue;
+    // Only the first 2 and last 2 lines of each page could be header/footer
+    const candidates = [
+      ...lines.slice(0, Math.min(2, lines.length)),
+      ...lines.slice(-Math.min(2, lines.length)),
+    ];
+    const seen = new Set<string>();
+    for (const line of candidates) {
+      const key = line.trim().replace(/\d+/g, '#');
+      if (seen.has(key)) continue;
+      seen.add(key);
+      headerFooterCount[key] = (headerFooterCount[key] || 0) + 1;
+    }
+  }
+
+  const hfThreshold = Math.max(3, totalPages * 0.3);
+  const headerFooterPatterns = new Set(
+    Object.entries(headerFooterCount)
+      .filter(([, count]) => count >= hfThreshold)
+      .map(([pattern]) => pattern)
+  );
+
+  const isHeaderFooter = (line: string): boolean => {
+    const key = line.trim().replace(/\d+/g, '#');
+    if (headerFooterPatterns.has(key)) return true;
+    // Standalone page numbers
+    if (/^\d{1,4}$/.test(line.trim())) return true;
+    // Roman numeral page numbers
+    if (/^[ivxlcdm]+$/i.test(line.trim()) && line.trim().length <= 6) return true;
+    return false;
+  };
+
+  // Phase 3: merge lines into paragraphs, removing headers/footers
+  onProgress({ stage: "parsing", percent: 80, message: "正在合并段落..." });
+
+  const allParagraphs: string[] = [];
+  let paragraphBuffer = "";
+
+  for (const lines of pageLines) {
+    for (const line of lines) {
+      if (isHeaderFooter(line)) continue;
+      if (!line.trim()) continue;
+
+      if (!paragraphBuffer) {
+        paragraphBuffer = line;
+        continue;
+      }
+
+      // Heuristics for paragraph break:
+      // - Current buffer ends with sentence-ending punctuation
+      // - Current line starts with uppercase (new sentence/paragraph)
+      // - Current line is significantly shorter than typical (might be a heading)
+      const endsWithPunctuation =
+        /[.!?\u3002\uFF01\uFF1F"\u201D]$/.test(paragraphBuffer);
+      const startsWithUpper = /^[A-Z\u4e00-\u9fff]/.test(line);
+      const lineIsShort = line.length < 35;
+
+      if (endsWithPunctuation && (startsWithUpper || lineIsShort)) {
+        allParagraphs.push(paragraphBuffer);
+        paragraphBuffer = line;
+      } else {
+        // Continue same paragraph, handle hyphenation
+        if (paragraphBuffer.endsWith("-")) {
+          paragraphBuffer = paragraphBuffer.slice(0, -1) + line;
+        } else {
+          paragraphBuffer += " " + line;
+        }
+      }
+    }
+  }
+  if (paragraphBuffer.trim()) {
+    allParagraphs.push(paragraphBuffer.trim());
+  }
+
+  const content = allParagraphs
+    .filter(p => p.trim().length > 0)
+    .join("\n\n");
+
+  if (!content.trim()) {
+    throw new Error(
+      "无法从PDF中提取文本。该PDF的文字可能是以图片或矢量路径方式绘制的，" +
+      "而非标准文本格式。建议用Adobe Acrobat的[导出为Word/文本]功能转换后再上传，" +
+      "或者直接上传TXT/EPUB格式的文件。"
+    );
+  }
+
+  const title = file.name.replace(/\.(txt|epub|pdf)$/i, "").trim();
+
+  const successMsg = skippedPages > 0
+    ? `解析完成！(${skippedPages}页被跳过)`
+    : "解析完成！";
+  onProgress({ stage: "analyzing", percent: 90, message: "正在分析内容..." });
+  onProgress({ stage: "complete", percent: 100, message: successMsg });
+
+  return { title, content };
+}
+
 // Parse TXT file
 async function parseTxt(file: File, onProgress: ProgressCallback): Promise<{ title: string; content: string }> {
   onProgress({ stage: "reading", percent: 5, message: "正在读取文件..." });
@@ -518,18 +741,20 @@ export async function parseFile(
   file: File,
   onProgress: ProgressCallback
 ): Promise<ParseResult> {
-  // Check file size
-  if (file.size > MAX_FILE_SIZE) {
+  const extension = file.name.split(".").pop()?.toLowerCase();
+  const maxSize = extension === "pdf" ? MAX_FILE_SIZE_PDF : MAX_FILE_SIZE_TEXT;
+
+  if (file.size > maxSize) {
     onProgress({ stage: "error", percent: 0, message: "文件过大" });
     return {
       title: "",
       content: "",
       success: false,
-      error: "该书籍内容过长，建议分章节上传",
+      error: extension === "pdf"
+        ? "PDF文件过大（限制20MB），建议分章节上传"
+        : "该书籍内容过长，建议分章节上传",
     };
   }
-
-  const extension = file.name.split(".").pop()?.toLowerCase();
 
   try {
     let result: { title: string; content: string; tableOfContents?: TocEntry[] };
@@ -538,14 +763,21 @@ export async function parseFile(
       case "epub":
         result = await parseEpub(file, onProgress);
         break;
-      case "txt":
+      case "pdf": {
+        const pdfResult = await parsePdf(file, onProgress);
+        result = { ...pdfResult, tableOfContents: [] };
+        break;
+      }
+      case "txt": {
         const txtResult = await parseTxt(file, onProgress);
         result = { ...txtResult, tableOfContents: [] };
         break;
-      default:
+      }
+      default: {
         const defaultResult = await parseTxt(file, onProgress);
         result = { ...defaultResult, tableOfContents: [] };
         break;
+      }
     }
 
     // Final delay for completion state
@@ -558,25 +790,15 @@ export async function parseFile(
       success: true,
     };
   } catch (error) {
-    console.error('EPUB解析错误:', error);
+    console.error('文件解析错误:', error);
     const errorMessage = error instanceof Error ? error.message : "未知错误";
-    
-    if (errorMessage === "无法从EPUB文件中提取文本内容") {
-      onProgress({ stage: "error", percent: 0, message: "解析失败" });
-      return {
-        title: "",
-        content: "",
-        success: false,
-        error: "该文件无法解析，请确认文件格式是否正确",
-      };
-    }
 
     onProgress({ stage: "error", percent: 0, message: "解析失败" });
     return {
       title: "",
       content: "",
       success: false,
-      error: "该文件无法解析，请确认文件格式是否正确",
+      error: errorMessage,
     };
   }
 }

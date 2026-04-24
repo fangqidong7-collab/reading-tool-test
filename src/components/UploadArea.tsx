@@ -15,8 +15,11 @@ export function UploadArea({ onFileUpload, onTextSubmit }: UploadAreaProps) {
   const handleFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
-      if (file && file.type === "text/plain") {
-        onFileUpload(file);
+      if (file) {
+        const ext = file.name.split(".").pop()?.toLowerCase();
+        if (ext === "txt" || ext === "epub" || ext === "pdf") {
+          onFileUpload(file);
+        }
       }
     },
     [onFileUpload]
@@ -28,8 +31,11 @@ export function UploadArea({ onFileUpload, onTextSubmit }: UploadAreaProps) {
       setIsDragging(false);
       
       const file = e.dataTransfer.files?.[0];
-      if (file && file.type === "text/plain") {
-        onFileUpload(file);
+      if (file) {
+        const ext = file.name.split(".").pop()?.toLowerCase();
+        if (ext === "txt" || ext === "epub" || ext === "pdf") {
+          onFileUpload(file);
+        }
       }
     },
     [onFileUpload]
@@ -63,14 +69,14 @@ export function UploadArea({ onFileUpload, onTextSubmit }: UploadAreaProps) {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".txt"
+          accept=".txt,.epub,.pdf"
           onChange={handleFileChange}
           style={{ display: "none" }}
         />
         <div className="drop-zone-content">
           <div className="upload-icon">📄</div>
-          <p className="upload-title">上传英文文本文件</p>
-          <p className="upload-hint">支持 .txt 格式，UTF-8 编码</p>
+          <p className="upload-title">上传文件</p>
+          <p className="upload-hint">支持 TXT、EPUB、PDF 格式</p>
         </div>
       </div>
       

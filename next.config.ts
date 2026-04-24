@@ -13,6 +13,11 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  webpack: (config) => {
+    // pdfjs-dist tries to require 'canvas' which is a Node-only module
+    config.resolve.alias.canvas = false;
+    return config;
+  },
 };
 
 export default nextConfig;

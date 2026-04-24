@@ -136,6 +136,7 @@ interface ParagraphProps {
   isDarkMode?: boolean;
   sentenceAnnotations?: SentenceAnnotation[];
   onRemoveSentenceAnnotation?: (id: string) => void;
+  onRemoveAnnotation?: (word: string, lemma: string) => void;
 }
 
 const Paragraph = React.memo(({
@@ -151,6 +152,7 @@ const Paragraph = React.memo(({
   isDarkMode = false,
   sentenceAnnotations = [],
   onRemoveSentenceAnnotation,
+  onRemoveAnnotation,
 }: ParagraphProps) => {
   const handleClick = useCallback((e: React.MouseEvent) => {
     const sel = typeof window !== 'undefined' ? window.getSelection() : null;
@@ -344,10 +346,17 @@ const Paragraph = React.memo(({
             {isAnnotated && (
               <span 
                 className="annotation"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onRemoveAnnotation) {
+                    onRemoveAnnotation(segment.text, lemma);
+                  }
+                }}
                 style={{ 
                   color: annotationColor,
                   fontSize: '0.7em',
                   fontFamily: '"Microsoft YaHei", "微软雅黑", sans-serif',
+                  cursor: 'pointer',
                   ...(hasUnderline ? getUnderlineStyle() : {}),
                 }}
               >
@@ -399,6 +408,7 @@ function paragraphPropsAreEqual(
     isDarkMode?: boolean;
     sentenceAnnotations?: SentenceAnnotation[];
     onRemoveSentenceAnnotation?: (id: string) => void;
+    onRemoveAnnotation?: (word: string, lemma: string) => void;
   },
   next: {
     paragraph: ProcessedContent[number];
@@ -413,6 +423,7 @@ function paragraphPropsAreEqual(
     isDarkMode?: boolean;
     sentenceAnnotations?: SentenceAnnotation[];
     onRemoveSentenceAnnotation?: (id: string) => void;
+    onRemoveAnnotation?: (word: string, lemma: string) => void;
   }
 ) {
   if (prev.pIndex !== next.pIndex) return false;
@@ -473,6 +484,7 @@ interface ReadingAreaProps {
   onTextSelect?: (selection: { text: string; startParagraphIndex: number; endParagraphIndex: number; startCharIndex: number; endCharIndex: number }) => void;
   sentenceAnnotations?: SentenceAnnotation[];
   onRemoveSentenceAnnotation?: (id: string) => void;
+  onRemoveAnnotation?: (word: string, lemma: string) => void;
   clickToTurnPage?: boolean;
 }
 
@@ -508,6 +520,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
   onTextSelect,
   sentenceAnnotations = [],
   onRemoveSentenceAnnotation,
+  onRemoveAnnotation,
   clickToTurnPage = false,
 
 }: ReadingAreaProps, ref: React.Ref<ReadingAreaRef>) {
@@ -1229,6 +1242,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
                     isDarkMode={isDarkMode}
                     sentenceAnnotations={sentenceAnnotations}
                     onRemoveSentenceAnnotation={onRemoveSentenceAnnotation}
+                    onRemoveAnnotation={onRemoveAnnotation}
                   />
                 </div>
               );

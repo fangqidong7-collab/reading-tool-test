@@ -878,6 +878,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
               onTextSelect={handleTextSelect}
               sentenceAnnotations={currentBook?.sentenceAnnotations || []}
               onRemoveSentenceAnnotation={handleRemoveSentenceAnnotation}
+              onRemoveAnnotation={removeAnnotation}
               clickToTurnPage={clickToTurnPage}
             />
           )}

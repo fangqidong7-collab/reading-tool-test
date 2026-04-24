@@ -14,7 +14,7 @@ export function AddBookModal({ isOpen, onClose, onAdd }: AddBookModalProps) {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [tableOfContents, setTableOfContents] = useState<TocEntry[]>([]);
-  const [mode, setMode] = useState<"upload" | "paste">("paste");
+  const [mode, setMode] = useState<"upload" | "paste">("upload");
   const [fileName, setFileName] = useState<string>("");
   const [parsing, setParsing] = useState(false);
   const [progress, setProgress] = useState<ParseProgress>({
@@ -55,7 +55,7 @@ export function AddBookModal({ isOpen, onClose, onAdd }: AddBookModalProps) {
     setParsing(false);
     setProgress({ stage: "idle", percent: 0, message: "" });
     setError(null);
-    setMode("paste");
+    setMode("upload");
   }, []);
 
   const handleClose = useCallback(() => {
@@ -74,30 +74,34 @@ export function AddBookModal({ isOpen, onClose, onAdd }: AddBookModalProps) {
       setError(null);
       setParsing(true);
 
-      // Extract filename without extension as default title
       const defaultTitle = file.name.replace(/\.(txt|epub|pdf)$/i, "").trim();
 
-      const result = await parseFile(file, setProgress);
+      try {
+        const result = await parseFile(file, setProgress);
 
-      setParsing(false);
+        setParsing(false);
 
-      if (result.success) {
-        // Use parsed title if available, otherwise use filename
-        const finalTitle = result.title || defaultTitle;
-        setTitle(finalTitle);
-        setContent(result.content);
-        setTableOfContents(result.tableOfContents || []);
-        setMode("paste"); // Switch to paste mode to show preview
-        
-        // Move cursor to end of title input
-        setTimeout(() => {
-          if (titleInputRef.current) {
-            titleInputRef.current.focus();
-            titleInputRef.current.setSelectionRange(finalTitle.length, finalTitle.length);
-          }
-        }, 50);
-      } else {
-        setError(result.error || "解析失败");
+        if (result.success) {
+          const finalTitle = result.title || defaultTitle;
+          setTitle(finalTitle);
+          setContent(result.content);
+          setTableOfContents(result.tableOfContents || []);
+          setMode("paste");
+          
+          setTimeout(() => {
+            if (titleInputRef.current) {
+              titleInputRef.current.focus();
+              titleInputRef.current.setSelectionRange(finalTitle.length, finalTitle.length);
+            }
+          }, 50);
+        } else {
+          setError(result.error || "解析失败");
+          setFileName("");
+        }
+      } catch (err) {
+        console.error("文件解析异常:", err);
+        setParsing(false);
+        setError(err instanceof Error ? err.message : "解析过程中发生未知错误");
         setFileName("");
       }
     },
@@ -201,7 +205,38 @@ export function AddBookModal({ isOpen, onClose, onAdd }: AddBookModalProps) {
                 />
               </div>
 
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".txt,.epub,.pdf"
+                onChange={handleFileChange}
+                className="file-input"
+                id="file-upload"
+                style={{ display: "none" }}
+              />
+
               <div className="mode-tabs">
+                <button
+                  className={`mode-tab ${mode === "upload" ? "active" : ""}`}
+                  onClick={() => {
+                    setMode("upload");
+                    setTimeout(() => fileInputRef.current?.click(), 50);
+                  }}
+                >
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
+                  </svg>
+                  上传文件
+                </button>
                 <button
                   className={`mode-tab ${mode === "paste" ? "active" : ""}`}
                   onClick={() => setMode("paste")}
@@ -219,24 +254,6 @@ export function AddBookModal({ isOpen, onClose, onAdd }: AddBookModalProps) {
                   </svg>
                   粘贴文本
                 </button>
-                <button
-                  className={`mode-tab ${mode === "upload" ? "active" : ""}`}
-                  onClick={() => setMode("upload")}
-                >
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                    <polyline points="17 8 12 3 7 8" />
-                    <line x1="12" y1="3" x2="12" y2="15" />
-                  </svg>
-                  上传文件
-                </button>
               </div>
 
               {mode === "paste" ? (
@@ -252,42 +269,16 @@ export function AddBookModal({ isOpen, onClose, onAdd }: AddBookModalProps) {
                   />
                 </div>
               ) : (
-                <div className="form-group">
-                  <p className="input-hint">支持 TXT、EPUB 格式</p>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".txt,.epub"
-                    onChange={handleFileChange}
-                    className="file-input"
-                    id="file-upload"
-                  />
-                  <label htmlFor="file-upload" className="file-label">
-                    <svg
-                      width="24"
-                      height="24"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                      <polyline points="17 8 12 3 7 8" />
-                      <line x1="12" y1="3" x2="12" y2="15" />
-                    </svg>
-                    <span>
-                      {fileName ? "已选择文件" : "选择文件"}
-                    </span>
-                  </label>
-                  {content && (
+                content && (
+                  <div className="form-group">
                     <div className="file-preview">
                       <span className="file-name">{fileName}</span>
                       <span className="file-size">
                         {Math.round(content.length / 1024)} KB
                       </span>
                     </div>
-                  )}
-                </div>
+                  </div>
+                )
               )}
             </>
           )}
