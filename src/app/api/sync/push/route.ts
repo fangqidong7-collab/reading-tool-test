@@ -115,10 +115,23 @@ export async function POST(request: Request) {
 
     step = 'save';
     const updatedAt = Date.now();
+
+    // Filter cloud books to only keep ones that exist locally (by ID or title).
+    // This ensures books deleted locally are also removed from cloud.
+    const localIdSet = new Set(manifest.map(e => e.id));
+    const localTitleSet = new Set(manifest.map(e => e.title));
+    const filteredBooks = manifest.length > 0
+      ? cloudBooks.filter(b => {
+          const id = String(b.id ?? '');
+          const title = String(b.title ?? '');
+          return localIdSet.has(id) || localTitleSet.has(title);
+        })
+      : cloudBooks;
+
     const payload: SyncData = {
       vocabulary: data.vocabulary,
       bookProgress: data.bookProgress,
-      books: cloudBooks,
+      books: filteredBooks,
       updatedAt,
     };
 

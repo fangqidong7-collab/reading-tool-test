@@ -307,7 +307,7 @@ export default function Home() {
             const cloudBookCount = result.data?.books?.length ?? 0;
             if (cloudBookCount > localBookCount) {
               const confirmed = window.confirm(
-                `云端有 ${cloudBookCount} 本书，但本地只有 ${localBookCount} 本。\n\n重新生成同步码会用本地数据替换云端所有数据。\n\n确定要继续吗？`
+                `云端有 ${cloudBookCount} 本书，但本地只有 ${localBookCount} 本。\n\n重新生成同步码会用本地数据替换云端，云端多出的 ${cloudBookCount - localBookCount} 本书将被删除。\n\n确定要继续吗？`
               );
               if (!confirmed) return;
             }
@@ -358,7 +358,7 @@ export default function Home() {
         getBooksForIds: buildBooksPayload,
         onConfirmOverwrite: async ({ localCount, cloudCount }) => {
           return window.confirm(
-            `云端有 ${cloudCount} 本书，但本地只有 ${localCount} 本。\n\n继续同步会用本地数据更新云端（云端书籍内容不会丢失，但进度和词汇表会被覆盖）。\n\n确定要继续吗？`
+            `云端有 ${cloudCount} 本书，但本地只有 ${localCount} 本。\n\n继续同步会用本地书目覆盖云端，云端多出的 ${cloudCount - localCount} 本书将被删除。\n\n确定要继续吗？`
           );
         },
       });
