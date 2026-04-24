@@ -13,6 +13,8 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  // Next.js 16 defaults to Turbopack; silence the webpack-vs-turbopack conflict warning
+  turbopack: {},
   webpack: (config) => {
     // pdfjs-dist tries to require 'canvas' which is a Node-only module
     config.resolve.alias.canvas = false;
