@@ -10,6 +10,7 @@ import { useBookshelf, ProcessedContent, SentenceAnnotation, type Book } from "@
 import { useSync, type SyncData, type BookManifestEntry } from "@/hooks/useSync";
 import { sha256Utf8 } from "@/lib/syncSha256";
 import { useReadingSettings } from "@/hooks/useReadingSettings";
+import { useBookshelfTheme } from "@/hooks/useBookshelfTheme";
 import { lemmatize, getWordMeaning, getWordMeaningEn, findWordFamily, loadBuiltinDictionary, loadBuiltinDictionaryEn } from "@/lib/dictionary";
 import { translateWord, translateWordEn, translateSentence } from "@/lib/translate";
 import { forceReloadDictionary, lookupExternalDict, lookupExternalDictEn, loadExternalDictionaryEn, type DictLoadStatus } from "@/lib/dictLoader";
@@ -86,6 +87,9 @@ export default function Home() {
     clickToTurnPage,
     setClickToTurnPage,
   } = useReadingSettings();
+
+  // Bookshelf theme (independent from reading theme)
+  const { theme: bookshelfTheme, themeId: bookshelfThemeId, setThemeId: setBookshelfThemeId } = useBookshelfTheme();
 
   // Reading state
   const [text, setText] = useState<string>("");
@@ -1277,6 +1281,9 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
         setShowQuiz={setShowQuiz}
         backgroundColor={backgroundColor}
         isDarkMode={isDarkMode}
+        bookshelfTheme={bookshelfTheme}
+        bookshelfThemeId={bookshelfThemeId}
+        setBookshelfThemeId={setBookshelfThemeId}
         books={books}
         getProgress={getProgress}
         formatLastRead={formatLastRead}

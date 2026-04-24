@@ -2,26 +2,22 @@
 
 import React from "react";
 import type { Book } from "@/hooks/useBookshelf";
+import type { CoverColor } from "@/hooks/useBookshelfTheme";
 
-function getCoverColors(title: string): { bg: string; spine: string } {
-  const palettes = [
-    { bg: "#8EA8B8", spine: "#7A95A5" },
-    { bg: "#9AAE8E", spine: "#889C7D" },
-    { bg: "#A898AB", spine: "#958698" },
-    { bg: "#B0A494", spine: "#9D9183" },
-    { bg: "#8898A8", spine: "#76879A" },
-    { bg: "#93AE9A", spine: "#819C88" },
-    { bg: "#8BA59E", spine: "#7A9490" },
-    { bg: "#7E8F9C", spine: "#6E7F8C" },
-    { bg: "#A89890", spine: "#968680" },
-    { bg: "#9CABA0", spine: "#8A9A8F" },
-    { bg: "#A5A0B0", spine: "#938EA0" },
-    { bg: "#B0A898", spine: "#9E9688" },
-  ];
+const DEFAULT_PALETTE: CoverColor[] = [
+  { bg: "#8EA8B8", spine: "#7A95A5" },
+  { bg: "#9AAE8E", spine: "#889C7D" },
+  { bg: "#A898AB", spine: "#958698" },
+  { bg: "#B0A494", spine: "#9D9183" },
+  { bg: "#8898A8", spine: "#76879A" },
+  { bg: "#93AE9A", spine: "#819C88" },
+];
 
+function getCoverColors(title: string, palette: CoverColor[]): CoverColor {
+  const p = palette.length > 0 ? palette : DEFAULT_PALETTE;
   const firstChar = title.trim().charAt(0).toUpperCase();
   const code = firstChar.charCodeAt(0) || 0;
-  return palettes[code % palettes.length];
+  return p[code % p.length];
 }
 
 interface BookCardProps {
@@ -32,6 +28,8 @@ interface BookCardProps {
   onDelete: () => void;
   onRename?: (newTitle: string) => void;
   isAddCard?: boolean;
+  coverPalette?: CoverColor[];
+  isDarkTheme?: boolean;
 }
 
 export function BookCard({
@@ -42,6 +40,8 @@ export function BookCard({
   onDelete,
   onRename,
   isAddCard,
+  coverPalette,
+  isDarkTheme,
 }: BookCardProps) {
   if (isAddCard) {
     return (
@@ -79,7 +79,7 @@ export function BookCard({
     }
   };
 
-  const { bg, spine } = getCoverColors(book.title);
+  const { bg, spine } = getCoverColors(book.title, coverPalette || DEFAULT_PALETTE);
 
   return (
     <div className="book-card" onClick={onOpen}>
@@ -92,7 +92,7 @@ export function BookCard({
           </div>
         </div>
       </div>
-      <div className="book-time">
+      <div className="book-time" style={isDarkTheme ? { color: "rgba(255,255,255,0.5)" } : undefined}>
         <span>{lastRead}</span>
       </div>
       {!book.isSample && (

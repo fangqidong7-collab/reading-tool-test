@@ -198,9 +198,9 @@ rt {
 .bookshelf-page {
   min-height: 100vh;
   min-height: 100dvh;
-  background: #f5f5f5;
   overflow-y: auto;
   overscroll-behavior-y: contain;
+  transition: background-color 0.3s ease;
 }
 
 .bookshelf {
@@ -232,8 +232,8 @@ rt {
 .bookshelf-title {
   font-size: 28px;
   font-weight: 700;
-  color: #333;
   margin: 0;
+  transition: color 0.3s ease;
 }
 
 .book-count {
@@ -248,6 +248,71 @@ rt {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+/* Theme picker */
+.theme-picker-wrapper {
+  position: relative;
+}
+
+.theme-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+  padding: 0;
+}
+
+.theme-toggle-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  transform: scale(1.1);
+}
+
+.theme-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  border-radius: 12px;
+  padding: 6px;
+  z-index: 600;
+  min-width: 120px;
+  animation: fadeIn 0.15s ease;
+}
+
+.theme-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 0.12s ease;
+}
+
+.theme-option:hover {
+  background: rgba(0, 0, 0, 0.06) !important;
+}
+
+.theme-option-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: border-color 0.15s ease;
+}
+
+.theme-option-name {
+  white-space: nowrap;
 }
 
 /* Search bar */
@@ -268,19 +333,16 @@ rt {
 .search-input {
   width: 100%;
   padding: 12px 40px 12px 40px;
-  border: 1px solid #e0e0e0;
   border-radius: 12px;
   font-size: 14px;
-  background: #ffffff;
-  color: #333;
   outline: none;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.3s ease, color 0.3s ease;
   box-sizing: border-box;
+  border: 1px solid;
 }
 
 .search-input:focus {
-  border-color: #8898A8;
-  box-shadow: 0 0 0 3px rgba(136, 152, 168, 0.12);
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.06);
 }
 
 .search-input::placeholder {
@@ -314,7 +376,6 @@ rt {
   align-items: center;
   gap: 6px;
   padding: 8px 16px;
-  background: #8898A8;
   color: white;
   border: none;
   border-radius: 20px;
@@ -322,12 +383,11 @@ rt {
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 2px 8px rgba(136, 152, 168, 0.3);
 }
 
 .cloud-sync-btn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(136, 152, 168, 0.4);
+  filter: brightness(1.1);
 }
 
 .cloud-sync-btn:active {
@@ -402,6 +462,16 @@ rt {
   .fab-add-book svg {
     width: 24px;
     height: 24px;
+  }
+
+  .theme-toggle-btn {
+    width: 28px;
+    height: 28px;
+  }
+
+  .theme-toggle-btn svg {
+    width: 16px;
+    height: 16px;
   }
 
   .bookshelf-search {
@@ -618,20 +688,18 @@ rt {
   height: 48px;
   border-radius: 14px;
   border: none;
-  background: #8898A8;
   color: white;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 3px 10px rgba(136, 152, 168, 0.35);
   transition: all 0.2s ease;
   z-index: 400;
 }
 
 .fab-add-book:hover {
   transform: scale(1.08);
-  box-shadow: 0 5px 16px rgba(136, 152, 168, 0.45);
+  filter: brightness(1.1);
 }
 
 .fab-add-book:active {

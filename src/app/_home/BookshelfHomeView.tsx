@@ -6,6 +6,7 @@ import { GlobalVocabularyPage } from "@/components/GlobalVocabularyPage";
 import { ExportImportModal } from "@/components/ExportImportModal";
 import { DataBackupPanel } from "@/components/DataBackupPanel";
 import type { Book, TocEntry } from "@/hooks/useBookshelf";
+import type { BookshelfTheme } from "@/hooks/useBookshelfTheme";
 
 // Lazy-load heavy modal components that are only rendered on demand
 const VocabularyQuiz = dynamic(() => import("@/components/VocabularyQuiz").then((m) => m.VocabularyQuiz), {
@@ -44,6 +45,9 @@ export interface BookshelfHomeViewProps {
   // Theme
   backgroundColor: string;
   isDarkMode: boolean;
+  bookshelfTheme: BookshelfTheme;
+  bookshelfThemeId: string;
+  setBookshelfThemeId: (id: string) => void;
   // Bookshelf data
   books: Book[];
   getProgress: (book: Book) => number;
@@ -80,6 +84,9 @@ export function BookshelfHomeView({
   setShowQuiz,
   backgroundColor,
   isDarkMode,
+  bookshelfTheme,
+  bookshelfThemeId,
+  setBookshelfThemeId,
   books,
   getProgress,
   formatLastRead,
@@ -100,7 +107,7 @@ export function BookshelfHomeView({
 }: BookshelfHomeViewProps) {
   return (
     <>
-      <div className="bookshelf-page" style={{ backgroundColor }}>
+      <div className="bookshelf-page" style={{ backgroundColor: bookshelfTheme.pageBg }}>
         {/* 主内容区域 */}
         {activeTab === "bookshelf" ? (
           <Bookshelf
@@ -119,6 +126,9 @@ export function BookshelfHomeView({
               }
             }}
             lastSyncAt={lastSyncAt}
+            bookshelfTheme={bookshelfTheme}
+            bookshelfThemeId={bookshelfThemeId}
+            setBookshelfThemeId={setBookshelfThemeId}
           />
         ) : activeTab === "vocabulary" ? (
           <GlobalVocabularyPage
@@ -213,8 +223,8 @@ export function BookshelfHomeView({
             left: 0;
             right: 0;
             height: 60px;
-            background: white;
-            border-top: 1px solid #e8e8e8;
+            background: ${bookshelfTheme.isDark ? "#1a1a2e" : "white"};
+            border-top: 1px solid ${bookshelfTheme.isDark ? "rgba(255,255,255,0.1)" : "#e8e8e8"};
             display: flex;
             align-items: center;
             justify-content: center;
@@ -236,7 +246,7 @@ export function BookshelfHomeView({
             background: none;
             border: none;
             cursor: pointer;
-            color: #999;
+            color: ${bookshelfTheme.isDark ? "#888" : "#999"};
             font-size: 11px;
             font-weight: 500;
             transition: color 0.15s ease;
@@ -248,11 +258,11 @@ export function BookshelfHomeView({
           }
 
           .tab-bar-item.active {
-            color: #8898A8;
+            color: ${bookshelfTheme.accent};
           }
 
           .tab-bar-item.active svg {
-            stroke: #8898A8;
+            stroke: ${bookshelfTheme.accent};
           }
 
           .tab-bar-badge {
