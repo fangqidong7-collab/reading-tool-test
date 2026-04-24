@@ -125,7 +125,7 @@ export async function POST(request: Request) {
     await kv.set(key, JSON.stringify(payload), { ex: 90 * 24 * 60 * 60 });
 
     step = 'respond';
-    return jsonResponseMaybeGzip({ action: 'push', updatedAt });
+    return jsonResponseMaybeGzip({ action: 'push', updatedAt, cloudBookCount: cloudBooks.length });
   } catch (error) {
     console.error(`[sync/push@${step}]`, error);
     const detail = error instanceof Error ? error.message : String(error);

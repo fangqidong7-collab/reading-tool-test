@@ -185,6 +185,7 @@ export function useSync() {
     data: { vocabulary: Record<string, unknown>; bookProgress: Record<string, unknown> };
     bookManifest: BookManifestEntry[];
     getBooksForIds: (ids: string[]) => Book[];
+    onConfirmOverwrite?: (info: { localCount: number; cloudCount: number }) => Promise<boolean>;
   }): Promise<SyncMergedPayload | null> => {
     if (!syncCode) return null;
     console.log('[SYNC] syncBoth — start, lastSyncAt:', lastSyncAt, 'books:', options.bookManifest.length);
@@ -215,6 +216,7 @@ export function useSync() {
         cloudBookManifest?: Array<{ id: string; title: string }>;
         missingBookIds?: string[];
         updatedAt?: number;
+        cloudBookCount?: number;
       };
 
       console.log('[SYNC] syncBoth — Phase1 response: action=', json.action, 'missingBookIds=', json.missingBookIds?.length ?? 0);
@@ -278,7 +280,18 @@ export function useSync() {
         }
       }
 
-      // action === 'push'
+      // action === 'push' — check if cloud has more books than local
+      const cloudCount = json.cloudBookCount ?? 0;
+      const localCount = options.bookManifest.length;
+      if (cloudCount > localCount && options.onConfirmOverwrite) {
+        console.log('[SYNC] syncBoth — cloud has more books:', cloudCount, 'vs local:', localCount, '— asking user');
+        const confirmed = await options.onConfirmOverwrite({ localCount, cloudCount });
+        if (!confirmed) {
+          console.log('[SYNC] syncBoth — user cancelled overwrite');
+          setSyncError(null);
+          return null;
+        }
+      }
       saveSyncTime(json.updatedAt ?? Date.now());
       console.log('[SYNC] syncBoth — done (push), total:', ((performance.now() - t0) / 1000).toFixed(1), 's');
       return null;

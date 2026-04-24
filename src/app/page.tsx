@@ -294,10 +294,32 @@ export default function Home() {
   // Handle create sync - push current local data to cloud (full payload with books)
   const handleCreateSync = useCallback(async () => {
     try {
+      if (syncCode) {
+        const localBookCount = books.filter(b => !b.isSample).length;
+        try {
+          const res = await fetch("/api/sync/pull", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ syncCode }),
+          });
+          if (res.ok) {
+            const result = await res.json() as { data?: { books?: unknown[] } };
+            const cloudBookCount = result.data?.books?.length ?? 0;
+            if (cloudBookCount > localBookCount) {
+              const confirmed = window.confirm(
+                `云端有 ${cloudBookCount} 本书，但本地只有 ${localBookCount} 本。\n\n重新生成同步码会用本地数据替换云端所有数据。\n\n确定要继续吗？`
+              );
+              if (!confirmed) return;
+            }
+          }
+        } catch {
+          // network error checking cloud — proceed anyway
+        }
+      }
+
       const { data, contentHashes } = await buildFullSyncData();
       const code = await createSync(data);
       if (code) {
-        console.log('已生成同步码:', code);
         setSyncJustCreated(true);
         updateBooksSyncHashes(contentHashes);
       }
@@ -305,7 +327,7 @@ export default function Home() {
       const msg = err instanceof Error ? err.message : '创建同步失败';
       setSyncError(msg);
     }
-  }, [buildFullSyncData, createSync, updateBooksSyncHashes, setSyncError]);
+  }, [buildFullSyncData, createSync, updateBooksSyncHashes, setSyncError, syncCode, books]);
 
   // Handle bind existing sync code — 绑定时用云端数据整体覆盖本地
   const handleBindSync = useCallback(async (code: string) => {
@@ -330,7 +352,16 @@ export default function Home() {
   const handleSync = useCallback(async () => {
     try {
       const { data: lightData, bookManifest, contentHashes } = await buildLightSyncData();
-      const remoteData = await syncBoth({ data: lightData, bookManifest, getBooksForIds: buildBooksPayload });
+      const remoteData = await syncBoth({
+        data: lightData,
+        bookManifest,
+        getBooksForIds: buildBooksPayload,
+        onConfirmOverwrite: async ({ localCount, cloudCount }) => {
+          return window.confirm(
+            `云端有 ${cloudCount} 本书，但本地只有 ${localCount} 本。\n\n继续同步会用本地数据更新云端（云端书籍内容不会丢失，但进度和词汇表会被覆盖）。\n\n确定要继续吗？`
+          );
+        },
+      });
 
       if (remoteData) {
         replaceAllFromRemote(remoteData);
@@ -357,7 +388,12 @@ export default function Home() {
   const performSyncForPeriodic = useCallback(async () => {
     try {
       const { data: lightData, bookManifest, contentHashes } = await buildLightSyncData();
-      const remoteData = await syncBoth({ data: lightData, bookManifest, getBooksForIds: buildBooksPayload });
+      const remoteData = await syncBoth({
+        data: lightData,
+        bookManifest,
+        getBooksForIds: buildBooksPayload,
+        onConfirmOverwrite: async () => false,
+      });
 
       if (remoteData) {
         replaceAllFromRemote(remoteData);
