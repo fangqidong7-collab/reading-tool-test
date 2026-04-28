@@ -15,7 +15,7 @@ export default function RootLayout({
     <html lang="zh-CN">
       <head>
         <link rel="manifest" href="/manifest.json" />
-        <meta name="theme-color" content="#4a90d9" />
+        <meta name="theme-color" content="#D8DEE6" />
         <link rel="apple-touch-icon" href="/icon-192.png" />
       </head>
       <body style={{ height: "100vh", overflow: "hidden" }}>{children}</body>

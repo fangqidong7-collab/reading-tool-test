@@ -145,5 +145,12 @@ export function useBookshelfTheme() {
   const theme =
     BOOKSHELF_THEMES.find((t) => t.id === themeId) || BOOKSHELF_THEMES[0];
 
+  useEffect(() => {
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) {
+      meta.setAttribute("content", theme.pageBg);
+    }
+  }, [theme.pageBg]);
+
   return { theme, themeId, setThemeId, isLoaded };
 }
