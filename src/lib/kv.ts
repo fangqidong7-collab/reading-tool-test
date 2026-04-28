@@ -12,7 +12,6 @@
 
 import fs from 'fs';
 import path from 'path';
-import { Readable } from 'stream';
 import { S3Storage } from 'coze-coding-dev-sdk';
 
 // ─── Detect driver ───────────────────────────────────────────────────────────
@@ -73,13 +72,22 @@ async function createCozeDriver() {
         value,
         expiresAt: options?.ex ? Date.now() + options.ex * 1000 : undefined,
       };
-      const buf = Buffer.from(JSON.stringify(entry), 'utf-8');
-      const stream = Readable.from(buf);
-      await storage.streamUploadFile({
-        stream,
-        fileName: key,
-        contentType: 'application/json',
-      });
+      // S3Storage.streamUploadFile transforms the key via sanitizeFileName +
+      // generateObjectKey (adds hash suffix, replaces special chars), so
+      // readFile({ fileKey: key }) can never find the stored object.
+      // Use the internal S3 client's PutObject directly to keep the key as-is.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const s3: any = storage as any;
+      const client = s3.client || (await s3.getClient());
+      const { PutObjectCommand } = await import('@aws-sdk/client-s3');
+      await client.send(
+        new PutObjectCommand({
+          Bucket: s3.bucketName || COZE_BUCKET_NAME,
+          Key: key,
+          Body: JSON.stringify(entry),
+          ContentType: 'application/json',
+        }),
+      );
     },
 
     async del(key: string): Promise<void> {
