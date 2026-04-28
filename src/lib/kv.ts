@@ -43,20 +43,21 @@ async function createCozeDriver() {
     region: 'cn-beijing',
   });
 
+  const s3Key = (key: string) => key.replaceAll(':', '/');
+
   return {
     async get(key: string): Promise<string | null> {
       try {
-        const buf = await storage.readFile({ fileKey: key });
+        const buf = await storage.readFile({ fileKey: s3Key(key) });
         const json: { value: string; expiresAt?: number } = JSON.parse(
           buf.toString('utf-8'),
         );
         if (json.expiresAt && Date.now() > json.expiresAt) {
-          await storage.deleteFile({ fileKey: key });
+          await storage.deleteFile({ fileKey: s3Key(key) });
           return null;
         }
         return json.value ?? null;
       } catch (e: unknown) {
-        // S3 throws a structured error when key not found
         const err = e as { name?: string };
         if (err?.name === 'NoSuchKey' || err?.name === '404') return null;
         return null;
@@ -72,10 +73,9 @@ async function createCozeDriver() {
         value,
         expiresAt: options?.ex ? Date.now() + options.ex * 1000 : undefined,
       };
-      // S3Storage.streamUploadFile transforms the key via sanitizeFileName +
-      // generateObjectKey (adds hash suffix, replaces special chars), so
-      // readFile({ fileKey: key }) can never find the stored object.
-      // Use the internal S3 client's PutObject directly to keep the key as-is.
+      // Bypass S3Storage.streamUploadFile which transforms the key via
+      // sanitizeFileName + generateObjectKey (hash suffix, char replacement).
+      // Use the internal S3 client's PutObject to keep the key predictable.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const s3: any = storage as any;
       const client = s3.client || (await s3.getClient());
@@ -83,7 +83,7 @@ async function createCozeDriver() {
       await client.send(
         new PutObjectCommand({
           Bucket: s3.bucketName || COZE_BUCKET_NAME,
-          Key: key,
+          Key: s3Key(key),
           Body: JSON.stringify(entry),
           ContentType: 'application/json',
         }),
@@ -92,7 +92,7 @@ async function createCozeDriver() {
 
     async del(key: string): Promise<void> {
       try {
-        await storage.deleteFile({ fileKey: key });
+        await storage.deleteFile({ fileKey: s3Key(key) });
       } catch {
         // ignore
       }
