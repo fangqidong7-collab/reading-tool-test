@@ -170,7 +170,6 @@ export default function Home() {
     createSync,
     bindSyncCode,
     syncBoth,
-    pushData,
     unbind,
   } = useSync();
 
@@ -390,19 +389,8 @@ export default function Home() {
     setSyncError,
   ]);
 
-  // 阅读中使用的轻量推送：只上传进度/词汇/标注，不拉取远端数据
-  const performLightPushOnly = useCallback(async () => {
-    try {
-      const { data: lightData } = await buildLightSyncData();
-      await pushData(lightData);
-      return null;
-    } catch (err) {
-      console.warn('[LightPush]', err instanceof Error ? err.message : err);
-      return null;
-    }
-  }, [buildLightSyncData, pushData]);
-
-  const performSyncForPeriodic = useCallback(async () => {
+  // 阅读中自动同步：完整双向同步，但保护当前正在读的书的进度不被云端覆盖
+  const performSyncForReading = useCallback(async () => {
     try {
       const { data: lightData, bookManifest, contentHashes } = await buildLightSyncData();
       const remoteData = await syncBoth({
@@ -413,6 +401,16 @@ export default function Home() {
       });
 
       if (remoteData) {
+        const readingId = currentBook?.id;
+        if (readingId) {
+          if (remoteData.bookProgress) {
+            delete (remoteData.bookProgress as Record<string, unknown>)[readingId];
+          }
+          if (remoteData.books) {
+            remoteData.books = remoteData.books.filter(b => b.id !== readingId);
+          }
+        }
+
         replaceAllFromRemote(remoteData);
         if (remoteData.books) {
           const hashes = await hashesFromMergedBooks(remoteData.books as Book[]);
@@ -433,15 +431,15 @@ export default function Home() {
     buildBooksPayload,
     replaceAllFromRemote,
     updateBooksSyncHashes,
+    currentBook,
   ]);
 
-  // 自动定时同步（每10分钟）
-  // 书架：完整双向同步；阅读中：仅推送进度/词汇/标注，不拉取远端数据
+  // 阅读中每 10 分钟自动双向同步（书架页不需要自动同步）
   usePeriodicSync({
     syncCode,
     syncing,
-    performSync: currentBook ? performLightPushOnly : performSyncForPeriodic,
-    enabled: true,
+    performSync: performSyncForReading,
+    enabled: !!currentBook,
   });
 
   // Sentence translation state
