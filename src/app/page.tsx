@@ -12,7 +12,7 @@ import { sha256Utf8 } from "@/lib/syncSha256";
 import { useReadingSettings } from "@/hooks/useReadingSettings";
 import { useBookshelfTheme } from "@/hooks/useBookshelfTheme";
 import { lemmatize, getWordMeaning, getWordMeaningEn, findWordFamily, loadBuiltinDictionary, loadBuiltinDictionaryEn } from "@/lib/dictionary";
-import { translateWord, translateWordEn, translateSentence } from "@/lib/translate";
+import { translateWord, translateWordEn, translateWordEnSimple, translateSentence } from "@/lib/translate";
 import { forceReloadDictionary, lookupExternalDict, lookupExternalDictEn, loadExternalDictionaryEn, type DictLoadStatus } from "@/lib/dictLoader";
 import { cleanTranslation, shortenTranslation } from "@/lib/annotationText";
 import { processTextToSegmentsAsync } from "@/lib/processBookContent";
@@ -773,10 +773,11 @@ export default function Home() {
 
       // Skip if already annotated with same mode
       const existing = annotations[root];
+      const isEnglishMode = dictMode === 'en' || dictMode === 'en-simple';
       const existingMatchesMode =
         existing &&
         (
-          dictMode === "en"
+          isEnglishMode
             ? !/[\u4e00-\u9fff]/.test(existing.meaning)
             : /[\u4e00-\u9fff]/.test(existing.meaning)
         );
@@ -784,9 +785,6 @@ export default function Home() {
       if (existingMatchesMode) {
         return;
       }
-
-      // Auto-annotate
-      const isEnglishMode = dictMode === 'en';
 
       // 1. 先查内置词典
       let rawMeaning = "";
@@ -808,21 +806,22 @@ export default function Home() {
 
       // 3. 外部词典也没有，调用AI翻译
       if (!rawMeaning) {
-        rawMeaning = isEnglishMode
-          ? await translateWordEn(cleanWord)
-          : await translateWord(cleanWord);
+        if (dictMode === 'en-simple') {
+          rawMeaning = await translateWordEnSimple(cleanWord);
+        } else if (dictMode === 'en') {
+          rawMeaning = await translateWordEn(cleanWord);
+        } else {
+          rawMeaning = await translateWord(cleanWord);
+        }
       }
 
       if (rawMeaning) {
-        // 精简释义
-        const shortMeaning = shortenTranslation(rawMeaning, isEnglishMode ? 'en' : 'zh');
+        const shortMeaning = shortenTranslation(rawMeaning, dictMode);
         const newAnnotation = { root, meaning: shortMeaning, pos: "", count: 1 };
         setAnnotations((prev) => ({
           ...prev,
           [root]: newAnnotation,
         }));
-        // 勿在此处再调用 updateBookAnnotations：会与 useLayoutEffect 持久化打架（两份额外 annotations 引用），
-        // 触发 book 同步 effect 反复 setAnnotations → Maximum update depth exceeded
         addToGlobalVocabulary(root, shortMeaning, "");
       }
     },
@@ -835,89 +834,62 @@ export default function Home() {
       const cleanWord = word.toLowerCase().trim();
       const root = lemmatize(cleanWord);
 
-const existing = annotations[root];
-const existingMatchesMode =
-  existing &&
-  (
-    dictMode === "en"
-      ? !/[\u4e00-\u9fff]/.test(existing.meaning)
-      : /[\u4e00-\u9fff]/.test(existing.meaning)
-  );
+      const existing = annotations[root];
+      const isEnglishMode = dictMode === 'en' || dictMode === 'en-simple';
+      const existingMatchesMode =
+        existing &&
+        (
+          isEnglishMode
+            ? !/[\u4e00-\u9fff]/.test(existing.meaning)
+            : /[\u4e00-\u9fff]/.test(existing.meaning)
+        );
 
-if (existingMatchesMode) {
-  return;
-}
+      if (existingMatchesMode) {
+        return;
+      }
 
-
-//      setLoading(true);
       setSelectedWord(null);
-
-      setAnnotating(true);  
+      setAnnotating(true);
       try {
         let rawMeaning = "";
-        const isEnglishMode = dictMode === 'en';
 
-        // 调试日志
-        console.log('=== 开始查词 ===');
-        console.log('原始单词:', word);
-        console.log('词根:', root);
-        console.log('当前模式:', isEnglishMode ? '英文模式' : '中文模式');
+        if (isEnglishMode) {
+          const enEntry = getWordMeaningEn(root);
+          if (enEntry) {
+            rawMeaning = enEntry;
+          }
 
-if (isEnglishMode) {
-  console.log("第一层（英文）：查 englishDictionaryEn");
-  const enEntry = getWordMeaningEn(root);
-  console.log("英英内置词典结果:", enEntry);
+          if (!rawMeaning) {
+            const extEnMeaning = lookupExternalDictEn(root) || lookupExternalDictEn(cleanWord);
+            if (extEnMeaning) {
+              rawMeaning = extEnMeaning;
+            }
+          }
 
-  if (enEntry) {
-    rawMeaning = enEntry;
-  }
-
-  if (!rawMeaning) {
-    console.log("第二层（英文）：查 dict_en.json (externalDictEn)");
-  const extEnMeaning = lookupExternalDictEn(root) || lookupExternalDictEn(cleanWord);
-
-    console.log("外部英英词典结果:", extEnMeaning);
-    if (extEnMeaning) {
-      rawMeaning = extEnMeaning;
-    }
-  }
-
-  if (!rawMeaning) {
-    console.log("第三层（英文）：调用 AI 英英释义");
-rawMeaning = await translateWordEn(root || cleanWord);
-
-  }
-}
-
- else {
-          // 中文模式查词流程（原有逻辑不变）
-          console.log('第一层（中文）：查 englishDictionary');
+          if (!rawMeaning) {
+            rawMeaning = dictMode === 'en-simple'
+              ? await translateWordEnSimple(root || cleanWord)
+              : await translateWordEn(root || cleanWord);
+          }
+        } else {
           const entry = getWordMeaning(root);
-          console.log('内置词典结果:', entry);
           if (entry?.meaning) {
             rawMeaning = entry.meaning;
           }
 
-          // 2. 查外部词典（带智能后缀去除）
           if (!rawMeaning) {
-            console.log('第二层（中文）：查 dict.json (externalDict)');
             const extMeaning = lookupExternalDict(cleanWord);
-            console.log('外部词典结果:', extMeaning);
             if (extMeaning) {
               rawMeaning = extMeaning;
             }
           }
 
-          // 3. 最后才调用AI翻译
           if (!rawMeaning) {
-            console.log('第三层（中文）：调用AI翻译');
             rawMeaning = await translateWord(cleanWord);
-
           }
         }
 
-        // 清洗并精简释义
-const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
+        const meaning = shortenTranslation(rawMeaning, dictMode);
 
         const family = findWordFamily(root, text);
 
@@ -930,19 +902,16 @@ const meaning = shortenTranslation(rawMeaning, isEnglishMode ? "en" : "zh");
             count: family.length,
           },
         }));
-                // 同时写入全局词汇表
         addToGlobalVocabulary(root, meaning, "");
 
       } catch (err) {
         console.error("Annotation error:", err);
       } finally {
-//        setLoading(false);
-                setAnnotating(false); 
+        setAnnotating(false);
         setSelectedWord(null);
       }
     },
     [annotations, text, dictMode, addToGlobalVocabulary]
-
   );
 
   // Remove annotation

@@ -139,11 +139,28 @@ export async function POST(request: NextRequest) {
     }
 
     const cleanWord = word.toLowerCase().trim();
-    const isEnglishMode = lang === 'en';
 
     let response;
-    if (isEnglishMode) {
-      // English definition mode
+    if (lang === 'en-simple') {
+      // Easy English: longer definition using only basic everyday words
+      response = await llmClient.invoke([
+        {
+          role: 'user',
+          content: `Define the English word "${cleanWord}" for someone who is learning English. Use only basic, everyday words that a child would know. Do NOT use difficult synonyms or formal words. Explain what the word means in a simple, clear way, under 25 words. Do not include the word itself.`,
+        },
+      ], {
+        model: 'doubao-seed-1-6-lite-251015',
+      });
+
+      const rawTranslation = response.content || '';
+      const processedTranslation = postProcessTranslationEn(rawTranslation, 150);
+
+      return NextResponse.json({
+        translation: processedTranslation || 'No definition found',
+        raw: rawTranslation
+      });
+    } else if (lang === 'en') {
+      // Short English definition
       response = await llmClient.invoke([
         {
           role: 'user',

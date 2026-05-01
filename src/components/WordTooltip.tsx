@@ -20,7 +20,7 @@ interface WordTooltipProps {
     meaning: string;
     pos: string;
   } | null;
-  dictMode?: "zh" | "en";
+  dictMode?: "zh" | "en" | "en-simple";
   // Dark mode
   isDarkMode?: boolean;
   bgColor?: string;
@@ -105,18 +105,18 @@ const externalEnRaw = !annotation
   ? (lookupExternalDictEn(root) || lookupExternalDictEn(word))
   : null;
 
+const isEnMode = dictMode === "en" || dictMode === "en-simple";
 const displayMeaning =
-  dictMode === "en"
+  isEnMode
     ? (annotation?.meaning || getWordMeaningEn(root) || externalEnRaw || null)
     : (internalZhEntry
         ? shortenTranslation(internalZhEntry.meaning)
         : (externalZhRaw ? shortenTranslation(externalZhRaw) : null));
 
-
 const displayEntry = displayMeaning
   ? {
       meaning: displayMeaning,
-      pos: dictMode === "en" ? "" : (internalZhEntry?.pos || ""),
+      pos: isEnMode ? "" : (internalZhEntry?.pos || ""),
     }
   : null;
 
@@ -203,7 +203,7 @@ const displayEntry = displayMeaning
           </div>
         ) : (
 <div className="tooltip-meaning tooltip-unknown" style={{ color: colors.secondaryText }}>
-  {dictMode === "en" ? "No definition found" : "未找到释义"}
+  {isEnMode ? "No definition found" : "未找到释义"}
 </div>
 
         )}

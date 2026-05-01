@@ -32,10 +32,10 @@ export function cleanTranslation(text: string): string {
  * Shorten translation text - keep only 1-2 most concise meanings
  * This is used to prevent overly long annotations like "(会话说话交谈)"
  * @param text - The translation text
- * @param mode - 'zh' for Chinese mode, 'en' for English mode
+ * @param mode - 'zh' for Chinese mode, 'en' or 'en-simple' for English mode
  */
-export function shortenTranslation(text: string, mode: 'zh' | 'en' = 'zh'): string {
-  if (!text) return mode === 'en' ? 'No definition' : '未知';
+export function shortenTranslation(text: string, mode: 'zh' | 'en' | 'en-simple' = 'zh'): string {
+  if (!text) return (mode === 'en' || mode === 'en-simple') ? 'No definition' : '未知';
 
   // First, clean the text (remove POS tags, brackets, etc.)
   let cleaned = text;
@@ -47,10 +47,9 @@ export function shortenTranslation(text: string, mode: 'zh' | 'en' = 'zh'): stri
   cleaned = cleaned.replace(/^[，。、；：.!?,]+/, '').replace(/[，。、；：.!?,]+$/, '');
   cleaned = cleaned.trim();
 
-  if (!cleaned) return mode === 'en' ? 'No definition' : '未知';
+  if (!cleaned) return (mode === 'en' || mode === 'en-simple') ? 'No definition' : '未知';
 
-  if (mode === 'en') {
-    // English mode: return full cleaned text without truncation
+  if (mode === 'en' || mode === 'en-simple') {
     return cleaned || 'No definition';
   }
 

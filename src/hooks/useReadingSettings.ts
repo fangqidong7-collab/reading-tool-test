@@ -21,7 +21,7 @@ export interface ReadingSettingsStorage {
   lineHeight: number;
   backgroundTheme: string;
   sidebarOpenByBook: Record<string, boolean>;
-  dictMode: 'zh' | 'en';
+  dictMode: 'zh' | 'en' | 'en-simple';
   pageTurnRatio: number;
   clickToTurnPage: boolean;
 }
@@ -131,7 +131,7 @@ export function useReadingSettings() {
     clickToTurnPage: false,
   });
   const [isLoaded, setIsLoaded] = useState(false);
-  const [dictMode, setDictModeState] = useState<'zh' | 'en'>('zh');
+  const [dictMode, setDictModeState] = useState<'zh' | 'en' | 'en-simple'>('zh');
   const [pageTurnRatio, setPageTurnRatioState] = useState(0.9);
   const [clickToTurnPage, setClickToTurnPageState] = useState(false);
 
@@ -230,8 +230,7 @@ export function useReadingSettings() {
     setClickToTurnPageState(false);
   }, []);
 
-  // Set dictionary mode (zh for Chinese, en for English)
-  const setDictMode = useCallback((mode: 'zh' | 'en') => {
+  const setDictMode = useCallback((mode: 'zh' | 'en' | 'en-simple') => {
     setDictModeState(mode);
     setStorage((prev) => ({ ...prev, dictMode: mode }));
   }, []);

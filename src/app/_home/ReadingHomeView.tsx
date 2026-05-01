@@ -65,7 +65,7 @@ export interface ReadingHomeViewProps {
   fontSize: number;
   lineHeight: number;
   currentTheme: string;
-  dictMode: "zh" | "en";
+  dictMode: "zh" | "en" | "en-simple";
   pageTurnRatio: number;
   clickToTurnPage: boolean;
   // Dict status
@@ -119,7 +119,7 @@ export interface ReadingHomeViewProps {
   setLineHeight: (height: number) => void;
   setBackgroundTheme: (theme: string) => void;
   resetToDefault: () => void;
-  setDictMode: (mode: "zh" | "en") => void;
+  setDictMode: (mode: "zh" | "en" | "en-simple") => void;
   setPageTurnRatio: (ratio: number) => void;
   setClickToTurnPage: (enabled: boolean) => void;
   // Callbacks - state setters

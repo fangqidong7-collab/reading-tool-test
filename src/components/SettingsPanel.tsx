@@ -18,8 +18,8 @@ interface SettingsPanelProps {
   headerTextColor: string;
   textColor: string;
   isDarkMode: boolean;
-  dictMode: 'zh' | 'en';
-  onDictModeChange: (mode: 'zh' | 'en') => void;
+  dictMode: 'zh' | 'en' | 'en-simple';
+  onDictModeChange: (mode: 'zh' | 'en' | 'en-simple') => void;
   pageTurnRatio: number;
   onPageTurnRatioChange: (ratio: number) => void;
   clickToTurnPage: boolean;
@@ -158,6 +158,13 @@ export function SettingsPanel({
                 onClick={() => onDictModeChange('en')}
               >
                 English
+              </button>
+              <button
+                className={`mode-btn ${dictMode === 'en-simple' ? 'active' : ''}`}
+                onClick={() => onDictModeChange('en-simple')}
+                title="Uses simple, everyday words to explain meanings (like a learner's dictionary)"
+              >
+                Easy English
               </button>
             </div>
           </div>

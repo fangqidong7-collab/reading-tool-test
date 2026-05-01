@@ -92,7 +92,7 @@ function postProcessTranslationEn(
 
 async function requestTranslation(
   word: string,
-  lang: "zh" | "en" = "zh"
+  lang: "zh" | "en" | "en-simple" = "zh"
 ): Promise<string> {
   const lowerWord = word.toLowerCase().trim();
   const cacheKey = `${lang}:${lowerWord}`;
@@ -100,6 +100,8 @@ async function requestTranslation(
   if (translationCache[cacheKey]) {
     return translationCache[cacheKey];
   }
+
+  const isEnglishLang = lang === "en" || lang === "en-simple";
 
   try {
     const controller = new AbortController();
@@ -116,7 +118,6 @@ async function requestTranslation(
 
     clearTimeout(timeoutId);
 
-
     if (!response.ok) {
       throw new Error("Translation API error");
     }
@@ -124,19 +125,18 @@ async function requestTranslation(
     const data = await response.json();
 
     let translation =
-      data.translation || (lang === "en" ? "No definition found" : "未找到释义");
+      data.translation || (isEnglishLang ? "No definition found" : "未找到释义");
 
-    translation =
-      lang === "en"
-        ? postProcessTranslationEn(translation)
-        : postProcessTranslation(translation);
+    translation = isEnglishLang
+      ? postProcessTranslationEn(translation, lang === "en-simple" ? 150 : 60)
+      : postProcessTranslation(translation);
 
     translationCache[cacheKey] = translation;
-        saveCacheToSession();
+    saveCacheToSession();
     return translation;
   } catch (error) {
     console.error("Translation error:", error);
-    return lang === "en" ? "Definition failed" : "翻译失败";
+    return isEnglishLang ? "Definition failed" : "翻译失败";
   }
 }
 
@@ -148,10 +148,17 @@ export async function translateWord(word: string): Promise<string> {
 }
 
 /**
- * Define English word in English
+ * Define English word in English (short)
  */
 export async function translateWordEn(word: string): Promise<string> {
   return requestTranslation(word, "en");
+}
+
+/**
+ * Define English word in easy English (longer, using basic vocabulary)
+ */
+export async function translateWordEnSimple(word: string): Promise<string> {
+  return requestTranslation(word, "en-simple");
 }
 
 /**
