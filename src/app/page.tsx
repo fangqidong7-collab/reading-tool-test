@@ -578,6 +578,15 @@ export default function Home() {
     }
   }, [currentBook?.id, currentBook?.content, currentBook?.annotations]);
 
+  // 切换书籍时重置滚动相关状态，防止旧书进度被写入新书
+  useEffect(() => {
+    setCurrentScrollPercent(0);
+    setCurrentParagraphIndex(-1);
+    setCurrentParagraphText("");
+    setCurrentParagraphOffsetRatio(0);
+    setCurrentChapterTitle("");
+  }, [currentBook?.id]);
+
   // 打开/切换书籍时不自动弹出词汇表侧栏（仍可通过按钮手动打开）
   useEffect(() => {
     if (!currentBook) {

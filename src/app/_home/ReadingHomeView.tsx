@@ -395,10 +395,44 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
                     style={{
                       display: "flex",
                       justifyContent: "flex-end",
+                      alignItems: "center",
+                      gap: "8px",
                       padding: "8px 12px",
                       borderBottom: `1px solid ${isDarkMode ? "#333" : "#eee"}`,
+                      position: "sticky",
+                      top: 0,
+                      zIndex: 1,
+                      backgroundColor: isDarkMode ? "#1e1e2e" : "#fff",
                     }}
                   >
+                    {currentBook.tableOfContents.length > 10 && (
+                      <button
+                        onClick={() => {
+                          const container = tocScrollContainerRef.current;
+                          if (container) {
+                            container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+                          }
+                        }}
+                        style={{
+                          background: "none",
+                          border: `1px solid ${isDarkMode ? "#555" : "#ddd"}`,
+                          borderRadius: "4px",
+                          padding: "4px 10px",
+                          fontSize: "12px",
+                          color: isDarkMode ? "#aaa" : "#666",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "4px",
+                        }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <polyline points="7 13 12 18 17 13" />
+                          <polyline points="7 6 12 11 17 6" />
+                        </svg>
+                        到底部
+                      </button>
+                    )}
                     <button
                       onClick={() => setTocReversed(!tocReversed)}
                       style={{
@@ -460,28 +494,6 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
                       </button>
                     );
                   })}
-                  {currentBook?.tableOfContents && currentBook.tableOfContents.length > 10 && (
-                    <button
-                      className="toc-scroll-bottom-btn"
-                      onClick={() => {
-                        const container = tocScrollContainerRef.current;
-                        if (container) {
-                          container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
-                        }
-                      }}
-                      style={{
-                        color: isDarkMode ? "#8898A8" : "#8898A8",
-                        borderColor: isDarkMode ? "#444" : "#ddd",
-                        backgroundColor: isDarkMode ? "#2a2a3e" : "#f8f9fa",
-                      }}
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <polyline points="7 13 12 18 17 13" />
-                        <polyline points="7 6 12 11 17 6" />
-                      </svg>
-                      到底部
-                    </button>
-                  )}
                 </>
               ) : (
                 <div className="empty-message" style={{ color: isDarkMode ? "#666" : "#999" }}>

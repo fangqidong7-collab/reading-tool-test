@@ -793,7 +793,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
   const getScrollPercent = useCallback(() => {
     if (!containerRef.current) return 0;
     const el = containerRef.current;
-    if (el.scrollHeight <= el.clientHeight) return 100;
+    if (el.scrollHeight <= el.clientHeight) return el.scrollTop > 0 ? 100 : 0;
     // 保留4位小数，避免长文档精度丢失
     return parseFloat(((el.scrollTop / (el.scrollHeight - el.clientHeight)) * 100).toFixed(4));
   }, []);

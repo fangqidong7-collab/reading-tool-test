@@ -54,16 +54,18 @@ export function shortenTranslation(text: string, mode: 'zh' | 'en' | 'en-simple'
   }
 
   // Chinese mode (original logic)
+  // Short strings (<=4 chars) are already concise — return directly
+  if (cleaned.length <= 4) return cleaned;
+
   // Split by various separators first
   let items = cleaned.split(/[;；,，、/\n\\n]+/);
 
   // If only one item and it's all Chinese with no separators, smart split it
-  if (items.length === 1 && /^[\u4e00-\u9fff]+$/.test(items[0])) {
+  if (items.length === 1 && /^[\u4e00-\u9fff]+$/.test(items[0]) && items[0].length > 4) {
     const str = items[0];
-    // Split by common word boundaries (2-4 chars each)
     const newItems: string[] = [];
     for (let i = 0; i < str.length; i += 2) {
-      newItems.push(str.substring(i, Math.min(i + 3, str.length)));
+      newItems.push(str.substring(i, Math.min(i + 2, str.length)));
     }
     items = newItems;
   }
