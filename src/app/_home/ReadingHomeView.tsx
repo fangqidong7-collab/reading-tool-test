@@ -1374,7 +1374,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
         .left-drawer-content {
           flex: 1;
           overflow-y: auto;
-          padding: 8px 0;
+          padding-bottom: 8px;
         }
 
         .toc-list {
