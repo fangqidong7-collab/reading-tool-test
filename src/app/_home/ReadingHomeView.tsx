@@ -341,12 +341,25 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
     ttsIndexRef.current = 0;
   }, [ttsStop]);
 
-  // Auto-scroll to the paragraph being read
+  // Auto-scroll: only scroll when the paragraph being read falls below 80% of the viewport
   React.useEffect(() => {
     if (!ttsOpen || !ttsCurrentSentenceId) return;
     const parsed = ttsCurrentSentenceId.match(/^tts-p(\d+)-s\d+$/);
-    if (parsed) {
-      goToParagraph(parseInt(parsed[1], 10));
+    if (!parsed) return;
+    const pIdx = parseInt(parsed[1], 10);
+
+    const scrollEl = document.querySelector('.reading-container') as HTMLElement;
+    if (!scrollEl) { goToParagraph(pIdx); return; }
+
+    const paraEl = scrollEl.querySelector(`[data-paragraph-index="${pIdx}"]`) as HTMLElement;
+    if (!paraEl) { goToParagraph(pIdx); return; }
+
+    const containerRect = scrollEl.getBoundingClientRect();
+    const paraRect = paraEl.getBoundingClientRect();
+    const threshold = containerRect.top + containerRect.height * 0.8;
+
+    if (paraRect.top > threshold || paraRect.bottom < containerRect.top) {
+      goToParagraph(pIdx);
     }
   }, [ttsOpen, ttsCurrentSentenceId, goToParagraph]);
 
