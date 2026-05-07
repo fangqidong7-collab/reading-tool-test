@@ -6,7 +6,7 @@ import { WordTooltip } from "@/components/WordTooltip";
 import { VocabularySidebar } from "@/components/VocabularySidebar";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { SyncPanel } from "@/components/SyncPanel";
-import { useTTS } from "@/hooks/useTTS";
+import { useTTS, SPEED_OPTIONS } from "@/hooks/useTTS";
 import type { Book, ProcessedContent, SentenceAnnotation } from "@/hooks/useBookshelf";
 interface AnnotatedWord {
   root: string;
@@ -264,76 +264,72 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
   const [noteText, setNoteText] = React.useState("");
   const noteInputRef = React.useRef<HTMLTextAreaElement>(null);
 
-  // TTS state
+  // TTS state & sentence queue
   const [ttsOpen, setTtsOpen] = React.useState(false);
   const [ttsSpeed, setTtsSpeed] = React.useState('1.0x');
   const [ttsCurrentSentenceId, setTtsCurrentSentenceId] = React.useState("");
-  const { start, stop, pause, resume, setSpeed, currentSentenceId } = useTTS({
-    onSentenceChange: (_id: string) => {
-      // Advance to next sentence handled by handleTtsSentenceLeaveCenter
+  const ttsSentencesRef = React.useRef<Array<{ id: string; text: string }>>([]);
+  const ttsIndexRef = React.useRef(0);
+  const ttsPlayRef = React.useRef<(text: string) => void>(() => {});
+  const ttsStopRef = React.useRef<() => void>(() => {});
+
+  const { isPlaying: ttsIsPlaying, isPaused: ttsIsPaused, isLoading: ttsIsLoading, play: ttsPlay, stop: ttsStop, pause: ttsPause, resume: ttsResume, setSpeed } = useTTS({
+    onComplete: () => {
+      const nextIndex = ttsIndexRef.current + 1;
+      const queue = ttsSentencesRef.current;
+      if (nextIndex >= queue.length) {
+        ttsStopRef.current();
+        setTtsOpen(false);
+        setTtsCurrentSentenceId("");
+        return;
+      }
+      ttsIndexRef.current = nextIndex;
+      setTtsCurrentSentenceId(queue[nextIndex].id);
+      ttsPlayRef.current(queue[nextIndex].text);
     },
   });
-  const isPlaying = currentSentenceId !== null;
+  React.useEffect(() => { ttsPlayRef.current = ttsPlay; }, [ttsPlay]);
+  React.useEffect(() => { ttsStopRef.current = ttsStop; }, [ttsStop]);
 
-  // TTS: build sentence queue from current paragraph onward
-  const ttsSentenceQueueRef = React.useRef<string[]>([]);
-  const ttsQueueIndexRef = React.useRef(0);
+  const splitParaSentences = React.useCallback((paraText: string): string[] => {
+    return (paraText.match(/[^.!?。！？；;]*[.!?。！？；;]+/g) || [paraText]).map(s => s.trim()).filter(Boolean);
+  }, []);
 
   const handleStartTTS = React.useCallback(async () => {
     if (!processedContent || processedContent.length === 0) return;
     const startP = currentParagraphIndex >= 0 ? currentParagraphIndex : 0;
-    const allSentences: string[] = [];
-    const allIds: string[] = [];
+    const queue: Array<{ id: string; text: string }> = [];
     for (let p = startP; p < processedContent.length; p++) {
-      const para = processedContent[p];
-      const paraText = para.segments.map((s: { text: string }) => s.text).join("");
-      const sentences = paraText.split(/(?<=[.!?。！？；;])\s*/).filter((s: string) => s.trim());
-      sentences.forEach((s: string) => {
-        allSentences.push(s.trim());
-        allIds.push(`tts-p${p}-s${allSentences.length - 1}`);
+      const paraText = processedContent[p].segments.map((s: { text: string }) => s.text).join("");
+      const sentences = splitParaSentences(paraText);
+      sentences.forEach((text, sIdx) => {
+        queue.push({ id: `tts-p${p}-s${sIdx}`, text });
       });
     }
-    ttsSentenceQueueRef.current = allIds;
-    ttsQueueIndexRef.current = 0;
+    if (queue.length === 0) return;
+    ttsSentencesRef.current = queue;
+    ttsIndexRef.current = 0;
     setTtsOpen(true);
-    setTtsCurrentSentenceId(allIds[0] || "");
-    if (allSentences[0]) await start(allSentences[0]);
-  }, [processedContent, currentParagraphIndex, start]);
+    setTtsCurrentSentenceId(queue[0].id);
+    ttsPlay(queue[0].text);
+  }, [processedContent, currentParagraphIndex, splitParaSentences, ttsPlay]);
 
   const handleStopTTS = React.useCallback(() => {
-    stop();
+    ttsStop();
     setTtsOpen(false);
     setTtsCurrentSentenceId("");
-    ttsSentenceQueueRef.current = [];
-    ttsQueueIndexRef.current = 0;
-  }, [stop]);
+    ttsSentencesRef.current = [];
+    ttsIndexRef.current = 0;
+  }, [ttsStop]);
 
-  const handleTtsSentenceLeaveCenter = React.useCallback(
-    async (sentenceId: string) => {
-      if (!isPlaying) return;
-      const currentIdx = ttsSentenceQueueRef.current.indexOf(sentenceId);
-      const nextIdx = currentIdx + 1;
-      if (nextIdx >= ttsSentenceQueueRef.current.length) {
-        handleStopTTS();
-        return;
-      }
-      ttsQueueIndexRef.current = nextIdx;
-      const nextId = ttsSentenceQueueRef.current[nextIdx];
-      setTtsCurrentSentenceId(nextId);
-      const parsed = nextId.match(/^tts-p(\d+)-s(\d+)$/);
-      if (parsed && processedContent) {
-        const pIdx = parseInt(parsed[1], 10);
-        const para = processedContent[pIdx];
-        if (para) {
-          const paraText = para.segments.map((s: { text: string }) => s.text).join("");
-          const sentences = paraText.split(/(?<=[.!?。！？；;])\s*/).filter((s: string) => s.trim());
-          const sIdx = parseInt(parsed[2], 10);
-          if (sentences[sIdx]) await start(sentences[sIdx].trim());
-        }
-      }
-    },
-    [isPlaying, processedContent, start, handleStopTTS]
-  );
+  // Auto-scroll to the paragraph being read
+  React.useEffect(() => {
+    if (!ttsOpen || !ttsCurrentSentenceId) return;
+    const parsed = ttsCurrentSentenceId.match(/^tts-p(\d+)-s\d+$/);
+    if (parsed) {
+      goToParagraph(parseInt(parsed[1], 10));
+    }
+  }, [ttsOpen, ttsCurrentSentenceId, goToParagraph]);
 
   React.useEffect(() => {
     if (!pendingSelection) {
@@ -728,7 +724,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
           {/* TTS 朗读 Button */}
           <button
             className="nav-btn-more"
-            onClick={isPlaying ? handleStopTTS : handleStartTTS}
+            onClick={ttsOpen ? handleStopTTS : handleStartTTS}
             style={{
               backgroundColor: ttsOpen
                 ? isDarkMode
@@ -744,9 +740,9 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
                   ? "#9ca3af"
                   : "#6b7280",
             }}
-            title={isPlaying ? "停止朗读" : "朗读"}
+            title={ttsOpen ? "停止朗读" : "朗读"}
           >
-            {isPlaying ? (
+            {ttsOpen ? (
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                 <rect x="6" y="4" width="4" height="16" rx="1"/>
                 <rect x="14" y="4" width="4" height="16" rx="1"/>
@@ -817,8 +813,8 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
           {/* Pause / Resume */}
           <button
             onClick={() => {
-              if (isPlaying) pause();
-              else resume();
+              if (ttsIsPlaying) ttsPause();
+              else ttsResume();
             }}
             style={{
               background: "none",
@@ -830,7 +826,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
               alignItems: "center",
             }}
           >
-            {isPlaying ? (
+            {ttsIsPlaying ? (
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                 <rect x="6" y="4" width="4" height="16" rx="1"/>
                 <rect x="14" y="4" width="4" height="16" rx="1"/>
@@ -843,34 +839,36 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
           </button>
 
           <span style={{ flex: 1, opacity: 0.7, fontSize: "12px" }}>
-            {isPlaying ? "朗读中..." : "已暂停"}
+            {ttsIsPlaying ? "朗读中..." : ttsIsLoading ? "加载中..." : "已暂停"}
           </span>
 
           {/* Speed control */}
           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
             <span style={{ fontSize: "12px", opacity: 0.7 }}>速度</span>
-            {(['0.75x', '1.0x', '1.25x', '1.5x'] as const).map((s) => (
-              <button
-                key={s}
-                onClick={() => {
-                  setTtsSpeed(s);
-                  setSpeed(parseFloat(s));
-                  // Resume with new speed if playing
-                  if (isPlaying) resume();
-                }}
-                style={{
-                  background: "none",
-                  border: ttsSpeed === s ? `1px solid ${isDarkMode ? "#34d399" : "#059669"}` : "1px solid transparent",
-                  borderRadius: "4px",
-                  cursor: "pointer",
-                  color: ttsSpeed === s ? "inherit" : isDarkMode ? "#6b7280" : "#9ca3af",
-                  fontSize: "12px",
-                  padding: "2px 6px",
-                }}
-              >
-                {s}x
-              </button>
-            ))}
+            {[0, 1, 2, 3].map((idx) => {
+              const opt = SPEED_OPTIONS[idx];
+              if (!opt) return null;
+              return (
+                <button
+                  key={idx}
+                  onClick={() => {
+                    setTtsSpeed(opt.label);
+                    setSpeed(idx);
+                  }}
+                  style={{
+                    background: "none",
+                    border: ttsSpeed === opt.label ? `1px solid ${isDarkMode ? "#34d399" : "#059669"}` : "1px solid transparent",
+                    borderRadius: "4px",
+                    cursor: "pointer",
+                    color: ttsSpeed === opt.label ? "inherit" : isDarkMode ? "#6b7280" : "#9ca3af",
+                    fontSize: "12px",
+                    padding: "2px 6px",
+                  }}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
@@ -1116,7 +1114,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
               onRemoveAnnotation={removeAnnotation}
               clickToTurnPage={clickToTurnPage}
               ttsSentenceId={ttsCurrentSentenceId}
-              onTtsSentenceLeaveCenter={handleTtsSentenceLeaveCenter}
+              ttsPlaying={ttsOpen}
             />
           )}
         </div>

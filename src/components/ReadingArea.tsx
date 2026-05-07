@@ -171,16 +171,15 @@ const Paragraph = React.memo(({
       const parsed = ttsSentenceId.match(/^tts-p(\d+)-s(\d+)$/);
       if (parsed && parseInt(parsed[1], 10) === pIndex) {
         const sIdx = parseInt(parsed[2], 10);
-        const sentences = fullText.split(/(?<=[.!?。！？；;])\s*/);
+        const sentences = (fullText.match(/[^.!?。！？；;]*[.!?。！？；;]+/g) || [fullText]).map(s => s.trim()).filter(Boolean);
         let offset = 0;
         sentences.forEach((s, i) => {
-          if (s.trim()) {
-            ttsSentenceRanges.push({ id: `tts-p${pIndex}-s${i}`, start: offset, end: offset + s.length });
+          const idx = fullText.indexOf(s, offset);
+          if (idx >= 0) {
+            ttsSentenceRanges.push({ id: `tts-p${pIndex}-s${i}`, start: idx, end: idx + s.length });
+            offset = idx + s.length;
           }
-          offset += s.length;
         });
-        // Verify this sentence index exists
-        if (!ttsSentenceRanges[sIdx]) return null; // sentence not in this paragraph
       }
     }
   }
@@ -540,8 +539,6 @@ interface ReadingAreaProps {
   ttsSentenceId?: string;
   /** TTS: true while any sentence is being spoken */
   ttsPlaying?: boolean;
-  /** TTS: called when the current sentence element leaves the viewport center — caller advances to next sentence */
-  onTtsSentenceLeaveCenter?: (sentenceId: string) => void;
 }
 
 export const ReadingArea = forwardRef(function ReadingArea({
@@ -580,7 +577,6 @@ export const ReadingArea = forwardRef(function ReadingArea({
   clickToTurnPage = false,
   ttsSentenceId,
   ttsPlaying = false,
-  onTtsSentenceLeaveCenter,
 
 }: ReadingAreaProps, ref: React.Ref<ReadingAreaRef>) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -591,8 +587,6 @@ export const ReadingArea = forwardRef(function ReadingArea({
   const [containerHeight, setContainerHeight] = useState(600);
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const lastSwipeTimeRef = useRef(0);
-  // TTS: 追踪当前句子的 IntersectionObserver，避免重复触发
-  const ttsObserverRef = useRef<IntersectionObserver | null>(null);
 
   const virtualizer = useVirtualizer({
     count: processedContent ? processedContent.length : 0,
@@ -669,43 +663,6 @@ export const ReadingArea = forwardRef(function ReadingArea({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [scrollReadingPage]);
-
-  // TTS: IntersectionObserver — 当当前句子离开视口中线时通知外部
-  useEffect(() => {
-    if (!ttsPlaying || !ttsSentenceId || !onTtsSentenceLeaveCenter) return;
-
-    const el = containerRef.current;
-    if (!el) return;
-
-    // 清理旧 observer
-    if (ttsObserverRef.current) {
-      ttsObserverRef.current.disconnect();
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.target.id === ttsSentenceId && !entry.isIntersecting) {
-            // 当前句子已离开视口，通知外部推进到下一句
-            onTtsSentenceLeaveCenter(ttsSentenceId);
-            break;
-          }
-        }
-      },
-      {
-        root: el,
-        // 视口正中以上（句子滚出中线即触发）
-        threshold: 0,
-        rootMargin: '-50% 0px -50% 0px',
-      }
-    );
-
-    const target = document.getElementById(ttsSentenceId);
-    if (target) observer.observe(target);
-
-    ttsObserverRef.current = observer;
-    return () => observer.disconnect();
-  }, [ttsPlaying, ttsSentenceId, onTtsSentenceLeaveCenter]);
 
   // 文本选择功能 - 句子翻译
   const handleTextSelection = useCallback(() => {
