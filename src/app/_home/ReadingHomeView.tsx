@@ -270,10 +270,19 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
   const [ttsCurrentSentenceId, setTtsCurrentSentenceId] = React.useState("");
   const ttsSentencesRef = React.useRef<Array<{ id: string; text: string }>>([]);
   const ttsIndexRef = React.useRef(0);
-  const ttsPlayRef = React.useRef<(text: string) => void>(() => {});
+  const ttsPlayRef = React.useRef<(text: string, key?: string) => void>(() => {});
+  const ttsPlayUriRef = React.useRef<(uri: string) => void>(() => {});
+  const ttsFetchRef = React.useRef<(text: string, key: string) => Promise<string | null>>(async () => null);
   const ttsStopRef = React.useRef<() => void>(() => {});
 
-  const { isPlaying: ttsIsPlaying, isPaused: ttsIsPaused, isLoading: ttsIsLoading, play: ttsPlay, stop: ttsStop, pause: ttsPause, resume: ttsResume, setSpeed } = useTTS({
+  const prefetchAhead = React.useCallback((fromIndex: number) => {
+    const queue = ttsSentencesRef.current;
+    for (let i = fromIndex; i < fromIndex + 2 && i < queue.length; i++) {
+      ttsFetchRef.current(queue[i].text, queue[i].id);
+    }
+  }, []);
+
+  const { isPlaying: ttsIsPlaying, isPaused: ttsIsPaused, isLoading: ttsIsLoading, play: ttsPlay, playAudioUri: ttsPlayUri, fetchAudio: ttsFetch, stop: ttsStop, pause: ttsPause, resume: ttsResume, setSpeed } = useTTS({
     onComplete: () => {
       const nextIndex = ttsIndexRef.current + 1;
       const queue = ttsSentencesRef.current;
@@ -285,14 +294,23 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
       }
       ttsIndexRef.current = nextIndex;
       setTtsCurrentSentenceId(queue[nextIndex].id);
-      ttsPlayRef.current(queue[nextIndex].text);
+      ttsPlayRef.current(queue[nextIndex].text, queue[nextIndex].id);
+      prefetchAhead(nextIndex + 1);
     },
   });
   React.useEffect(() => { ttsPlayRef.current = ttsPlay; }, [ttsPlay]);
+  React.useEffect(() => { ttsPlayUriRef.current = ttsPlayUri; }, [ttsPlayUri]);
+  React.useEffect(() => { ttsFetchRef.current = ttsFetch; }, [ttsFetch]);
   React.useEffect(() => { ttsStopRef.current = ttsStop; }, [ttsStop]);
 
   const splitParaSentences = React.useCallback((paraText: string): string[] => {
-    return (paraText.match(/[^.!?。！？；;]*[.!?。！？；;]+/g) || [paraText]).map(s => s.trim()).filter(Boolean);
+    const withPunct = paraText.match(/[^.!?。！？；;]*[.!?。！？；;]+/g) || [];
+    const matched = withPunct.join('');
+    const remainder = paraText.slice(matched.length).trim();
+    const result = withPunct.map(s => s.trim()).filter(Boolean);
+    if (remainder) result.push(remainder);
+    if (result.length === 0 && paraText.trim()) result.push(paraText.trim());
+    return result;
   }, []);
 
   const handleStartTTS = React.useCallback(async () => {
@@ -311,8 +329,9 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
     ttsIndexRef.current = 0;
     setTtsOpen(true);
     setTtsCurrentSentenceId(queue[0].id);
-    ttsPlay(queue[0].text);
-  }, [processedContent, currentParagraphIndex, splitParaSentences, ttsPlay]);
+    ttsPlay(queue[0].text, queue[0].id);
+    prefetchAhead(1);
+  }, [processedContent, currentParagraphIndex, splitParaSentences, ttsPlay, prefetchAhead]);
 
   const handleStopTTS = React.useCallback(() => {
     ttsStop();

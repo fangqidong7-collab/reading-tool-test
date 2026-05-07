@@ -29,6 +29,8 @@ export function useTTS(options: UseTTSOptions = {}) {
   const onCompleteRef = useRef(onComplete);
   useEffect(() => { onCompleteRef.current = onComplete; }, [onComplete]);
 
+  const audioCacheRef = useRef<Map<string, string>>(new Map());
+
   const cleanup = useCallback(() => {
     if (audioRef.current) {
       audioRef.current.pause();
@@ -41,19 +43,16 @@ export function useTTS(options: UseTTSOptions = {}) {
   const stop = useCallback(() => {
     stoppedRef.current = true;
     cleanup();
+    audioCacheRef.current.clear();
     setIsPlaying(false);
     setIsPaused(false);
     setIsLoading(false);
     setError(null);
   }, [cleanup]);
 
-  const play = useCallback(async (text: string) => {
-    cleanup();
-    stoppedRef.current = false;
-    setIsLoading(true);
-    setError(null);
-    setIsPlaying(true);
-    setIsPaused(false);
+  const fetchAudio = useCallback(async (text: string, cacheKey: string): Promise<string | null> => {
+    const cached = audioCacheRef.current.get(cacheKey);
+    if (cached) return cached;
 
     try {
       const speed = SPEED_OPTIONS[speedIndexRef.current];
@@ -62,38 +61,64 @@ export function useTTS(options: UseTTSOptions = {}) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, speechRate: speed?.speechRate ?? 0 }),
       });
-
-      if (stoppedRef.current) return;
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error ?? 'TTS request failed');
-      }
-
+      if (!res.ok) return null;
       const data = await res.json();
+      if (data.audioUri) {
+        audioCacheRef.current.set(cacheKey, data.audioUri);
+        return data.audioUri;
+      }
+    } catch { /* ignore prefetch errors */ }
+    return null;
+  }, []);
+
+  const playAudioUri = useCallback((uri: string) => {
+    cleanup();
+    stoppedRef.current = false;
+    setError(null);
+    setIsPlaying(true);
+    setIsPaused(false);
+    setIsLoading(false);
+
+    const speed = SPEED_OPTIONS[speedIndexRef.current];
+    const audio = new Audio(uri);
+    audio.playbackRate = speed?.playbackRate ?? 1.0;
+    audioRef.current = audio;
+
+    audio.onended = () => {
       if (stoppedRef.current) return;
-      if (!data.audioUri) throw new Error('No audio returned');
+      setIsPlaying(false);
+      setIsPaused(false);
+      onCompleteRef.current?.();
+    };
+    audio.onerror = () => {
+      if (stoppedRef.current) return;
+      setIsPlaying(false);
+      setError('Audio playback failed');
+      onCompleteRef.current?.();
+    };
 
-      const audio = new Audio(data.audioUri);
-      audio.playbackRate = speed?.playbackRate ?? 1.0;
-      audioRef.current = audio;
+    audio.play().catch(() => {
+      if (stoppedRef.current) return;
+      setIsPlaying(false);
+      setError('Audio play failed');
+      onCompleteRef.current?.();
+    });
+  }, [cleanup]);
 
-      audio.onended = () => {
-        if (stoppedRef.current) return;
-        setIsPlaying(false);
-        setIsPaused(false);
-        onCompleteRef.current?.();
-      };
+  const play = useCallback(async (text: string, cacheKey?: string) => {
+    cleanup();
+    stoppedRef.current = false;
+    setIsLoading(true);
+    setError(null);
+    setIsPlaying(true);
+    setIsPaused(false);
 
-      audio.onerror = () => {
-        if (stoppedRef.current) return;
-        setIsPlaying(false);
-        setError('Audio playback failed');
-        onCompleteRef.current?.();
-      };
-
-      setIsLoading(false);
-      await audio.play();
+    try {
+      const key = cacheKey || text;
+      const uri = await fetchAudio(text, key);
+      if (stoppedRef.current) return;
+      if (!uri) throw new Error('TTS returned no audio');
+      playAudioUri(uri);
     } catch (err: unknown) {
       if (stoppedRef.current) return;
       const msg = err instanceof Error ? err.message : 'TTS failed';
@@ -103,7 +128,7 @@ export function useTTS(options: UseTTSOptions = {}) {
       setError(msg);
       onCompleteRef.current?.();
     }
-  }, [cleanup]);
+  }, [cleanup, fetchAudio, playAudioUri]);
 
   const pause = useCallback(() => {
     if (audioRef.current && !isPaused) {
@@ -142,6 +167,8 @@ export function useTTS(options: UseTTSOptions = {}) {
     speedIndex,
     error,
     play,
+    playAudioUri,
+    fetchAudio,
     stop,
     pause,
     resume,

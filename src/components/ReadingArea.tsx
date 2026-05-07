@@ -171,7 +171,11 @@ const Paragraph = React.memo(({
       const parsed = ttsSentenceId.match(/^tts-p(\d+)-s(\d+)$/);
       if (parsed && parseInt(parsed[1], 10) === pIndex) {
         const sIdx = parseInt(parsed[2], 10);
-        const sentences = (fullText.match(/[^.!?。！？；;]*[.!?。！？；;]+/g) || [fullText]).map(s => s.trim()).filter(Boolean);
+        const withPunct = fullText.match(/[^.!?。！？；;]*[.!?。！？；;]+/g) || [];
+        const remainder = fullText.slice(withPunct.join('').length).trim();
+        const sentences = withPunct.map(s => s.trim()).filter(Boolean);
+        if (remainder) sentences.push(remainder);
+        if (sentences.length === 0 && fullText.trim()) sentences.push(fullText.trim());
         let offset = 0;
         sentences.forEach((s, i) => {
           const idx = fullText.indexOf(s, offset);
