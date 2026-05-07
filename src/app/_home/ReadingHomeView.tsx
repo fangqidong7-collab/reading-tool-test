@@ -742,29 +742,23 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
 
           {/* TTS 朗读 Button */}
           <button
-            className="nav-btn-more"
+            className={`toc-btn ${isDarkMode ? "dark" : ""}`}
             onClick={ttsOpen ? handleStopTTS : handleStartTTS}
             style={{
               backgroundColor: ttsOpen
                 ? isDarkMode
-                  ? "#065f46"
-                  : "#d1fae5"
+                  ? "#3a3a4e"
+                  : "#e0e0e0"
                 : "transparent",
               borderColor: isDarkMode ? "#444" : "#ddd",
-              color: ttsOpen
-                ? isDarkMode
-                  ? "#34d399"
-                  : "#059669"
-                : isDarkMode
-                  ? "#9ca3af"
-                  : "#6b7280",
+              color: headerTextColor,
             }}
             title={ttsOpen ? "停止朗读" : "朗读"}
           >
             {ttsOpen ? (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                <rect x="6" y="4" width="4" height="16" rx="1"/>
-                <rect x="14" y="4" width="4" height="16" rx="1"/>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="6" y="5" width="4" height="14" rx="1"/>
+                <rect x="14" y="5" width="4" height="14" rx="1"/>
               </svg>
             ) : (
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
