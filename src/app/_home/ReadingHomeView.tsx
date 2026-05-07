@@ -6,6 +6,7 @@ import { WordTooltip } from "@/components/WordTooltip";
 import { VocabularySidebar } from "@/components/VocabularySidebar";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { SyncPanel } from "@/components/SyncPanel";
+import { useTTS } from "@/hooks/useTTS";
 import type { Book, ProcessedContent, SentenceAnnotation } from "@/hooks/useBookshelf";
 interface AnnotatedWord {
   root: string;
@@ -262,6 +263,77 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
   const [showNoteInput, setShowNoteInput] = React.useState(false);
   const [noteText, setNoteText] = React.useState("");
   const noteInputRef = React.useRef<HTMLTextAreaElement>(null);
+
+  // TTS state
+  const [ttsOpen, setTtsOpen] = React.useState(false);
+  const [ttsSpeed, setTtsSpeed] = React.useState('1.0x');
+  const [ttsCurrentSentenceId, setTtsCurrentSentenceId] = React.useState("");
+  const { start, stop, pause, resume, setSpeed, currentSentenceId } = useTTS({
+    onSentenceChange: (_id: string) => {
+      // Advance to next sentence handled by handleTtsSentenceLeaveCenter
+    },
+  });
+  const isPlaying = currentSentenceId !== null;
+
+  // TTS: build sentence queue from current paragraph onward
+  const ttsSentenceQueueRef = React.useRef<string[]>([]);
+  const ttsQueueIndexRef = React.useRef(0);
+
+  const handleStartTTS = React.useCallback(async () => {
+    if (!processedContent || processedContent.length === 0) return;
+    const startP = currentParagraphIndex >= 0 ? currentParagraphIndex : 0;
+    const allSentences: string[] = [];
+    const allIds: string[] = [];
+    for (let p = startP; p < processedContent.length; p++) {
+      const para = processedContent[p];
+      const paraText = para.segments.map((s: { text: string }) => s.text).join("");
+      const sentences = paraText.split(/(?<=[.!?。！？；;])\s*/).filter((s: string) => s.trim());
+      sentences.forEach((s: string) => {
+        allSentences.push(s.trim());
+        allIds.push(`tts-p${p}-s${allSentences.length - 1}`);
+      });
+    }
+    ttsSentenceQueueRef.current = allIds;
+    ttsQueueIndexRef.current = 0;
+    setTtsOpen(true);
+    setTtsCurrentSentenceId(allIds[0] || "");
+    if (allSentences[0]) await start(allSentences[0]);
+  }, [processedContent, currentParagraphIndex, start]);
+
+  const handleStopTTS = React.useCallback(() => {
+    stop();
+    setTtsOpen(false);
+    setTtsCurrentSentenceId("");
+    ttsSentenceQueueRef.current = [];
+    ttsQueueIndexRef.current = 0;
+  }, [stop]);
+
+  const handleTtsSentenceLeaveCenter = React.useCallback(
+    async (sentenceId: string) => {
+      if (!isPlaying) return;
+      const currentIdx = ttsSentenceQueueRef.current.indexOf(sentenceId);
+      const nextIdx = currentIdx + 1;
+      if (nextIdx >= ttsSentenceQueueRef.current.length) {
+        handleStopTTS();
+        return;
+      }
+      ttsQueueIndexRef.current = nextIdx;
+      const nextId = ttsSentenceQueueRef.current[nextIdx];
+      setTtsCurrentSentenceId(nextId);
+      const parsed = nextId.match(/^tts-p(\d+)-s(\d+)$/);
+      if (parsed && processedContent) {
+        const pIdx = parseInt(parsed[1], 10);
+        const para = processedContent[pIdx];
+        if (para) {
+          const paraText = para.segments.map((s: { text: string }) => s.text).join("");
+          const sentences = paraText.split(/(?<=[.!?。！？；;])\s*/).filter((s: string) => s.trim());
+          const sIdx = parseInt(parsed[2], 10);
+          if (sentences[sIdx]) await start(sentences[sIdx].trim());
+        }
+      }
+    },
+    [isPlaying, processedContent, start, handleStopTTS]
+  );
 
   React.useEffect(() => {
     if (!pendingSelection) {
@@ -653,6 +725,39 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
             </svg>
           </button>
 
+          {/* TTS 朗读 Button */}
+          <button
+            className="nav-btn-more"
+            onClick={isPlaying ? handleStopTTS : handleStartTTS}
+            style={{
+              backgroundColor: ttsOpen
+                ? isDarkMode
+                  ? "#065f46"
+                  : "#d1fae5"
+                : "transparent",
+              borderColor: isDarkMode ? "#444" : "#ddd",
+              color: ttsOpen
+                ? isDarkMode
+                  ? "#34d399"
+                  : "#059669"
+                : isDarkMode
+                  ? "#9ca3af"
+                  : "#6b7280",
+            }}
+            title={isPlaying ? "停止朗读" : "朗读"}
+          >
+            {isPlaying ? (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="6" y="4" width="4" height="16" rx="1"/>
+                <rect x="14" y="4" width="4" height="16" rx="1"/>
+              </svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polygon points="5 3 19 12 5 21 5 3"/>
+              </svg>
+            )}
+          </button>
+
           {/* More Menu Button - right first */}
           <button
             className={`more-menu-btn nav-btn-more ${isDarkMode ? "dark" : ""}`}
@@ -676,6 +781,99 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
           </button>
         </div>
       </header>
+
+      {/* TTS Control Bar */}
+      {ttsOpen && (
+        <div
+          style={{
+            backgroundColor: isDarkMode ? "#1a3a2a" : "#ecfdf5",
+            borderBottom: `1px solid ${isDarkMode ? "#065f46" : "#a7f3d0"}`,
+            padding: "6px 16px",
+            display: "flex",
+            alignItems: "center",
+            gap: "12px",
+            fontSize: "13px",
+            color: isDarkMode ? "#6ee7b7" : "#065f46",
+          }}
+        >
+          {/* Stop */}
+          <button
+            onClick={handleStopTTS}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: "inherit",
+              padding: "4px",
+              display: "flex",
+              alignItems: "center",
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="6" y="6" width="12" height="12" rx="2"/>
+            </svg>
+          </button>
+
+          {/* Pause / Resume */}
+          <button
+            onClick={() => {
+              if (isPlaying) pause();
+              else resume();
+            }}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: "inherit",
+              padding: "4px",
+              display: "flex",
+              alignItems: "center",
+            }}
+          >
+            {isPlaying ? (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="6" y="4" width="4" height="16" rx="1"/>
+                <rect x="14" y="4" width="4" height="16" rx="1"/>
+              </svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="5 3 19 12 5 21 5 3"/>
+              </svg>
+            )}
+          </button>
+
+          <span style={{ flex: 1, opacity: 0.7, fontSize: "12px" }}>
+            {isPlaying ? "朗读中..." : "已暂停"}
+          </span>
+
+          {/* Speed control */}
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <span style={{ fontSize: "12px", opacity: 0.7 }}>速度</span>
+            {(['0.75x', '1.0x', '1.25x', '1.5x'] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => {
+                  setTtsSpeed(s);
+                  setSpeed(parseFloat(s));
+                  // Resume with new speed if playing
+                  if (isPlaying) resume();
+                }}
+                style={{
+                  background: "none",
+                  border: ttsSpeed === s ? `1px solid ${isDarkMode ? "#34d399" : "#059669"}` : "1px solid transparent",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  color: ttsSpeed === s ? "inherit" : isDarkMode ? "#6b7280" : "#9ca3af",
+                  fontSize: "12px",
+                  padding: "2px 6px",
+                }}
+              >
+                {s}x
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* More Menu Dropdown */}
       {moreMenuOpen && (
@@ -917,6 +1115,8 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
               onRemoveSentenceAnnotation={handleRemoveSentenceAnnotation}
               onRemoveAnnotation={removeAnnotation}
               clickToTurnPage={clickToTurnPage}
+              ttsSentenceId={ttsCurrentSentenceId}
+              onTtsSentenceLeaveCenter={handleTtsSentenceLeaveCenter}
             />
           )}
         </div>

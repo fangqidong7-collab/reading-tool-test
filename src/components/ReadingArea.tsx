@@ -137,6 +137,10 @@ interface ParagraphProps {
   sentenceAnnotations?: SentenceAnnotation[];
   onRemoveSentenceAnnotation?: (id: string) => void;
   onRemoveAnnotation?: (word: string, lemma: string) => void;
+  /** TTS: ID of the currently speaking sentence, e.g. "tts-p0-s2" */
+  ttsSentenceId?: string;
+  /** TTS: true while any sentence is being spoken */
+  ttsPlaying?: boolean;
 }
 
 const Paragraph = React.memo(({
@@ -153,7 +157,40 @@ const Paragraph = React.memo(({
   sentenceAnnotations = [],
   onRemoveSentenceAnnotation,
   onRemoveAnnotation,
+  ttsSentenceId,
+  ttsPlaying = false,
 }: ParagraphProps) => {
+  // Parse the paragraph text and split into TTS sentences with character ranges
+  const fullText = paragraph.segments.map(s => s.text).join('');
+
+  // TTS: compute sentence character ranges for this paragraph
+  const ttsSentenceRanges: Array<{ id: string; start: number; end: number }> = [];
+  if (ttsPlaying) {
+    // e.g. ttsSentenceId = "tts-p5-s2"
+    if (ttsSentenceId) {
+      const parsed = ttsSentenceId.match(/^tts-p(\d+)-s(\d+)$/);
+      if (parsed && parseInt(parsed[1], 10) === pIndex) {
+        const sIdx = parseInt(parsed[2], 10);
+        const sentences = fullText.split(/(?<=[.!?。！？；;])\s*/);
+        let offset = 0;
+        sentences.forEach((s, i) => {
+          if (s.trim()) {
+            ttsSentenceRanges.push({ id: `tts-p${pIndex}-s${i}`, start: offset, end: offset + s.length });
+          }
+          offset += s.length;
+        });
+        // Verify this sentence index exists
+        if (!ttsSentenceRanges[sIdx]) return null; // sentence not in this paragraph
+      }
+    }
+  }
+
+  // Helper: is a character offset inside the current TTS sentence?
+  const isInTtsSentence = (charOffset: number): boolean => {
+    if (!ttsSentenceId) return false;
+    const range = ttsSentenceRanges.find(r => r.id === ttsSentenceId);
+    return !!range && charOffset >= range.start && charOffset < range.end;
+  };
   const handleClick = useCallback((e: React.MouseEvent) => {
     const sel = typeof window !== 'undefined' ? window.getSelection() : null;
     if (sel && !sel.isCollapsed && sel.toString().trim().length > 0) {
@@ -184,10 +221,7 @@ const Paragraph = React.memo(({
   const isHeading = paragraph.headingLevel !== undefined;
   const headingLevel = paragraph.headingLevel || 2;
 
-  // Build text content for search matching
-  const fullText = paragraph.segments.map(s => s.text).join('');
-
-  // Compute segment character offsets
+  // Build text content for search matching (reused below)
   const segmentOffsets: number[] = [];
   let charOffset = 0;
   for (const seg of paragraph.segments) {
@@ -282,6 +316,13 @@ const Paragraph = React.memo(({
     textUnderlineOffset: '3px',
   });
 
+  // TTS: background highlight style for the current speaking sentence
+  const getTtsHighlightStyle = (): React.CSSProperties => ({
+    backgroundColor: '#d4edda',
+    borderRadius: '2px',
+    padding: '1px 0',
+  });
+
   return (
     <p 
       className={`paragraph ${isHeading ? 'heading-paragraph' : ''} ${isCurrentSearchResult ? 'search-highlight' : ''}`}
@@ -301,7 +342,7 @@ const Paragraph = React.memo(({
         if (segment.type === "space" || segment.type === "punctuation") {
           return (
             <React.Fragment key={key}>
-              <span style={hasUnderline ? getUnderlineStyle() : undefined}>
+              <span style={hasUnderline ? getUnderlineStyle() : (isInTtsSentence(segCharStart) ? getTtsHighlightStyle() : undefined)}>
                 {segment.text}
               </span>
               {showTranslation && matchedSA && (
@@ -335,11 +376,14 @@ const Paragraph = React.memo(({
         
         return (
           <React.Fragment key={key}>
-            <span 
-              className="word" 
+            <span
+              className="word"
               data-word={segment.text}
               data-lemma={lemma}
-              style={hasUnderline ? getUnderlineStyle() : undefined}
+              style={{
+                ...(hasUnderline ? getUnderlineStyle() : {}),
+                ...(isInTtsSentence(segCharStart) ? getTtsHighlightStyle() : {}),
+              }}
             >
               {segment.text}
             </span>
@@ -409,6 +453,8 @@ function paragraphPropsAreEqual(
     sentenceAnnotations?: SentenceAnnotation[];
     onRemoveSentenceAnnotation?: (id: string) => void;
     onRemoveAnnotation?: (word: string, lemma: string) => void;
+    ttsSentenceId?: string;
+    ttsPlaying?: boolean;
   },
   next: {
     paragraph: ProcessedContent[number];
@@ -424,6 +470,8 @@ function paragraphPropsAreEqual(
     sentenceAnnotations?: SentenceAnnotation[];
     onRemoveSentenceAnnotation?: (id: string) => void;
     onRemoveAnnotation?: (word: string, lemma: string) => void;
+    ttsSentenceId?: string;
+    ttsPlaying?: boolean;
   }
 ) {
   if (prev.pIndex !== next.pIndex) return false;
@@ -436,6 +484,8 @@ function paragraphPropsAreEqual(
   if (prev.onWordDoubleClick !== next.onWordDoubleClick) return false;
   if (prev.sentenceAnnotations !== next.sentenceAnnotations) return false;
   if (prev.onRemoveSentenceAnnotation !== next.onRemoveSentenceAnnotation) return false;
+  if (prev.ttsSentenceId !== next.ttsSentenceId) return false;
+  if (prev.ttsPlaying !== next.ttsPlaying) return false;
 
   if (prev.paragraph !== next.paragraph) return false;
 
@@ -486,6 +536,12 @@ interface ReadingAreaProps {
   onRemoveSentenceAnnotation?: (id: string) => void;
   onRemoveAnnotation?: (word: string, lemma: string) => void;
   clickToTurnPage?: boolean;
+  /** TTS: ID of the currently speaking sentence, e.g. "tts-p0-s2" */
+  ttsSentenceId?: string;
+  /** TTS: true while any sentence is being spoken */
+  ttsPlaying?: boolean;
+  /** TTS: called when the current sentence element leaves the viewport center — caller advances to next sentence */
+  onTtsSentenceLeaveCenter?: (sentenceId: string) => void;
 }
 
 export const ReadingArea = forwardRef(function ReadingArea({
@@ -522,6 +578,9 @@ export const ReadingArea = forwardRef(function ReadingArea({
   onRemoveSentenceAnnotation,
   onRemoveAnnotation,
   clickToTurnPage = false,
+  ttsSentenceId,
+  ttsPlaying = false,
+  onTtsSentenceLeaveCenter,
 
 }: ReadingAreaProps, ref: React.Ref<ReadingAreaRef>) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -532,6 +591,8 @@ export const ReadingArea = forwardRef(function ReadingArea({
   const [containerHeight, setContainerHeight] = useState(600);
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const lastSwipeTimeRef = useRef(0);
+  // TTS: 追踪当前句子的 IntersectionObserver，避免重复触发
+  const ttsObserverRef = useRef<IntersectionObserver | null>(null);
 
   const virtualizer = useVirtualizer({
     count: processedContent ? processedContent.length : 0,
@@ -608,6 +669,43 @@ export const ReadingArea = forwardRef(function ReadingArea({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [scrollReadingPage]);
+
+  // TTS: IntersectionObserver — 当当前句子离开视口中线时通知外部
+  useEffect(() => {
+    if (!ttsPlaying || !ttsSentenceId || !onTtsSentenceLeaveCenter) return;
+
+    const el = containerRef.current;
+    if (!el) return;
+
+    // 清理旧 observer
+    if (ttsObserverRef.current) {
+      ttsObserverRef.current.disconnect();
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.target.id === ttsSentenceId && !entry.isIntersecting) {
+            // 当前句子已离开视口，通知外部推进到下一句
+            onTtsSentenceLeaveCenter(ttsSentenceId);
+            break;
+          }
+        }
+      },
+      {
+        root: el,
+        // 视口正中以上（句子滚出中线即触发）
+        threshold: 0,
+        rootMargin: '-50% 0px -50% 0px',
+      }
+    );
+
+    const target = document.getElementById(ttsSentenceId);
+    if (target) observer.observe(target);
+
+    ttsObserverRef.current = observer;
+    return () => observer.disconnect();
+  }, [ttsPlaying, ttsSentenceId, onTtsSentenceLeaveCenter]);
 
   // 文本选择功能 - 句子翻译
   const handleTextSelection = useCallback(() => {
@@ -1243,6 +1341,8 @@ export const ReadingArea = forwardRef(function ReadingArea({
                     sentenceAnnotations={sentenceAnnotations}
                     onRemoveSentenceAnnotation={onRemoveSentenceAnnotation}
                     onRemoveAnnotation={onRemoveAnnotation}
+                    ttsSentenceId={ttsSentenceId}
+                    ttsPlaying={ttsPlaying}
                   />
                 </div>
               );
