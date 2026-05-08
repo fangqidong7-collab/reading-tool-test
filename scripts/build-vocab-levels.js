@@ -22,9 +22,33 @@ const CEFR_POS = path.join(AGENT_TOOLS, "07a44115-6f6d-4c40-93f6-9a815a38cf0f.tx
 const AWL_FAMILIES = path.join(AGENT_TOOLS, "eb02c4e3-db0a-4967-b4db-9166cd4ff961.txt");
 const AWL_SIMPLE = path.join(AGENT_TOOLS, "d1c2f659-2550-425f-81ee-7f77caa4cca2.txt");
 const GRE_WORDS = path.join(AGENT_TOOLS, "gre-words-5349.txt");
+const DICT_FILE = "/usr/share/dict/words";
 const OUTPUT = path.join(__dirname, "..", "public", "vocab-levels.json");
 
 const LEVEL_RANK = { A1: 1, A2: 2, B1: 3, B2: 4, C1: 5, C2: 6 };
+
+let _dictLower = null;
+let _dictUpper = null;
+function loadSystemDict() {
+  if (_dictLower) return;
+  _dictLower = new Set();
+  _dictUpper = new Set();
+  const lines = fs.readFileSync(DICT_FILE, "utf8").split("\n");
+  for (const line of lines) {
+    const w = line.trim();
+    if (!w) continue;
+    if (/^[a-z]/.test(w)) _dictLower.add(w.toLowerCase());
+    if (/^[A-Z]/.test(w)) _dictUpper.add(w.toLowerCase());
+  }
+  console.log(`  System dictionary: ${_dictLower.size} lowercase, ${_dictUpper.size} capitalized entries`);
+}
+
+function isRealEnglishWord(w) {
+  loadSystemDict();
+  if (!_dictLower.has(w)) return false;
+  if (_dictUpper.has(w)) return false;
+  return true;
+}
 
 function normCefr(raw) {
   if (!raw || typeof raw !== "string") return null;
@@ -222,40 +246,30 @@ function main() {
   }
   console.log(`  -> ${awlAll.size} AWL forms, ${awlAdded} new words added`);
 
-  console.log("Parsing GRE Master Wordlist (C1 level)...");
+  console.log("Parsing GRE Master Wordlist (C1, dictionary-filtered)...");
   const greWords = parseGREWords(GRE_WORDS);
   let greAdded = 0;
   for (const w of greWords) {
-    if (!mapping.has(w)) {
+    if (!mapping.has(w) && isRealEnglishWord(w)) {
       mapping.set(w, "C1");
       greAdded++;
     }
   }
-  console.log(`  -> ${greWords.length} GRE words, ${greAdded} new words added`);
+  console.log(`  -> ${greWords.length} GRE words, ${greAdded} new (verified) words added`);
 
-  const MIN_FREQ = 500;
-  console.log(`Parsing CEFR extended dataset (freq >= ${MIN_FREQ})...`);
+  console.log("Parsing CEFR extended dataset (dictionary-filtered)...");
   const cefrj = parseCEFRDataset(CEFR_WORDS, CEFR_POS);
   console.log(`  -> ${cefrj.length} entries total`);
   let cefrjAdded = 0;
   for (const e of cefrj) {
     const w = e.word.toLowerCase().replace(/[^a-z\-]/g, "").trim();
     if (!w || w.length < 3) continue;
-    if (/^(.)\1+$/.test(w)) continue;
-    if (e.freq < MIN_FREQ) continue;
-    if (!mapping.has(w)) {
+    if (!mapping.has(w) && isRealEnglishWord(w)) {
       mapping.set(w, e.cefr);
       cefrjAdded++;
-      if (w.includes("-")) {
-        const nh = w.replace(/-/g, "");
-        if (nh.length >= 3 && !mapping.has(nh)) {
-          mapping.set(nh, e.cefr);
-          cefrjAdded++;
-        }
-      }
     }
   }
-  console.log(`  -> ${cefrjAdded} new words added from CEFR dataset`);
+  console.log(`  -> ${cefrjAdded} new (verified) words added from CEFR dataset`);
 
   const keys = [...mapping.keys()].sort((a, b) => a.localeCompare(b, "en"));
   const out = {};
