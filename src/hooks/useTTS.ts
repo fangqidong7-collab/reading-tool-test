@@ -10,12 +10,15 @@ export const SPEED_OPTIONS = [
   { label: '2.0x', speechRate: 50, playbackRate: 2.0 },
 ];
 
+const MAX_RETRIES = 2;
+
 interface UseTTSOptions {
   onComplete?: () => void;
+  onError?: (msg: string) => void;
 }
 
 export function useTTS(options: UseTTSOptions = {}) {
-  const { onComplete } = options;
+  const { onComplete, onError } = options;
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -26,29 +29,38 @@ export function useTTS(options: UseTTSOptions = {}) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const stoppedRef = useRef(false);
   const speedIndexRef = useRef(1);
+  const retryCountRef = useRef(0);
+  const currentUriRef = useRef<string | null>(null);
   const onCompleteRef = useRef(onComplete);
+  const onErrorRef = useRef(onError);
   useEffect(() => { onCompleteRef.current = onComplete; }, [onComplete]);
+  useEffect(() => { onErrorRef.current = onError; }, [onError]);
 
   const audioCacheRef = useRef<Map<string, string>>(new Map());
 
-  const cleanup = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.removeAttribute('src');
-      audioRef.current.load();
-      audioRef.current = null;
-    }
+  const getOrCreateAudio = useCallback((): HTMLAudioElement => {
+    if (audioRef.current) return audioRef.current;
+    const audio = new Audio();
+    audio.preload = 'auto';
+    audioRef.current = audio;
+    return audio;
   }, []);
 
   const stop = useCallback(() => {
     stoppedRef.current = true;
-    cleanup();
+    retryCountRef.current = 0;
+    currentUriRef.current = null;
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.removeAttribute('src');
+      audioRef.current.load();
+    }
     audioCacheRef.current.clear();
     setIsPlaying(false);
     setIsPaused(false);
     setIsLoading(false);
     setError(null);
-  }, [cleanup]);
+  }, []);
 
   const fetchAudio = useCallback(async (text: string, cacheKey: string): Promise<string | null> => {
     const cached = audioCacheRef.current.get(cacheKey);
@@ -72,42 +84,77 @@ export function useTTS(options: UseTTSOptions = {}) {
   }, []);
 
   const playAudioUri = useCallback((uri: string) => {
-    cleanup();
     stoppedRef.current = false;
     setError(null);
     setIsPlaying(true);
     setIsPaused(false);
     setIsLoading(false);
+    currentUriRef.current = uri;
+
+    const audio = getOrCreateAudio();
+    audio.pause();
 
     const speed = SPEED_OPTIONS[speedIndexRef.current];
-    const audio = new Audio(uri);
-    audio.playbackRate = speed?.playbackRate ?? 1.0;
-    audioRef.current = audio;
 
     audio.onended = () => {
       if (stoppedRef.current) return;
+      retryCountRef.current = 0;
       setIsPlaying(false);
       setIsPaused(false);
       onCompleteRef.current?.();
     };
+
     audio.onerror = () => {
       if (stoppedRef.current) return;
+      if (retryCountRef.current < MAX_RETRIES) {
+        retryCountRef.current += 1;
+        console.warn(`[TTS] playback error, retry ${retryCountRef.current}/${MAX_RETRIES}`);
+        setTimeout(() => {
+          if (stoppedRef.current) return;
+          audio.load();
+          audio.play().catch(() => {});
+        }, 500 * retryCountRef.current);
+        return;
+      }
+      retryCountRef.current = 0;
       setIsPlaying(false);
       setError('Audio playback failed');
-      onCompleteRef.current?.();
+      onErrorRef.current?.('Audio playback failed');
     };
 
-    audio.play().catch(() => {
+    audio.oncanplaythrough = () => {
       if (stoppedRef.current) return;
-      setIsPlaying(false);
-      setError('Audio play failed');
-      onCompleteRef.current?.();
-    });
-  }, [cleanup]);
+      setIsLoading(false);
+      audio.playbackRate = speed?.playbackRate ?? 1.0;
+      audio.play().catch((e) => {
+        if (stoppedRef.current) return;
+        if (retryCountRef.current < MAX_RETRIES) {
+          retryCountRef.current += 1;
+          console.warn(`[TTS] play() rejected, retry ${retryCountRef.current}/${MAX_RETRIES}:`, e?.message);
+          setTimeout(() => {
+            if (stoppedRef.current) return;
+            audio.play().catch(() => {});
+          }, 500 * retryCountRef.current);
+          return;
+        }
+        retryCountRef.current = 0;
+        setIsPlaying(false);
+        setError('Audio play blocked');
+        onErrorRef.current?.('Audio play blocked');
+      });
+    };
+
+    setIsLoading(true);
+    audio.src = uri;
+    audio.load();
+  }, [getOrCreateAudio]);
 
   const play = useCallback(async (text: string, cacheKey?: string) => {
-    cleanup();
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
     stoppedRef.current = false;
+    retryCountRef.current = 0;
     setIsLoading(true);
     setError(null);
     setIsPlaying(true);
@@ -126,9 +173,9 @@ export function useTTS(options: UseTTSOptions = {}) {
       setIsLoading(false);
       setIsPlaying(false);
       setError(msg);
-      onCompleteRef.current?.();
+      onErrorRef.current?.(msg);
     }
-  }, [cleanup, fetchAudio, playAudioUri]);
+  }, [fetchAudio, playAudioUri]);
 
   const pause = useCallback(() => {
     if (audioRef.current && !isPaused) {
@@ -157,8 +204,15 @@ export function useTTS(options: UseTTSOptions = {}) {
   }, []);
 
   useEffect(() => {
-    return () => { cleanup(); };
-  }, [cleanup]);
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.removeAttribute('src');
+        audioRef.current.load();
+        audioRef.current = null;
+      }
+    };
+  }, []);
 
   return {
     isPlaying,

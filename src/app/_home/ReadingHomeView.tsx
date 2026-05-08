@@ -297,6 +297,12 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
       ttsPlayRef.current(queue[nextIndex].text, queue[nextIndex].id);
       prefetchAhead(nextIndex + 1);
     },
+    onError: (msg) => {
+      console.error('[TTS] stopped due to error:', msg);
+      ttsStopRef.current();
+      setTtsOpen(false);
+      setTtsCurrentSentenceId("");
+    },
   });
   React.useEffect(() => { ttsPlayRef.current = ttsPlay; }, [ttsPlay]);
   React.useEffect(() => { ttsPlayUriRef.current = ttsPlayUri; }, [ttsPlayUri]);
