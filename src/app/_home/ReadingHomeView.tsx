@@ -312,11 +312,19 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
   const hasLetterOrDigit = React.useCallback((s: string) => /[a-zA-Z0-9\u4e00-\u9fff]/.test(s), []);
 
   const splitParaSentences = React.useCallback((paraText: string): string[] => {
-    const withPunct = paraText.match(/[^.!?。！？；;]*[.!?。！？；;]+["'""''）)»\s]*/g) || [];
-    const matched = withPunct.join('');
+    const rawParts = paraText.match(/[^.!?。！？；;]*[.!?。！？；;]+["'""''）)»\s]*/g) || [];
+    const merged: string[] = [];
+    for (const part of rawParts) {
+      if (merged.length > 0 && !/\s$/.test(merged[merged.length - 1])) {
+        merged[merged.length - 1] += part;
+      } else {
+        merged.push(part);
+      }
+    }
+    const matched = rawParts.join('');
     const remainder = paraText.slice(matched.length).trim();
-    const result = withPunct.map(s => s.trim()).filter(Boolean);
-    if (remainder) result.push(remainder);
+    const result = merged.map(s => s.trim()).filter(Boolean);
+    if (remainder && hasLetterOrDigit(remainder)) result.push(remainder);
     if (result.length === 0 && paraText.trim()) result.push(paraText.trim());
     return result.filter(hasLetterOrDigit);
   }, [hasLetterOrDigit]);

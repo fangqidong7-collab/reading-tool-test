@@ -171,9 +171,17 @@ const Paragraph = React.memo(({
       const parsed = ttsSentenceId.match(/^tts-p(\d+)-s(\d+)$/);
       if (parsed && parseInt(parsed[1], 10) === pIndex) {
         const sIdx = parseInt(parsed[2], 10);
-        const withPunct = fullText.match(/[^.!?。！？；;]*[.!?。！？；;]+["'""''）)»\s]*/g) || [];
-        const remainder = fullText.slice(withPunct.join('').length).trim();
-        const sentences = withPunct.map(s => s.trim()).filter(Boolean);
+        const rawParts = fullText.match(/[^.!?。！？；;]*[.!?。！？；;]+["'""''）)»\s]*/g) || [];
+        const merged: string[] = [];
+        for (const part of rawParts) {
+          if (merged.length > 0 && !/\s$/.test(merged[merged.length - 1])) {
+            merged[merged.length - 1] += part;
+          } else {
+            merged.push(part);
+          }
+        }
+        const remainder = fullText.slice(rawParts.join('').length).trim();
+        const sentences = merged.map(s => s.trim()).filter(Boolean);
         if (remainder && /[a-zA-Z0-9\u4e00-\u9fff]/.test(remainder)) sentences.push(remainder);
         if (sentences.length === 0 && fullText.trim()) sentences.push(fullText.trim());
         let offset = 0;
