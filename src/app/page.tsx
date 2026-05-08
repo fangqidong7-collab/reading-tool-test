@@ -959,24 +959,29 @@ export default function Home() {
     for (const para of processedContent) {
       for (const seg of para.segments) {
         if (seg.type !== 'word') continue;
-        const root = seg.lemma || lemmatize(seg.text.toLowerCase());
-        if (seen.has(root)) continue;
-        seen.add(root);
+        const original = seg.text.toLowerCase();
+        const root = seg.lemma || lemmatize(original);
+        const lookupKey = original === root ? root : original;
+        if (seen.has(lookupKey)) continue;
+        seen.add(lookupKey);
+        if (root !== original) seen.add(root);
 
-        const level = getWordLevel(root) || getWordLevel(seg.text.toLowerCase());
+        const levelOriginal = getWordLevel(original);
+        const levelRoot = original !== root ? getWordLevel(root) : null;
+        const level = levelOriginal || levelRoot;
         if (!level || !isAtOrAbove(level, threshold)) continue;
 
         let meaning = '';
         if (isEnMode) {
-          meaning = getWordMeaningEn(root) || lookupExternalDictEn(root) || lookupExternalDictEn(seg.text.toLowerCase()) || '';
+          meaning = getWordMeaningEn(root) || lookupExternalDictEn(root) || lookupExternalDictEn(original) || '';
         } else {
           const entry = getWordMeaning(root);
-          meaning = entry?.meaning || lookupExternalDict(root) || lookupExternalDict(seg.text.toLowerCase()) || '';
+          meaning = entry?.meaning || lookupExternalDict(root) || lookupExternalDict(original) || '';
         }
         if (!meaning) continue;
 
         const shortened = shortenTranslation(meaning, dictMode);
-        batch[root] = { root, meaning: shortened, pos: '', count: 1, cefrLevel: level };
+        batch[lookupKey] = { root: lookupKey, meaning: shortened, pos: '', count: 1, cefrLevel: level };
       }
     }
 

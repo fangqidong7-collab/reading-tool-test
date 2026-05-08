@@ -393,7 +393,8 @@ const Paragraph = React.memo(({
         }
         
         const lemma = segment.lemma;
-        const annotation = annotations?.[lemma];
+        const original = segment.text.toLowerCase();
+        const annotation = annotations?.[original] || annotations?.[lemma];
         const isAnnotated = !!annotation;
         
         return (
