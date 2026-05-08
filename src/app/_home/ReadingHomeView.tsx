@@ -312,7 +312,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
   const hasLetterOrDigit = React.useCallback((s: string) => /[a-zA-Z0-9\u4e00-\u9fff]/.test(s), []);
 
   const splitParaSentences = React.useCallback((paraText: string): string[] => {
-    const withPunct = paraText.match(/[^.!?。！？；;]*[.!?。！？；;]+/g) || [];
+    const withPunct = paraText.match(/[^.!?。！？；;]*[.!?。！？；;]+["'""''）)»\s]*/g) || [];
     const matched = withPunct.join('');
     const remainder = paraText.slice(matched.length).trim();
     const result = withPunct.map(s => s.trim()).filter(Boolean);
