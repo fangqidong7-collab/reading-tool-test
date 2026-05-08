@@ -236,23 +236,37 @@ export const irregularNouns: Record<string, string> = {
   "trout": "trout",
 };
 
-// 常见词缀规则
-const suffixRules: Array<{ suffix: string; remove: number; add?: string }> = [
-  // 复数
-  { suffix: "ies", remove: 3, add: "y" },
-  { suffix: "es", remove: 2 },
-  { suffix: "s", remove: 1 },
-  // 进行时
-  { suffix: "ing", remove: 3 },
-  // 过去式：先试去d（适用于 amazed→amaze, used→use, closed→close）
-  { suffix: "d", remove: 1 },
-  // 再试去ed（适用于 played→play, walked→walk）
-  { suffix: "ed", remove: 2 },
-  // 比较级/最高级
-  { suffix: "er", remove: 2 },
-  { suffix: "est", remove: 3 },
-  // 副词（保留，因为 quickly 查 quick 是合理的）
-  { suffix: "ly", remove: 2 },
+const LEMMA_NO_STRIP = new Set([
+  "after","better","under","over","never","other","water","later","letter","matter",
+  "offer","order","number","power","rather","river","silver","sister","summer","super",
+  "tiger","timber","together","winter","wonder","anger","answer","butter","cancer",
+  "center","chapter","character","cluster","computer","corner","counter","cover","cyber",
+  "danger","daughter","dinner","disorder","Easter","either","enter","ever","father",
+  "feather","finger","flower","forever","further","gender","gather","ginger","hammer",
+  "harbor","hinder","hunger","hunter","inner","leader","leather","lever","linger","liver",
+  "lower","lumber","manner","master","member","minister","monster","mother","murder",
+  "neither","newer","outer","paper","partner","pepper","pier","player","plaster","poker",
+  "polymer","poster","powder","prayer","proper","quarter","reader","register","render",
+  "rider","roller","rubber","ruler","runner","shoulder","shutter","singer","slaughter",
+  "slender","slider","sober","soldier","spider","splinter","stagger","sticker","stranger",
+  "suffer","supper","surrender","teacher","tender","thunder","tower","transfer","trigger",
+  "upper","utter","voter","weather","whisper","wider","winner","worker","writer",
+  "early","only","family","really","likely","lonely","lovely","daily","holy","ugly",
+  "rally","belly","bully","fully","gully","hilly","jelly","jolly","lily","silly","tally",
+  "apply","reply","supply","ally","comply","imply","multiply","rely",
+  "fly","July","Italy",
+]);
+
+const suffixRules: Array<{ suffix: string; remove: number; add?: string; minBase: number }> = [
+  { suffix: "ies", remove: 3, add: "y", minBase: 2 },
+  { suffix: "es", remove: 2, minBase: 3 },
+  { suffix: "s", remove: 1, minBase: 3 },
+  { suffix: "ing", remove: 3, minBase: 3 },
+  { suffix: "d", remove: 1, minBase: 3 },
+  { suffix: "ed", remove: 2, minBase: 3 },
+  { suffix: "er", remove: 2, minBase: 3 },
+  { suffix: "est", remove: 3, minBase: 3 },
+  { suffix: "ly", remove: 2, minBase: 3 },
 ];
 
 
@@ -921,21 +935,28 @@ export function lemmatize(word: string): string {
     return irregularNouns[lowerWord];
   }
   
-  // 4. 应用后缀规则
+  // 4. 应用后缀规则（跳过已知不应还原的词）
+  if (LEMMA_NO_STRIP.has(lowerWord)) {
+    return lowerWord;
+  }
   for (const rule of suffixRules) {
     if (lowerWord.endsWith(rule.suffix)) {
       const base = lowerWord.slice(0, -rule.remove);
       const result = rule.add ? base + rule.add : base;
-      
-      // 对于去-d规则：只在去掉d后以e结尾时才生效（amazed→amaze, used→use）
+
       if (rule.suffix === "d" && !result.endsWith("e")) {
         continue;
       }
-      
-      // 确保还原后的单词至少有两个字母
-      if (result.length >= 2) {
-        return result;
+
+      if (result.length < rule.minBase) {
+        continue;
       }
+
+      if (!/[aeiou]/.test(result)) {
+        continue;
+      }
+
+      return result;
     }
   }
 
