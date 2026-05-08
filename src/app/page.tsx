@@ -934,8 +934,12 @@ export default function Home() {
   );
 
   const prevVocabLevelRef = useRef(vocabLevel);
+  const dismissedCefrRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
+    if (prevVocabLevelRef.current !== vocabLevel) {
+      dismissedCefrRef.current.clear();
+    }
     if (!processedContent || vocabLevel === 'off') {
       if (prevVocabLevelRef.current !== 'off' && vocabLevel === 'off') {
         setAnnotations((prev) => {
@@ -965,6 +969,7 @@ export default function Home() {
         if (seen.has(lookupKey)) continue;
         seen.add(lookupKey);
         if (root !== original) seen.add(root);
+        if (dismissedCefrRef.current.has(lookupKey)) continue;
 
         const levelOriginal = getWordLevel(original);
         const levelRoot = original !== root ? getWordLevel(root) : null;
@@ -1000,12 +1005,15 @@ export default function Home() {
       lemmaOverride !== undefined && lemmaOverride.trim().length > 0
         ? lemmaOverride.trim()
         : lemmatize(word.toLowerCase());
+    const original = word.toLowerCase();
     setAnnotations((prev) => {
       const next = { ...prev };
+      if (next[root]?.cefrLevel) dismissedCefrRef.current.add(root);
+      if (original !== root && next[original]?.cefrLevel) dismissedCefrRef.current.add(original);
       delete next[root];
+      if (original !== root) delete next[original];
       return next;
     });
-    // 同时从全局词汇表删除
     removeFromGlobalVocabulary(root);
     setSelectedWord(null);
   }, [removeFromGlobalVocabulary]);
