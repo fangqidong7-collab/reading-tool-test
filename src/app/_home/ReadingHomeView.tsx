@@ -309,6 +309,8 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
   React.useEffect(() => { ttsFetchRef.current = ttsFetch; }, [ttsFetch]);
   React.useEffect(() => { ttsStopRef.current = ttsStop; }, [ttsStop]);
 
+  const hasLetterOrDigit = React.useCallback((s: string) => /[a-zA-Z0-9\u4e00-\u9fff]/.test(s), []);
+
   const splitParaSentences = React.useCallback((paraText: string): string[] => {
     const withPunct = paraText.match(/[^.!?。！？；;]*[.!?。！？；;]+/g) || [];
     const matched = withPunct.join('');
@@ -316,8 +318,8 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
     const result = withPunct.map(s => s.trim()).filter(Boolean);
     if (remainder) result.push(remainder);
     if (result.length === 0 && paraText.trim()) result.push(paraText.trim());
-    return result;
-  }, []);
+    return result.filter(hasLetterOrDigit);
+  }, [hasLetterOrDigit]);
 
   const handleStartTTS = React.useCallback(async () => {
     if (!processedContent || processedContent.length === 0) return;

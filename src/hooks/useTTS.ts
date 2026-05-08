@@ -169,6 +169,12 @@ export function useTTS(options: UseTTSOptions = {}) {
   }, [getOrCreateAudio, attemptPlay]);
 
   const play = useCallback(async (text: string, cacheKey?: string) => {
+    if (!/[a-zA-Z0-9\u4e00-\u9fff]/.test(text)) {
+      console.log(`[TTS] skipping non-speech text: "${text}"`);
+      onCompleteRef.current?.();
+      return;
+    }
+
     const audio = getOrCreateAudio();
     audio.pause();
     stoppedRef.current = false;
@@ -183,7 +189,13 @@ export function useTTS(options: UseTTSOptions = {}) {
       console.log(`[TTS] fetching audio for: "${text.slice(0, 40)}..."`);
       const uri = await fetchAudio(text, key);
       if (stoppedRef.current) return;
-      if (!uri) throw new Error('TTS returned no audio');
+      if (!uri) {
+        console.warn('[TTS] no audio returned, skipping to next');
+        setIsLoading(false);
+        setIsPlaying(false);
+        onCompleteRef.current?.();
+        return;
+      }
       console.log(`[TTS] got URI, starting playback`);
       playAudioUri(uri);
     } catch (err: unknown) {
