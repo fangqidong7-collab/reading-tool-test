@@ -16,6 +16,8 @@ export interface ReadingSettings {
   isDarkMode: boolean;
 }
 
+export type VocabLevelSetting = 'off' | 'B1' | 'B2' | 'C1';
+
 export interface ReadingSettingsStorage {
   fontSize: number;
   lineHeight: number;
@@ -24,6 +26,7 @@ export interface ReadingSettingsStorage {
   dictMode: 'zh' | 'en' | 'en-simple';
   pageTurnRatio: number;
   clickToTurnPage: boolean;
+  vocabLevel: VocabLevelSetting;
 }
 
 const DEFAULT_SETTINGS: ReadingSettings = {
@@ -82,6 +85,7 @@ function loadSettingsFromStorage(): ReadingSettingsStorage {
       dictMode: "zh",
       pageTurnRatio: 0.9,
       clickToTurnPage: false,
+      vocabLevel: "off" as VocabLevelSetting,
     };
   }
 
@@ -92,6 +96,7 @@ function loadSettingsFromStorage(): ReadingSettingsStorage {
       return {
         ...parsed,
         clickToTurnPage: parsed.clickToTurnPage ?? false,
+        vocabLevel: parsed.vocabLevel ?? 'off',
       };
     }
   } catch (e) {
@@ -106,6 +111,7 @@ function loadSettingsFromStorage(): ReadingSettingsStorage {
     dictMode: "zh",
     pageTurnRatio: 0.9,
     clickToTurnPage: false,
+    vocabLevel: "off" as VocabLevelSetting,
   };
 }
 
@@ -129,11 +135,13 @@ export function useReadingSettings() {
     dictMode: "zh",
     pageTurnRatio: 0.9,
     clickToTurnPage: false,
+    vocabLevel: "off",
   });
   const [isLoaded, setIsLoaded] = useState(false);
   const [dictMode, setDictModeState] = useState<'zh' | 'en' | 'en-simple'>('zh');
   const [pageTurnRatio, setPageTurnRatioState] = useState(0.9);
   const [clickToTurnPage, setClickToTurnPageState] = useState(false);
+  const [vocabLevel, setVocabLevelState] = useState<VocabLevelSetting>('off');
 
   // Load settings on mount
   useEffect(() => {
@@ -142,6 +150,7 @@ export function useReadingSettings() {
     setDictModeState(loaded.dictMode || 'zh');
     setPageTurnRatioState(loaded.pageTurnRatio ?? 0.9);
     setClickToTurnPageState(loaded.clickToTurnPage ?? false);
+    setVocabLevelState(loaded.vocabLevel ?? 'off');
     const colors = getThemeColors(loaded.backgroundTheme);
     setSettings({
       ...colors,
@@ -162,6 +171,7 @@ export function useReadingSettings() {
         dictMode: storage.dictMode,
         pageTurnRatio: storage.pageTurnRatio,
         clickToTurnPage: storage.clickToTurnPage,
+        vocabLevel: storage.vocabLevel,
       });
     }
   }, [settings, storage, isLoaded]);
@@ -228,6 +238,7 @@ export function useReadingSettings() {
     setDictModeState('zh');
     setPageTurnRatioState(0.9);
     setClickToTurnPageState(false);
+    setVocabLevelState('off');
   }, []);
 
   const setDictMode = useCallback((mode: 'zh' | 'en' | 'en-simple') => {
@@ -246,6 +257,11 @@ export function useReadingSettings() {
   const setClickToTurnPage = useCallback((enabled: boolean) => {
     setClickToTurnPageState(enabled);
     setStorage((prev) => ({ ...prev, clickToTurnPage: enabled }));
+  }, []);
+
+  const setVocabLevel = useCallback((level: VocabLevelSetting) => {
+    setVocabLevelState(level);
+    setStorage((prev) => ({ ...prev, vocabLevel: level }));
   }, []);
 
   // Calculate annotation font size (70% of body font size)
@@ -279,5 +295,7 @@ export function useReadingSettings() {
     setPageTurnRatio,
     clickToTurnPage,
     setClickToTurnPage,
+    vocabLevel,
+    setVocabLevel,
   };
 }

@@ -13,6 +13,7 @@ interface AnnotatedWord {
   meaning: string;
   pos: string;
   count: number;
+  cefrLevel?: string;
 }
 
 export interface ReadingHomeViewProps {
@@ -69,6 +70,8 @@ export interface ReadingHomeViewProps {
   dictMode: "zh" | "en" | "en-simple";
   pageTurnRatio: number;
   clickToTurnPage: boolean;
+  vocabLevel: string;
+  setVocabLevel: (level: string) => void;
   // Dict status
   dictLoadStatus: string;
   // Sync
@@ -197,6 +200,8 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
     dictMode,
     pageTurnRatio,
     clickToTurnPage,
+    vocabLevel,
+    setVocabLevel,
     dictLoadStatus,
     syncPanelOpen,
     setSyncPanelOpen,
@@ -357,6 +362,29 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
     ttsIndexRef.current = 0;
   }, [ttsStop]);
 
+  const handlePrevSentence = React.useCallback(() => {
+    const queue = ttsSentencesRef.current;
+    if (queue.length === 0) return;
+    const prevIdx = Math.max(0, ttsIndexRef.current - 1);
+    ttsStop();
+    ttsIndexRef.current = prevIdx;
+    setTtsCurrentSentenceId(queue[prevIdx].id);
+    ttsPlayRef.current(queue[prevIdx].text, queue[prevIdx].id);
+    prefetchAhead(prevIdx + 1);
+  }, [ttsStop, prefetchAhead]);
+
+  const handleNextSentence = React.useCallback(() => {
+    const queue = ttsSentencesRef.current;
+    if (queue.length === 0) return;
+    const nextIdx = ttsIndexRef.current + 1;
+    if (nextIdx >= queue.length) return;
+    ttsStop();
+    ttsIndexRef.current = nextIdx;
+    setTtsCurrentSentenceId(queue[nextIdx].id);
+    ttsPlayRef.current(queue[nextIdx].text, queue[nextIdx].id);
+    prefetchAhead(nextIdx + 1);
+  }, [ttsStop, prefetchAhead]);
+
   // Auto-scroll: only scroll when the paragraph being read falls below 80% of the viewport
   React.useEffect(() => {
     if (!ttsOpen || !ttsCurrentSentenceId) return;
@@ -415,6 +443,8 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
         onPageTurnRatioChange={setPageTurnRatio}
         clickToTurnPage={clickToTurnPage}
         onClickToTurnPageChange={setClickToTurnPage}
+        vocabLevel={vocabLevel}
+        onVocabLevelChange={setVocabLevel}
       />
 
       {/* Cloud Sync Panel */}
@@ -826,10 +856,10 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
           style={{
             backgroundColor: isDarkMode ? "#1a3a2a" : "#ecfdf5",
             borderBottom: `1px solid ${isDarkMode ? "#065f46" : "#a7f3d0"}`,
-            padding: "6px 16px",
+            padding: "6px 12px",
             display: "flex",
             alignItems: "center",
-            gap: "12px",
+            gap: "6px",
             fontSize: "13px",
             color: isDarkMode ? "#6ee7b7" : "#065f46",
           }}
@@ -837,81 +867,85 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
           {/* Stop */}
           <button
             onClick={handleStopTTS}
-            style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              color: "inherit",
-              padding: "4px",
-              display: "flex",
-              alignItems: "center",
-            }}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "inherit", padding: "4px", display: "flex", alignItems: "center" }}
+            title="停止"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
               <rect x="6" y="6" width="12" height="12" rx="2"/>
+            </svg>
+          </button>
+
+          {/* Prev sentence */}
+          <button
+            onClick={handlePrevSentence}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "inherit", padding: "4px", display: "flex", alignItems: "center", opacity: ttsIndexRef.current <= 0 ? 0.3 : 1 }}
+            title="上一句"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="4" y="5" width="2" height="14" rx="0.5"/>
+              <polygon points="18 5 8 12 18 19"/>
             </svg>
           </button>
 
           {/* Pause / Resume */}
           <button
-            onClick={() => {
-              if (ttsIsPlaying) ttsPause();
-              else ttsResume();
-            }}
-            style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              color: "inherit",
-              padding: "4px",
-              display: "flex",
-              alignItems: "center",
-            }}
+            onClick={() => { if (ttsIsPlaying) ttsPause(); else ttsResume(); }}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "inherit", padding: "4px", display: "flex", alignItems: "center" }}
+            title={ttsIsPlaying ? "暂停" : "继续"}
           >
             {ttsIsPlaying ? (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                 <rect x="6" y="4" width="4" height="16" rx="1"/>
                 <rect x="14" y="4" width="4" height="16" rx="1"/>
               </svg>
             ) : (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                 <polygon points="5 3 19 12 5 21 5 3"/>
               </svg>
             )}
           </button>
 
-          <span style={{ flex: 1, opacity: 0.7, fontSize: "12px" }}>
+          {/* Next sentence */}
+          <button
+            onClick={handleNextSentence}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "inherit", padding: "4px", display: "flex", alignItems: "center", opacity: ttsIndexRef.current >= ttsSentencesRef.current.length - 1 ? 0.3 : 1 }}
+            title="下一句"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <polygon points="6 5 16 12 6 19"/>
+              <rect x="18" y="5" width="2" height="14" rx="0.5"/>
+            </svg>
+          </button>
+
+          {/* Status */}
+          <span style={{ flex: 1, opacity: 0.7, fontSize: "12px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
             {ttsIsPlaying ? "朗读中..." : ttsIsLoading ? "加载中..." : "已暂停"}
           </span>
 
-          {/* Speed control */}
-          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-            <span style={{ fontSize: "12px", opacity: 0.7 }}>速度</span>
-            {[0, 1, 2, 3].map((idx) => {
+          {/* Speed dropdown */}
+          <select
+            value={SPEED_OPTIONS.findIndex(o => o.label === ttsSpeed)}
+            onChange={(e) => {
+              const idx = Number(e.target.value);
               const opt = SPEED_OPTIONS[idx];
-              if (!opt) return null;
-              return (
-                <button
-                  key={idx}
-                  onClick={() => {
-                    setTtsSpeed(opt.label);
-                    setSpeed(idx);
-                  }}
-                  style={{
-                    background: "none",
-                    border: ttsSpeed === opt.label ? `1px solid ${isDarkMode ? "#34d399" : "#059669"}` : "1px solid transparent",
-                    borderRadius: "4px",
-                    cursor: "pointer",
-                    color: ttsSpeed === opt.label ? "inherit" : isDarkMode ? "#6b7280" : "#9ca3af",
-                    fontSize: "12px",
-                    padding: "2px 6px",
-                  }}
-                >
-                  {opt.label}
-                </button>
-              );
-            })}
-          </div>
+              if (opt) { setTtsSpeed(opt.label); setSpeed(idx); }
+            }}
+            style={{
+              fontSize: "12px",
+              padding: "2px 4px",
+              borderRadius: "4px",
+              border: `1px solid ${isDarkMode ? "#374151" : "#d1d5db"}`,
+              background: isDarkMode ? "#1f2937" : "#fff",
+              color: "inherit",
+              cursor: "pointer",
+              minWidth: "56px",
+            }}
+          >
+            {SPEED_OPTIONS.map((opt, idx) => (
+              <option key={idx} value={idx}>{opt.label}</option>
+            ))}
+          </select>
+
           {/* Voice selector (local TTS only) */}
           {useLocalTTS && ttsVoices.length > 1 && (
             <select
@@ -924,7 +958,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
                 border: `1px solid ${isDarkMode ? "#374151" : "#d1d5db"}`,
                 background: isDarkMode ? "#1f2937" : "#fff",
                 color: "inherit",
-                maxWidth: "110px",
+                maxWidth: "90px",
                 cursor: "pointer",
               }}
             >

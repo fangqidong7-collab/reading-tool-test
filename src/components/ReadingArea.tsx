@@ -3,6 +3,7 @@
 import React, { useCallback, useRef, useEffect, useState, forwardRef, useImperativeHandle } from "react";
 import { ProcessedContent, SentenceAnnotation } from "@/hooks/useBookshelf";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { LEVEL_COLORS, type CEFRLevel } from "@/lib/vocabLevel";
 
 // Layout constants
 const HEADER_HEIGHT = 56;
@@ -121,7 +122,7 @@ export interface Bookmark {
 }
 
 // Memoized paragraph component
-type Annotations = Record<string, { root: string; meaning: string; pos: string; count: number }>;
+type Annotations = Record<string, { root: string; meaning: string; pos: string; count: number; cefrLevel?: string }>;
 
 interface ParagraphProps {
   paragraph: ProcessedContent[number];
@@ -408,7 +409,9 @@ const Paragraph = React.memo(({
                   }
                 }}
                 style={{ 
-                  color: annotationColor,
+                  color: annotation.cefrLevel
+                    ? LEVEL_COLORS[annotation.cefrLevel as CEFRLevel] || annotationColor
+                    : annotationColor,
                   fontSize: '0.7em',
                   fontFamily: '"Microsoft YaHei", "微软雅黑", sans-serif',
                   cursor: 'pointer',

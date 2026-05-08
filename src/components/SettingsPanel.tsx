@@ -24,6 +24,8 @@ interface SettingsPanelProps {
   onPageTurnRatioChange: (ratio: number) => void;
   clickToTurnPage: boolean;
   onClickToTurnPageChange: (v: boolean) => void;
+  vocabLevel: string;
+  onVocabLevelChange: (level: string) => void;
 }
 
 export function SettingsPanel({
@@ -46,6 +48,8 @@ export function SettingsPanel({
   onPageTurnRatioChange,
   clickToTurnPage,
   onClickToTurnPageChange,
+  vocabLevel,
+  onVocabLevelChange,
 }: SettingsPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -167,6 +171,37 @@ export function SettingsPanel({
                 Easy English
               </button>
             </div>
+          </div>
+
+          {/* Vocab Level Pre-annotation */}
+          <div className="setting-item">
+            <div className="setting-label">
+              <span className="label-text">词汇分级标注</span>
+            </div>
+            <div className="mode-options">
+              {(['off', 'B1', 'B2', 'C1'] as const).map((level) => (
+                <button
+                  key={level}
+                  className={`mode-btn ${vocabLevel === level ? 'active' : ''}`}
+                  onClick={() => onVocabLevelChange(level)}
+                  title={
+                    level === 'off' ? '关闭词汇分级标注' :
+                    level === 'B1' ? '标注B1及以上 (中级+中高级+高级)' :
+                    level === 'B2' ? '标注B2及以上 (中高级+高级)' :
+                    '标注C1及以上 (高级)'
+                  }
+                >
+                  {level === 'off' ? '关闭' : `≥${level}`}
+                </button>
+              ))}
+            </div>
+            {vocabLevel !== 'off' && (
+              <div style={{ marginTop: 6, display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: '0.75rem' }}>
+                {vocabLevel === 'B1' && <span style={{ color: '#3b82f6' }}>● B1 中级</span>}
+                {(vocabLevel === 'B1' || vocabLevel === 'B2') && <span style={{ color: '#f59e0b' }}>● B2 中高级</span>}
+                <span style={{ color: '#ef4444' }}>● C1 高级</span>
+              </div>
+            )}
           </div>
 
           {/* Page Turn Ratio */}

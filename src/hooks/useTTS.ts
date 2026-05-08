@@ -44,6 +44,7 @@ export function useTTS(options: UseTTSOptions = {}) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const utterRef = useRef<SpeechSynthesisUtterance | null>(null);
   const stoppedRef = useRef(false);
+  const isPausedRef = useRef(false);
   const speedIndexRef = useRef(1);
   const voiceIndexRef = useRef(0);
   const retryCountRef = useRef(0);
@@ -351,6 +352,7 @@ export function useTTS(options: UseTTSOptions = {}) {
     }
     audioCacheRef.current.clear();
     setIsPlaying(false);
+    isPausedRef.current = false;
     setIsPaused(false);
     setIsLoading(false);
     setError(null);
@@ -360,29 +362,33 @@ export function useTTS(options: UseTTSOptions = {}) {
     if (useLocalRef.current) {
       if ('speechSynthesis' in window && window.speechSynthesis.speaking) {
         window.speechSynthesis.pause();
+        isPausedRef.current = true;
         setIsPaused(true);
         setIsPlaying(false);
       }
-    } else if (audioRef.current && !isPaused) {
+    } else if (audioRef.current && !isPausedRef.current) {
       audioRef.current.pause();
+      isPausedRef.current = true;
       setIsPaused(true);
       setIsPlaying(false);
     }
-  }, [isPaused]);
+  }, []);
 
   const resume = useCallback(async () => {
     if (useLocalRef.current) {
       if ('speechSynthesis' in window && window.speechSynthesis.paused) {
         window.speechSynthesis.resume();
+        isPausedRef.current = false;
         setIsPaused(false);
         setIsPlaying(true);
       }
-    } else if (audioRef.current && isPaused) {
+    } else if (audioRef.current && isPausedRef.current) {
+      isPausedRef.current = false;
       setIsPaused(false);
       setIsPlaying(true);
       await audioRef.current.play();
     }
-  }, [isPaused]);
+  }, []);
 
   const setSpeed = useCallback((index: number) => {
     const opt = SPEED_OPTIONS[index];

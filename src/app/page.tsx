@@ -16,6 +16,7 @@ import { translateWord, translateWordEn, translateWordEnSimple, translateSentenc
 import { forceReloadDictionary, lookupExternalDict, lookupExternalDictEn, loadExternalDictionaryEn, type DictLoadStatus } from "@/lib/dictLoader";
 import { cleanTranslation, shortenTranslation } from "@/lib/annotationText";
 import { processTextToSegmentsAsync } from "@/lib/processBookContent";
+import { loadVocabLevels, getWordLevel, isAtOrAbove, getLevelColor, type CEFRLevel } from "@/lib/vocabLevel";
 
 async function hashesFromMergedBooks(bookList: Book[]): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
@@ -86,6 +87,8 @@ export default function Home() {
     setPageTurnRatio,
     clickToTurnPage,
     setClickToTurnPage,
+    vocabLevel,
+    setVocabLevel,
   } = useReadingSettings();
 
   // Bookshelf theme (independent from reading theme)
@@ -95,7 +98,7 @@ export default function Home() {
   const [text, setText] = useState<string>("");
   const [processedContent, setProcessedContent] = useState<ProcessedContent | null>(null);
   const [annotations, setAnnotations] = useState<
-    Record<string, { root: string; meaning: string; pos: string; count: number }>
+    Record<string, { root: string; meaning: string; pos: string; count: number; cefrLevel?: string }>
   >({});
   const [selectedWord, setSelectedWord] = useState<{
     word: string;
@@ -137,11 +140,10 @@ export default function Home() {
   const currentBookIdRef = useRef<string | null>(null);
   const currentBookContentRef = useRef<string>("");
   const currentBookAnnotationsRef = useRef<
-    Record<string, { root: string; meaning: string; pos: string; count: number }>
+    Record<string, { root: string; meaning: string; pos: string; count: number; cefrLevel?: string }>
   >({});
-  /** 最近一次由页面写入书架的 annotations 引用，用于跳过「写回书本 → effect 又 setAnnotations」的回声，减轻取消标注时闪烁 */
   const lastPersistedAnnotationsRef = useRef<
-    Record<string, { root: string; meaning: string; pos: string; count: number }> | null
+    Record<string, { root: string; meaning: string; pos: string; count: number; cefrLevel?: string }> | null
   >(null);
 
   // Dictionary loading status
@@ -489,9 +491,9 @@ export default function Home() {
 
   // Load external dictionary on mount (force reload to get latest dict.json and dict_en.json)
   useEffect(() => {
-    // 同时加载中英词典和英英词典
     loadBuiltinDictionary();
     loadBuiltinDictionaryEn();
+    loadVocabLevels();
     
     Promise.all([
       forceReloadDictionary(),
@@ -724,13 +726,21 @@ export default function Home() {
   }, [currentBook, currentScrollPercent, addBookmark, removeBookmark]);
 
   // 先于浏览器绘制把标注写回书架，缩短「页面 state 已删、书本对象仍是旧引用」的窗口；并记录引用供上方 effect 识别回声
+  const persistableAnnotations = React.useMemo(() => {
+    const result: typeof annotations = {};
+    for (const [key, ann] of Object.entries(annotations)) {
+      if (!ann.cefrLevel) result[key] = ann;
+    }
+    return result;
+  }, [annotations]);
+
   useLayoutEffect(() => {
     const bookId = currentBookIdRef.current;
     if (bookId) {
-      updateBookAnnotations(bookId, annotations);
-      lastPersistedAnnotationsRef.current = annotations;
+      updateBookAnnotations(bookId, persistableAnnotations);
+      lastPersistedAnnotationsRef.current = persistableAnnotations;
     }
-  }, [annotations, updateBookAnnotations]);
+  }, [persistableAnnotations, updateBookAnnotations]);
 
   // Handle scroll - 已通过 ReadingArea 的 onProgressChange 回调保存进度百分比
   // window scroll 事件不再需要，因为 ReadingArea 使用内部容器滚动
@@ -922,6 +932,62 @@ export default function Home() {
     },
     [annotations, text, dictMode, addToGlobalVocabulary]
   );
+
+  const prevVocabLevelRef = useRef(vocabLevel);
+
+  useEffect(() => {
+    if (!processedContent || vocabLevel === 'off') {
+      if (prevVocabLevelRef.current !== 'off' && vocabLevel === 'off') {
+        setAnnotations((prev) => {
+          const next = { ...prev };
+          for (const key of Object.keys(next)) {
+            if (next[key].cefrLevel) delete next[key];
+          }
+          return next;
+        });
+      }
+      prevVocabLevelRef.current = vocabLevel;
+      return;
+    }
+    prevVocabLevelRef.current = vocabLevel;
+
+    const threshold = vocabLevel as CEFRLevel;
+    const isEnMode = dictMode === 'en' || dictMode === 'en-simple';
+    const batch: Record<string, { root: string; meaning: string; pos: string; count: number; cefrLevel: string }> = {};
+
+    const seen = new Set<string>();
+    for (const para of processedContent) {
+      for (const seg of para.segments) {
+        if (seg.type !== 'word') continue;
+        const root = seg.lemma || lemmatize(seg.text.toLowerCase());
+        if (seen.has(root)) continue;
+        seen.add(root);
+
+        const level = getWordLevel(root) || getWordLevel(seg.text.toLowerCase());
+        if (!level || !isAtOrAbove(level, threshold)) continue;
+
+        let meaning = '';
+        if (isEnMode) {
+          meaning = getWordMeaningEn(root) || lookupExternalDictEn(root) || lookupExternalDictEn(seg.text.toLowerCase()) || '';
+        } else {
+          const entry = getWordMeaning(root);
+          meaning = entry?.meaning || lookupExternalDict(root) || lookupExternalDict(seg.text.toLowerCase()) || '';
+        }
+        if (!meaning) continue;
+
+        const shortened = shortenTranslation(meaning, dictMode);
+        batch[root] = { root, meaning: shortened, pos: '', count: 1, cefrLevel: level };
+      }
+    }
+
+    setAnnotations((prev) => {
+      const next = { ...prev };
+      for (const key of Object.keys(next)) {
+        if (next[key].cefrLevel) delete next[key];
+      }
+      return { ...next, ...batch };
+    });
+  }, [vocabLevel, processedContent, dictMode]);
 
   // Remove annotation
   const removeAnnotation = useCallback((word: string, lemmaOverride?: string) => {
@@ -1216,12 +1282,12 @@ export default function Home() {
 
   // 全局词汇作为底层，书本标注覆盖在上面
   const mergedAnnotationsForRender = React.useMemo(() => {
-    const merged: Record<string, { root: string; meaning: string; pos: string; count: number }> = {};
+    const merged: Record<string, { root: string; meaning: string; pos: string; count: number; cefrLevel?: string }> = {};
     for (const [root, vocab] of Object.entries(globalVocabulary)) {
       merged[root] = { root: vocab.root, meaning: vocab.meaning, pos: vocab.pos, count: 0 };
     }
     for (const [root, ann] of Object.entries(annotations)) {
-      merged[root] = ann; // 书本标注优先
+      merged[root] = ann;
     }
     return merged;
   }, [annotations, globalVocabulary]);
@@ -1370,6 +1436,8 @@ export default function Home() {
       setDictMode={setDictMode}
       setPageTurnRatio={setPageTurnRatio}
       setClickToTurnPage={setClickToTurnPage}
+      vocabLevel={vocabLevel}
+      setVocabLevel={setVocabLevel}
       setCurrentScrollPercent={setCurrentScrollPercent}
       setCurrentParagraphIndex={setCurrentParagraphIndex}
       setCurrentParagraphText={setCurrentParagraphText}
