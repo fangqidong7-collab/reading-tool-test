@@ -11,6 +11,7 @@ export const SPEED_OPTIONS = [
 ];
 
 const MAX_RETRIES = 2;
+const RETRY_DELAY_MS = 600;
 
 interface UseTTSOptions {
   onComplete?: () => void;
@@ -30,7 +31,7 @@ export function useTTS(options: UseTTSOptions = {}) {
   const stoppedRef = useRef(false);
   const speedIndexRef = useRef(1);
   const retryCountRef = useRef(0);
-  const currentUriRef = useRef<string | null>(null);
+  const playSeqRef = useRef(0);
   const onCompleteRef = useRef(onComplete);
   const onErrorRef = useRef(onError);
   useEffect(() => { onCompleteRef.current = onComplete; }, [onComplete]);
@@ -49,11 +50,14 @@ export function useTTS(options: UseTTSOptions = {}) {
   const stop = useCallback(() => {
     stoppedRef.current = true;
     retryCountRef.current = 0;
-    currentUriRef.current = null;
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.removeAttribute('src');
-      audioRef.current.load();
+    playSeqRef.current += 1;
+    const audio = audioRef.current;
+    if (audio) {
+      audio.onended = null;
+      audio.onerror = null;
+      audio.pause();
+      audio.removeAttribute('src');
+      audio.load();
     }
     audioCacheRef.current.clear();
     setIsPlaying(false);
@@ -83,21 +87,55 @@ export function useTTS(options: UseTTSOptions = {}) {
     return null;
   }, []);
 
+  const attemptPlay = useCallback((audio: HTMLAudioElement, seq: number) => {
+    if (stoppedRef.current || seq !== playSeqRef.current) return;
+
+    const speed = SPEED_OPTIONS[speedIndexRef.current];
+    audio.playbackRate = speed?.playbackRate ?? 1.0;
+
+    console.log(`[TTS] attempting play, seq=${seq}, retry=${retryCountRef.current}`);
+
+    const playPromise = audio.play();
+    if (playPromise) {
+      playPromise.then(() => {
+        if (seq !== playSeqRef.current) return;
+        console.log('[TTS] play() started successfully');
+        setIsLoading(false);
+        setIsPlaying(true);
+      }).catch((e) => {
+        if (stoppedRef.current || seq !== playSeqRef.current) return;
+        console.warn(`[TTS] play() rejected: ${e?.message}`);
+        if (retryCountRef.current < MAX_RETRIES) {
+          retryCountRef.current += 1;
+          const delay = RETRY_DELAY_MS * retryCountRef.current;
+          console.warn(`[TTS] will retry in ${delay}ms (${retryCountRef.current}/${MAX_RETRIES})`);
+          setTimeout(() => attemptPlay(audio, seq), delay);
+        } else {
+          retryCountRef.current = 0;
+          setIsPlaying(false);
+          setIsLoading(false);
+          setError('Audio play blocked');
+          onErrorRef.current?.('Audio play blocked');
+        }
+      });
+    }
+  }, []);
+
   const playAudioUri = useCallback((uri: string) => {
+    const seq = ++playSeqRef.current;
     stoppedRef.current = false;
+    retryCountRef.current = 0;
     setError(null);
     setIsPlaying(true);
     setIsPaused(false);
-    setIsLoading(false);
-    currentUriRef.current = uri;
+    setIsLoading(true);
 
     const audio = getOrCreateAudio();
     audio.pause();
 
-    const speed = SPEED_OPTIONS[speedIndexRef.current];
-
     audio.onended = () => {
-      if (stoppedRef.current) return;
+      if (stoppedRef.current || seq !== playSeqRef.current) return;
+      console.log('[TTS] sentence ended, calling onComplete');
       retryCountRef.current = 0;
       setIsPlaying(false);
       setIsPaused(false);
@@ -105,54 +143,34 @@ export function useTTS(options: UseTTSOptions = {}) {
     };
 
     audio.onerror = () => {
-      if (stoppedRef.current) return;
+      if (stoppedRef.current || seq !== playSeqRef.current) return;
+      console.warn(`[TTS] audio error event, retry=${retryCountRef.current}`);
       if (retryCountRef.current < MAX_RETRIES) {
         retryCountRef.current += 1;
-        console.warn(`[TTS] playback error, retry ${retryCountRef.current}/${MAX_RETRIES}`);
+        const delay = RETRY_DELAY_MS * retryCountRef.current;
         setTimeout(() => {
-          if (stoppedRef.current) return;
+          if (stoppedRef.current || seq !== playSeqRef.current) return;
+          audio.src = uri;
           audio.load();
-          audio.play().catch(() => {});
-        }, 500 * retryCountRef.current);
+          attemptPlay(audio, seq);
+        }, delay);
         return;
       }
       retryCountRef.current = 0;
       setIsPlaying(false);
+      setIsLoading(false);
       setError('Audio playback failed');
       onErrorRef.current?.('Audio playback failed');
     };
 
-    audio.oncanplaythrough = () => {
-      if (stoppedRef.current) return;
-      setIsLoading(false);
-      audio.playbackRate = speed?.playbackRate ?? 1.0;
-      audio.play().catch((e) => {
-        if (stoppedRef.current) return;
-        if (retryCountRef.current < MAX_RETRIES) {
-          retryCountRef.current += 1;
-          console.warn(`[TTS] play() rejected, retry ${retryCountRef.current}/${MAX_RETRIES}:`, e?.message);
-          setTimeout(() => {
-            if (stoppedRef.current) return;
-            audio.play().catch(() => {});
-          }, 500 * retryCountRef.current);
-          return;
-        }
-        retryCountRef.current = 0;
-        setIsPlaying(false);
-        setError('Audio play blocked');
-        onErrorRef.current?.('Audio play blocked');
-      });
-    };
-
-    setIsLoading(true);
     audio.src = uri;
     audio.load();
-  }, [getOrCreateAudio]);
+    attemptPlay(audio, seq);
+  }, [getOrCreateAudio, attemptPlay]);
 
   const play = useCallback(async (text: string, cacheKey?: string) => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-    }
+    const audio = getOrCreateAudio();
+    audio.pause();
     stoppedRef.current = false;
     retryCountRef.current = 0;
     setIsLoading(true);
@@ -162,20 +180,22 @@ export function useTTS(options: UseTTSOptions = {}) {
 
     try {
       const key = cacheKey || text;
+      console.log(`[TTS] fetching audio for: "${text.slice(0, 40)}..."`);
       const uri = await fetchAudio(text, key);
       if (stoppedRef.current) return;
       if (!uri) throw new Error('TTS returned no audio');
+      console.log(`[TTS] got URI, starting playback`);
       playAudioUri(uri);
     } catch (err: unknown) {
       if (stoppedRef.current) return;
       const msg = err instanceof Error ? err.message : 'TTS failed';
-      console.error('[TTS]', msg);
+      console.error('[TTS] play error:', msg);
       setIsLoading(false);
       setIsPlaying(false);
       setError(msg);
       onErrorRef.current?.(msg);
     }
-  }, [fetchAudio, playAudioUri]);
+  }, [getOrCreateAudio, fetchAudio, playAudioUri]);
 
   const pause = useCallback(() => {
     if (audioRef.current && !isPaused) {
@@ -206,6 +226,8 @@ export function useTTS(options: UseTTSOptions = {}) {
   useEffect(() => {
     return () => {
       if (audioRef.current) {
+        audioRef.current.onended = null;
+        audioRef.current.onerror = null;
         audioRef.current.pause();
         audioRef.current.removeAttribute('src');
         audioRef.current.load();
