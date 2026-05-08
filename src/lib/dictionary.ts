@@ -236,37 +236,33 @@ export const irregularNouns: Record<string, string> = {
   "trout": "trout",
 };
 
-const LEMMA_NO_STRIP = new Set([
-  "after","better","under","over","never","other","water","later","letter","matter",
-  "offer","order","number","power","rather","river","silver","sister","summer","super",
-  "tiger","timber","together","winter","wonder","anger","answer","butter","cancer",
-  "center","chapter","character","cluster","computer","corner","counter","cover","cyber",
-  "danger","daughter","dinner","disorder","Easter","either","enter","ever","father",
-  "feather","finger","flower","forever","further","gender","gather","ginger","hammer",
-  "harbor","hinder","hunger","hunter","inner","leader","leather","lever","linger","liver",
-  "lower","lumber","manner","master","member","minister","monster","mother","murder",
-  "neither","newer","outer","paper","partner","pepper","pier","player","plaster","poker",
-  "polymer","poster","powder","prayer","proper","quarter","reader","register","render",
-  "rider","roller","rubber","ruler","runner","shoulder","shutter","singer","slaughter",
-  "slender","slider","sober","soldier","spider","splinter","stagger","sticker","stranger",
-  "suffer","supper","surrender","teacher","tender","thunder","tower","transfer","trigger",
-  "upper","utter","voter","weather","whisper","wider","winner","worker","writer",
-  "early","only","family","really","likely","lonely","lovely","daily","holy","ugly",
-  "rally","belly","bully","fully","gully","hilly","jelly","jolly","lily","silly","tally",
-  "apply","reply","supply","ally","comply","imply","multiply","rely",
-  "fly","July","Italy",
-]);
+let _knownWords: Set<string> | null = null;
 
-const suffixRules: Array<{ suffix: string; remove: number; add?: string; minBase: number }> = [
-  { suffix: "ies", remove: 3, add: "y", minBase: 2 },
-  { suffix: "es", remove: 2, minBase: 3 },
-  { suffix: "s", remove: 1, minBase: 3 },
-  { suffix: "ing", remove: 3, minBase: 3 },
-  { suffix: "d", remove: 1, minBase: 3 },
-  { suffix: "ed", remove: 2, minBase: 3 },
-  { suffix: "er", remove: 2, minBase: 3 },
-  { suffix: "est", remove: 3, minBase: 3 },
-  { suffix: "ly", remove: 2, minBase: 3 },
+export function registerKnownWords(words: string[]) {
+  if (!_knownWords) _knownWords = new Set();
+  for (const w of words) _knownWords.add(w.toLowerCase());
+}
+
+function isKnownWord(w: string): boolean {
+  if (englishDictionary[w]) return true;
+  if (_knownWords?.has(w)) return true;
+  return false;
+}
+
+const suffixRules: Array<{
+  suffix: string; remove: number; add?: string; minBase: number;
+  checkResult?: boolean;
+  skipIfOrigKnown?: boolean;
+}> = [
+  { suffix: "ies", remove: 3, add: "y", minBase: 2, checkResult: true },
+  { suffix: "es", remove: 2, minBase: 2, checkResult: true },
+  { suffix: "s", remove: 1, minBase: 3, checkResult: true },
+  { suffix: "ing", remove: 3, minBase: 3, checkResult: true },
+  { suffix: "d", remove: 1, minBase: 3, checkResult: true },
+  { suffix: "ed", remove: 2, minBase: 2, checkResult: true },
+  { suffix: "er", remove: 2, minBase: 3, checkResult: true, skipIfOrigKnown: true },
+  { suffix: "est", remove: 3, minBase: 3, checkResult: true, skipIfOrigKnown: true },
+  { suffix: "ly", remove: 2, minBase: 3, checkResult: true, skipIfOrigKnown: true },
 ];
 
 
@@ -935,10 +931,21 @@ export function lemmatize(word: string): string {
     return irregularNouns[lowerWord];
   }
   
-  // 4. 应用后缀规则（跳过已知不应还原的词）
-  if (LEMMA_NO_STRIP.has(lowerWord)) {
-    return lowerWord;
+  // 4. 双写辅音 + ing/ed/er/est 还原 (running→run, stopped→stop, bigger→big)
+  const DOUBLE_SUFFIXES = ["ing", "ed", "er", "est"];
+  for (const sfx of DOUBLE_SUFFIXES) {
+    if (lowerWord.endsWith(sfx) && lowerWord.length >= sfx.length + 3) {
+      const base = lowerWord.slice(0, -sfx.length);
+      if (base.length >= 3 && base[base.length - 1] === base[base.length - 2]) {
+        const undoubled = base.slice(0, -1);
+        if (undoubled.length >= 2 && /[aeiou]/.test(undoubled) && isKnownWord(undoubled)) {
+          return undoubled;
+        }
+      }
+    }
   }
+
+  // 5. 一般后缀规则
   for (const rule of suffixRules) {
     if (lowerWord.endsWith(rule.suffix)) {
       const base = lowerWord.slice(0, -rule.remove);
@@ -948,11 +955,15 @@ export function lemmatize(word: string): string {
         continue;
       }
 
-      if (result.length < rule.minBase) {
+      if (result.length < rule.minBase || !/[aeiou]/.test(result)) {
         continue;
       }
 
-      if (!/[aeiou]/.test(result)) {
+      if (rule.checkResult && !isKnownWord(result)) {
+        continue;
+      }
+
+      if (rule.skipIfOrigKnown && isKnownWord(lowerWord)) {
         continue;
       }
 
@@ -961,7 +972,7 @@ export function lemmatize(word: string): string {
   }
 
   
-  // 5. 返回原单词（小写）
+  // 6. 返回原单词（小写）
   return lowerWord;
 }
 

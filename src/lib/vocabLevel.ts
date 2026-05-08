@@ -30,6 +30,10 @@ export async function loadVocabLevels(): Promise<void> {
     const res = await fetch('/vocab-levels.json');
     if (res.ok) {
       vocabData = await res.json();
+      try {
+        const { registerKnownWords } = await import('@/lib/dictionary');
+        registerKnownWords(Object.keys(vocabData!));
+      } catch (_) { /* dictionary module not available */ }
     }
   } catch (e) {
     console.warn('[VocabLevel] failed to load:', e);

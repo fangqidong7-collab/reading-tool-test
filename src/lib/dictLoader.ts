@@ -81,7 +81,12 @@ export async function loadExternalDictionary(): Promise<DictLoadStatus> {
     
     // Save to cache (this will overwrite any old cache)
     saveToCache(externalDict);
-    
+
+    try {
+      const { registerKnownWords } = await import('@/lib/dictionary');
+      registerKnownWords(Object.keys(externalDict));
+    } catch (_) { /* dictionary module not available */ }
+
     loadStatus = 'loaded';
     return 'loaded';
   } catch (error) {
