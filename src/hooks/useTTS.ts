@@ -170,12 +170,22 @@ export function useTTS(options: UseTTSOptions = {}) {
     return audio;
   }, []);
 
-  const fetchAudio = useCallback(async (text: string, cacheKey: string): Promise<string | null> => {
-    const cached = audioCacheRef.current.get(cacheKey);
-    if (cached) return cached;
+  const fetchAudioEdge = useCallback(async (text: string, rate: number): Promise<string | null> => {
     try {
-      const speed = SPEED_OPTIONS[speedIndexRef.current];
-      const speechRate = Math.round((speed.rate - 1) * 50);
+      const res = await fetch('/api/tts-edge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, rate }),
+      });
+      if (!res.ok) return null;
+      const blob = await res.blob();
+      if (blob.size === 0) return null;
+      return URL.createObjectURL(blob);
+    } catch { return null; }
+  }, []);
+
+  const fetchAudioCoze = useCallback(async (text: string, speechRate: number): Promise<string | null> => {
+    try {
       const res = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -183,13 +193,33 @@ export function useTTS(options: UseTTSOptions = {}) {
       });
       if (!res.ok) return null;
       const data = await res.json();
-      if (data.audioUri) {
-        audioCacheRef.current.set(cacheKey, data.audioUri);
-        return data.audioUri;
-      }
-    } catch { /* ignore prefetch errors */ }
-    return null;
+      return data.audioUri || null;
+    } catch { return null; }
   }, []);
+
+  const fetchAudio = useCallback(async (text: string, cacheKey: string): Promise<string | null> => {
+    const cached = audioCacheRef.current.get(cacheKey);
+    if (cached) return cached;
+
+    const speed = SPEED_OPTIONS[speedIndexRef.current];
+    const ratePercent = Math.round((speed.rate - 1) * 100);
+
+    const uri = await fetchAudioEdge(text, ratePercent);
+    if (uri) {
+      audioCacheRef.current.set(cacheKey, uri);
+      return uri;
+    }
+
+    console.warn('[TTS] Edge TTS failed, falling back to Coze API');
+    const speechRate = Math.round((speed.rate - 1) * 50);
+    const cozeUri = await fetchAudioCoze(text, speechRate);
+    if (cozeUri) {
+      audioCacheRef.current.set(cacheKey, cozeUri);
+      return cozeUri;
+    }
+
+    return null;
+  }, [fetchAudioEdge, fetchAudioCoze]);
 
   const attemptPlay = useCallback((audio: HTMLAudioElement, seq: number) => {
     if (stoppedRef.current || seq !== playSeqRef.current) return;
