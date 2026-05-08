@@ -65,7 +65,6 @@ export function useSync() {
   }, []);
 
   const createSync = useCallback(async (data: SyncData) => {
-    console.log('[SYNC] createSync — start');
     setSyncing(true);
     setSyncError(null);
     try {
@@ -79,7 +78,6 @@ export function useSync() {
       if (typeof code !== "string" || code.length === 0) {
         throw new Error("创建同步失败：未返回同步码");
       }
-      console.log('[SYNC] createSync — success, code:', code);
       setSyncCode(code);
       localStorage.setItem(SYNC_CODE_KEY, code);
       const now = Date.now();
@@ -97,7 +95,6 @@ export function useSync() {
   }, []);
 
   const bindSyncCode = useCallback(async (code: string) => {
-    console.log('[SYNC] bindSyncCode — start, code:', code.toUpperCase());
     setSyncing(true);
     setSyncError(null);
     try {
@@ -108,7 +105,6 @@ export function useSync() {
         throw new Error(apiFailMessage('拉取数据失败', res, p));
       }
       const result = (await parseSyncJsonResponse(res)) as { data: SyncMergedPayload };
-      console.log('[SYNC] bindSyncCode — success, books:', result.data?.books?.length ?? 0);
       const upperCode = code.toUpperCase();
       setSyncCode(upperCode);
       localStorage.setItem(SYNC_CODE_KEY, upperCode);
@@ -188,18 +184,14 @@ export function useSync() {
     onConfirmOverwrite?: (info: { localCount: number; cloudCount: number }) => Promise<boolean>;
   }): Promise<SyncMergedPayload | null> => {
     if (!syncCode) return null;
-    console.log('[SYNC] syncBoth — start, lastSyncAt:', lastSyncAt, 'books:', options.bookManifest.length);
     setSyncing(true);
     setSyncError(null);
 
     const SYNC_MS = 180000;
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => controller.abort(), SYNC_MS);
-    const t0 = performance.now();
 
     try {
-      // Phase 1: lightweight push
-      console.log('[SYNC] syncBoth — Phase1: push (vocab + progress + manifest)');
       const pushRes = await postSyncJson(
         "/api/sync/push",
         { syncCode, data: options.data, lastSyncAt, bookManifest: options.bookManifest },
@@ -219,15 +211,12 @@ export function useSync() {
         cloudBookCount?: number;
       };
 
-      console.log('[SYNC] syncBoth — Phase1 response: action=', json.action, 'missingBookIds=', json.missingBookIds?.length ?? 0);
-
       const saveSyncTime = (ts: number) => {
         setLastSyncAt(ts);
         localStorage.setItem(LAST_SYNC_KEY, String(ts));
       };
 
       if (json.action === 'needBooks' && json.missingBookIds) {
-        console.log('[SYNC] syncBoth — Phase2: push-books, ids:', json.missingBookIds);
         const missingBooks = options.getBooksForIds(json.missingBookIds);
         const booksRes = await postSyncJson(
           "/api/sync/push-books",
@@ -240,7 +229,6 @@ export function useSync() {
         }
         const booksJson = (await parseSyncJsonResponse(booksRes)) as { updatedAt?: number };
         saveSyncTime(booksJson.updatedAt ?? Date.now());
-        console.log('[SYNC] syncBoth — done (push-books), total:', ((performance.now() - t0) / 1000).toFixed(1), 's');
         return null;
       }
 
@@ -248,17 +236,14 @@ export function useSync() {
         const cloudManifest = json.cloudBookManifest ?? [];
         const localManifest = options.bookManifest;
         const booksMatch = checkBooksMatch(localManifest, cloudManifest);
-        console.log('[SYNC] syncBoth — pull: booksMatch=', booksMatch, 'cloud:', cloudManifest.length, 'local:', localManifest.length);
 
         if (booksMatch) {
           const cloudTs = json.data?.updatedAt ?? Date.now();
           saveSyncTime(cloudTs);
-          console.log('[SYNC] syncBoth — done (pull, books match), total:', ((performance.now() - t0) / 1000).toFixed(1), 's');
           return json.data ?? null;
         }
 
         try {
-          console.log('[SYNC] syncBoth — full pull (books differ)');
           const pullRes = await postSyncJson(
             "/api/sync/pull",
             { syncCode },
@@ -270,7 +255,6 @@ export function useSync() {
           const pullJson = (await parseSyncJsonResponse(pullRes)) as { data: SyncMergedPayload };
           const cloudTs = pullJson.data?.updatedAt ?? Date.now();
           saveSyncTime(cloudTs);
-          console.log('[SYNC] syncBoth — done (full pull), books:', pullJson.data?.books?.length ?? 0, 'total:', ((performance.now() - t0) / 1000).toFixed(1), 's');
           return pullJson.data;
         } catch (pullErr) {
           console.warn('[SYNC] syncBoth — full pull failed, fallback to lightweight data:', pullErr);
@@ -284,16 +268,13 @@ export function useSync() {
       const cloudCount = json.cloudBookCount ?? 0;
       const localCount = options.bookManifest.length;
       if (cloudCount > localCount && options.onConfirmOverwrite) {
-        console.log('[SYNC] syncBoth — cloud has more books:', cloudCount, 'vs local:', localCount, '— asking user');
         const confirmed = await options.onConfirmOverwrite({ localCount, cloudCount });
         if (!confirmed) {
-          console.log('[SYNC] syncBoth — user cancelled overwrite');
           setSyncError(null);
           return null;
         }
       }
       saveSyncTime(json.updatedAt ?? Date.now());
-      console.log('[SYNC] syncBoth — done (push), total:', ((performance.now() - t0) / 1000).toFixed(1), 's');
       return null;
     } catch (err) {
       const ms = ((performance.now() - t0) / 1000).toFixed(1);

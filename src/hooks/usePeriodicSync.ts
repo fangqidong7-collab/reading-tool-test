@@ -60,7 +60,6 @@ export function usePeriodicSync({
 
       try {
         await logic.performSync();
-        console.log('[AutoSync] 自动同步完成');
       } catch (err) {
         console.warn('[AutoSync] 自动同步失败:', err instanceof Error ? err.message : '未知错误');
       }

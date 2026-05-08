@@ -92,13 +92,10 @@ export function useTTS(options: UseTTSOptions = {}) {
     useLocalRef.current = local;
     setUseLocalTTS(local);
     if (local) {
-      console.log('[TTS] using local Web Speech API');
       loadVoices();
       if ('speechSynthesis' in window) {
         window.speechSynthesis.onvoiceschanged = loadVoices;
       }
-    } else {
-      console.log('[TTS] Web Speech API unavailable, using remote Coze API');
     }
     return () => {
       if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
