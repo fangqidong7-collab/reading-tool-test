@@ -13,6 +13,12 @@ export const SPEED_OPTIONS = [
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 600;
 
+export interface TTSVoiceInfo {
+  name: string;
+  lang: string;
+  index: number;
+}
+
 interface UseTTSOptions {
   onComplete?: () => void;
   onError?: (msg: string) => void;
@@ -32,14 +38,18 @@ export function useTTS(options: UseTTSOptions = {}) {
   const [speedIndex, setSpeedIndex] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [useLocalTTS, setUseLocalTTS] = useState(false);
+  const [voices, setVoices] = useState<TTSVoiceInfo[]>([]);
+  const [voiceIndex, setVoiceIndex] = useState(0);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const utterRef = useRef<SpeechSynthesisUtterance | null>(null);
   const stoppedRef = useRef(false);
   const speedIndexRef = useRef(1);
+  const voiceIndexRef = useRef(0);
   const retryCountRef = useRef(0);
   const playSeqRef = useRef(0);
   const useLocalRef = useRef(false);
+  const rawVoicesRef = useRef<SpeechSynthesisVoice[]>([]);
   const onCompleteRef = useRef(onComplete);
   const onErrorRef = useRef(onError);
   useEffect(() => { onCompleteRef.current = onComplete; }, [onComplete]);
@@ -47,15 +57,61 @@ export function useTTS(options: UseTTSOptions = {}) {
 
   const audioCacheRef = useRef<Map<string, string>>(new Map());
 
+  const loadVoices = useCallback(() => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    const synth = window.speechSynthesis;
+    const all = synth.getVoices();
+    const enVoices = all.filter(v => v.lang.startsWith('en'));
+    if (enVoices.length === 0) return;
+
+    rawVoicesRef.current = enVoices;
+    const mapped: TTSVoiceInfo[] = enVoices.map((v, i) => ({
+      name: v.name,
+      lang: v.lang,
+      index: i,
+    }));
+    setVoices(mapped);
+
+    const saved = localStorage.getItem('tts-voice-name');
+    if (saved) {
+      const idx = enVoices.findIndex(v => v.name === saved);
+      if (idx >= 0) {
+        voiceIndexRef.current = idx;
+        setVoiceIndex(idx);
+        return;
+      }
+    }
+    const defaultIdx = enVoices.findIndex(v => v.localService) || 0;
+    voiceIndexRef.current = defaultIdx >= 0 ? defaultIdx : 0;
+    setVoiceIndex(voiceIndexRef.current);
+  }, []);
+
   useEffect(() => {
     const local = detectLocalTTS();
     useLocalRef.current = local;
     setUseLocalTTS(local);
     if (local) {
       console.log('[TTS] using local Web Speech API');
+      loadVoices();
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.onvoiceschanged = loadVoices;
+      }
     } else {
       console.log('[TTS] Web Speech API unavailable, using remote Coze API');
     }
+    return () => {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.onvoiceschanged = null;
+      }
+    };
+  }, [loadVoices]);
+
+  const selectVoice = useCallback((index: number) => {
+    const v = rawVoicesRef.current[index];
+    if (!v) return;
+    voiceIndexRef.current = index;
+    setVoiceIndex(index);
+    localStorage.setItem('tts-voice-name', v.name);
   }, []);
 
   // ─── Local Speech Synthesis ───
@@ -82,14 +138,11 @@ export function useTTS(options: UseTTSOptions = {}) {
     utter.lang = 'en-US';
     utter.rate = SPEED_OPTIONS[speedIndexRef.current]?.rate ?? 1.0;
 
-    const voices = synth.getVoices();
-    const enVoice = voices.find(v => v.lang.startsWith('en') && v.localService)
-      || voices.find(v => v.lang.startsWith('en'));
-    if (enVoice) utter.voice = enVoice;
+    const selectedVoice = rawVoicesRef.current[voiceIndexRef.current];
+    if (selectedVoice) utter.voice = selectedVoice;
 
     utter.onend = () => {
       if (stoppedRef.current || seq !== playSeqRef.current) return;
-      console.log('[TTS-local] sentence ended');
       setIsPlaying(false);
       setIsPaused(false);
       onCompleteRef.current?.();
@@ -105,7 +158,6 @@ export function useTTS(options: UseTTSOptions = {}) {
 
     utterRef.current = utter;
     synth.speak(utter);
-    console.log(`[TTS-local] speaking: "${text.slice(0, 40)}..."`);
   }, []);
 
   // ─── Remote Audio (Coze API fallback) ───
@@ -152,7 +204,6 @@ export function useTTS(options: UseTTSOptions = {}) {
         setIsPlaying(true);
       }).catch((e) => {
         if (stoppedRef.current || seq !== playSeqRef.current) return;
-        console.warn(`[TTS-remote] play() rejected: ${e?.message}`);
         if (retryCountRef.current < MAX_RETRIES) {
           retryCountRef.current += 1;
           setTimeout(() => attemptPlay(audio, seq), RETRY_DELAY_MS * retryCountRef.current);
@@ -181,7 +232,6 @@ export function useTTS(options: UseTTSOptions = {}) {
 
     audio.onended = () => {
       if (stoppedRef.current || seq !== playSeqRef.current) return;
-      console.log('[TTS-remote] sentence ended');
       retryCountRef.current = 0;
       setIsPlaying(false);
       setIsPaused(false);
@@ -223,11 +273,9 @@ export function useTTS(options: UseTTSOptions = {}) {
 
     try {
       const key = cacheKey || text;
-      console.log(`[TTS-remote] fetching audio for: "${text.slice(0, 40)}..."`);
       const uri = await fetchAudio(text, key);
       if (stoppedRef.current) return;
       if (!uri) {
-        console.warn('[TTS-remote] no audio returned, skipping');
         setIsLoading(false);
         setIsPlaying(false);
         onCompleteRef.current?.();
@@ -237,7 +285,6 @@ export function useTTS(options: UseTTSOptions = {}) {
     } catch (err: unknown) {
       if (stoppedRef.current) return;
       const msg = err instanceof Error ? err.message : 'TTS failed';
-      console.error('[TTS-remote] error:', msg);
       setIsLoading(false);
       setIsPlaying(false);
       setError(msg);
@@ -249,7 +296,6 @@ export function useTTS(options: UseTTSOptions = {}) {
 
   const play = useCallback(async (text: string, cacheKey?: string) => {
     if (!/[a-zA-Z0-9\u4e00-\u9fff]/.test(text)) {
-      console.log(`[TTS] skipping non-speech text: "${text}"`);
       onCompleteRef.current?.();
       return;
     }
@@ -341,6 +387,9 @@ export function useTTS(options: UseTTSOptions = {}) {
     speedIndex,
     error,
     useLocalTTS,
+    voices,
+    voiceIndex,
+    selectVoice,
     play,
     playAudioUri,
     fetchAudio,

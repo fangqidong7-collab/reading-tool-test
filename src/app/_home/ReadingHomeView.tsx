@@ -282,7 +282,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
     }
   }, []);
 
-  const { isPlaying: ttsIsPlaying, isPaused: ttsIsPaused, isLoading: ttsIsLoading, play: ttsPlay, playAudioUri: ttsPlayUri, fetchAudio: ttsFetch, stop: ttsStop, pause: ttsPause, resume: ttsResume, setSpeed } = useTTS({
+  const { isPlaying: ttsIsPlaying, isPaused: ttsIsPaused, isLoading: ttsIsLoading, play: ttsPlay, playAudioUri: ttsPlayUri, fetchAudio: ttsFetch, stop: ttsStop, pause: ttsPause, resume: ttsResume, setSpeed, useLocalTTS, voices: ttsVoices, voiceIndex: ttsVoiceIndex, selectVoice: ttsSelectVoice } = useTTS({
     onComplete: () => {
       const nextIndex = ttsIndexRef.current + 1;
       const queue = ttsSentencesRef.current;
@@ -912,6 +912,29 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
               );
             })}
           </div>
+          {/* Voice selector (local TTS only) */}
+          {useLocalTTS && ttsVoices.length > 1 && (
+            <select
+              value={ttsVoiceIndex}
+              onChange={(e) => ttsSelectVoice(Number(e.target.value))}
+              style={{
+                fontSize: "11px",
+                padding: "2px 4px",
+                borderRadius: "4px",
+                border: `1px solid ${isDarkMode ? "#374151" : "#d1d5db"}`,
+                background: isDarkMode ? "#1f2937" : "#fff",
+                color: "inherit",
+                maxWidth: "110px",
+                cursor: "pointer",
+              }}
+            >
+              {ttsVoices.map((v) => (
+                <option key={v.index} value={v.index}>
+                  {v.name.replace(/^Microsoft\s+|^Google\s+/, '').split(' ').slice(0, 2).join(' ')}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
       )}
 
