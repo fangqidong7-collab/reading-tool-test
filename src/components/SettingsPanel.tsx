@@ -206,8 +206,8 @@ export function SettingsPanel({
                   })
                   .map((l) => {
                     const colors: Record<string, string> = {
-                      A1: '#6b7280', A2: '#6b7280', B1: '#3b82f6',
-                      B2: '#f59e0b', C1: '#ef4444', C2: '#8b5cf6',
+                      A1: '#22c55e', A2: '#15803d', B1: '#3b82f6',
+                      B2: '#f59e0b', C1: '#a855f7', C2: '#6d28d9',
                     };
                     const labels: Record<string, string> = {
                       A1: 'A1 基础', A2: 'A2 初级', B1: 'B1 中级',

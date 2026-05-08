@@ -3,12 +3,12 @@ export type CEFRLevel = 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2';
 const LEVEL_ORDER: CEFRLevel[] = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 
 export const LEVEL_COLORS: Record<CEFRLevel, string> = {
-  A1: '#6b7280',
-  A2: '#6b7280',
+  A1: '#22c55e',
+  A2: '#15803d',
   B1: '#3b82f6',
   B2: '#f59e0b',
-  C1: '#ef4444',
-  C2: '#8b5cf6',
+  C1: '#a855f7',
+  C2: '#6d28d9',
 };
 
 export const LEVEL_LABELS: Record<CEFRLevel, string> = {
