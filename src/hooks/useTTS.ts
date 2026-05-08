@@ -88,10 +88,12 @@ export function useTTS(options: UseTTSOptions = {}) {
   }, []);
 
   useEffect(() => {
-    const local = detectLocalTTS();
-    useLocalRef.current = local;
-    setUseLocalTTS(local);
-    if (local) {
+    const hasLocal = detectLocalTTS();
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('tts-source') : null;
+    const preferLocal = saved === null ? hasLocal : saved === 'local';
+    useLocalRef.current = preferLocal && hasLocal;
+    setUseLocalTTS(preferLocal && hasLocal);
+    if (hasLocal) {
       loadVoices();
       if ('speechSynthesis' in window) {
         window.speechSynthesis.onvoiceschanged = loadVoices;
@@ -103,6 +105,15 @@ export function useTTS(options: UseTTSOptions = {}) {
       }
     };
   }, [loadVoices]);
+
+  const hasLocalTTS = typeof window !== 'undefined' && detectLocalTTS();
+
+  const setTTSSource = useCallback((useLocal: boolean) => {
+    const val = useLocal && detectLocalTTS();
+    useLocalRef.current = val;
+    setUseLocalTTS(val);
+    localStorage.setItem('tts-source', useLocal ? 'local' : 'remote');
+  }, []);
 
   const selectVoice = useCallback((index: number) => {
     const v = rawVoicesRef.current[index];
@@ -420,6 +431,8 @@ export function useTTS(options: UseTTSOptions = {}) {
     speedIndex,
     error,
     useLocalTTS,
+    hasLocalTTS,
+    setTTSSource,
     voices,
     voiceIndex,
     selectVoice,

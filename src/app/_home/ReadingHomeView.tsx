@@ -287,7 +287,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
     }
   }, []);
 
-  const { isPlaying: ttsIsPlaying, isPaused: ttsIsPaused, isLoading: ttsIsLoading, play: ttsPlay, playAudioUri: ttsPlayUri, fetchAudio: ttsFetch, stop: ttsStop, pause: ttsPause, resume: ttsResume, setSpeed, useLocalTTS, voices: ttsVoices, voiceIndex: ttsVoiceIndex, selectVoice: ttsSelectVoice } = useTTS({
+  const { isPlaying: ttsIsPlaying, isPaused: ttsIsPaused, isLoading: ttsIsLoading, play: ttsPlay, playAudioUri: ttsPlayUri, fetchAudio: ttsFetch, stop: ttsStop, pause: ttsPause, resume: ttsResume, setSpeed, useLocalTTS, hasLocalTTS, setTTSSource, voices: ttsVoices, voiceIndex: ttsVoiceIndex, selectVoice: ttsSelectVoice } = useTTS({
     onComplete: () => {
       const nextIndex = ttsIndexRef.current + 1;
       const queue = ttsSentencesRef.current;
@@ -945,6 +945,26 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
               <option key={idx} value={idx}>{opt.label}</option>
             ))}
           </select>
+
+          {/* TTS source toggle */}
+          {hasLocalTTS && (
+            <select
+              value={useLocalTTS ? 'local' : 'remote'}
+              onChange={(e) => setTTSSource(e.target.value === 'local')}
+              style={{
+                fontSize: "11px",
+                padding: "2px 4px",
+                borderRadius: "4px",
+                border: `1px solid ${isDarkMode ? "#374151" : "#d1d5db"}`,
+                background: isDarkMode ? "#1f2937" : "#fff",
+                color: "inherit",
+                cursor: "pointer",
+              }}
+            >
+              <option value="remote">在线语音</option>
+              <option value="local">本地语音</option>
+            </select>
+          )}
 
           {/* Voice selector (local TTS only) */}
           {useLocalTTS && ttsVoices.length > 1 && (
