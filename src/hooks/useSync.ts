@@ -277,14 +277,12 @@ export function useSync() {
       saveSyncTime(json.updatedAt ?? Date.now());
       return null;
     } catch (err) {
-      const ms = ((performance.now() - t0) / 1000).toFixed(1);
       const msg =
         err instanceof Error && err.name === 'AbortError'
           ? `同步超时（超过 ${SYNC_MS / 1000} 秒），请检查网络或减少书籍体积后重试`
           : err instanceof Error
             ? err.message
             : '同步失败';
-      console.error('[SYNC] syncBoth — error after', ms, 's:', msg);
       setSyncError(msg);
       return null;
     } finally {
