@@ -259,9 +259,10 @@ export function useReadingSettings() {
     setStorage((prev) => ({ ...prev, clickToTurnPage: enabled }));
   }, []);
 
-  const setVocabLevel = useCallback((level: VocabLevelSetting) => {
-    setVocabLevelState(level);
-    setStorage((prev) => ({ ...prev, vocabLevel: level }));
+  const setVocabLevel = useCallback((level: string) => {
+    const val = level as VocabLevelSetting;
+    setVocabLevelState(val);
+    setStorage((prev) => ({ ...prev, vocabLevel: val }));
   }, []);
 
   // Calculate annotation font size (70% of body font size)
