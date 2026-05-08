@@ -317,7 +317,15 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
   const hasLetterOrDigit = React.useCallback((s: string) => /[a-zA-Z0-9\u4e00-\u9fff]/.test(s), []);
 
   const splitParaSentences = React.useCallback((paraText: string): string[] => {
-    const rawParts = paraText.match(/[^.!?。！？；;]*[.!?。！？；;]+["'""''）)»\s]*/g) || [];
+    const ABBR_RE = /\b(Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|Gen|Gov|Sgt|Cpl|Pvt|Capt|Lt|Col|Maj|Rev|Hon|Drs|Messrs|Mmes|No|Nos|Vol|vs|etc|al|approx|dept|est|govt|incl|intl|natl|assn|ave|blvd|dept|dist|div|est|ext|ft|hwy|inc|ltd|mt|pkg|pres|govt|univ)\.\s/gi;
+    const placeholders: string[] = [];
+    const protected_ = paraText.replace(ABBR_RE, (match) => {
+      const idx = placeholders.length;
+      placeholders.push(match);
+      return `\x00ABBR${idx}\x00`;
+    });
+
+    const rawParts = protected_.match(/[^.!?。！？；;]*[.!?。！？；;]+["'""''）)»\s]*/g) || [];
     const merged: string[] = [];
     for (const part of rawParts) {
       if (merged.length > 0 && !/\s$/.test(merged[merged.length - 1])) {
@@ -327,11 +335,15 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
       }
     }
     const matched = rawParts.join('');
-    const remainder = paraText.slice(matched.length).trim();
+    const remainder = protected_.slice(matched.length).trim();
     const result = merged.map(s => s.trim()).filter(Boolean);
     if (remainder && hasLetterOrDigit(remainder)) result.push(remainder);
     if (result.length === 0 && paraText.trim()) result.push(paraText.trim());
-    return result.filter(hasLetterOrDigit);
+
+    const restored = result.map(s =>
+      s.replace(/\x00ABBR(\d+)\x00/g, (_, i) => placeholders[parseInt(i)])
+    );
+    return restored.filter(hasLetterOrDigit);
   }, [hasLetterOrDigit]);
 
   const handleStartTTS = React.useCallback(async () => {

@@ -16,7 +16,7 @@ export interface ReadingSettings {
   isDarkMode: boolean;
 }
 
-export type VocabLevelSetting = 'off' | 'B1' | 'B2' | 'C1';
+export type VocabLevelSetting = 'off' | 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2';
 
 export interface ReadingSettingsStorage {
   fontSize: number;

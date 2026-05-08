@@ -178,28 +178,43 @@ export function SettingsPanel({
             <div className="setting-label">
               <span className="label-text">词汇分级标注</span>
             </div>
-            <div className="mode-options">
-              {(['off', 'B1', 'B2', 'C1'] as const).map((level) => (
+            <div className="vocab-level-options">
+              <button
+                className={`mode-btn ${vocabLevel === 'off' ? 'active' : ''}`}
+                onClick={() => onVocabLevelChange('off')}
+                title="关闭词汇分级标注"
+              >
+                关闭
+              </button>
+              {(['A1', 'A2', 'B1', 'B2', 'C1', 'C2'] as const).map((level) => (
                 <button
                   key={level}
                   className={`mode-btn ${vocabLevel === level ? 'active' : ''}`}
                   onClick={() => onVocabLevelChange(level)}
-                  title={
-                    level === 'off' ? '关闭词汇分级标注' :
-                    level === 'B1' ? '标注B1及以上 (中级+中高级+高级)' :
-                    level === 'B2' ? '标注B2及以上 (中高级+高级)' :
-                    '标注C1及以上 (高级)'
-                  }
+                  title={`标注 ${level} 及以上级别词汇`}
                 >
-                  {level === 'off' ? '关闭' : `≥${level}`}
+                  ≥{level}
                 </button>
               ))}
             </div>
             {vocabLevel !== 'off' && (
               <div style={{ marginTop: 6, display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: '0.75rem' }}>
-                {vocabLevel === 'B1' && <span style={{ color: '#3b82f6' }}>● B1 中级</span>}
-                {(vocabLevel === 'B1' || vocabLevel === 'B2') && <span style={{ color: '#f59e0b' }}>● B2 中高级</span>}
-                <span style={{ color: '#ef4444' }}>● C1 高级</span>
+                {(['A1', 'A2', 'B1', 'B2', 'C1', 'C2'] as const)
+                  .filter((l) => {
+                    const order = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
+                    return order.indexOf(l) >= order.indexOf(vocabLevel);
+                  })
+                  .map((l) => {
+                    const colors: Record<string, string> = {
+                      A1: '#6b7280', A2: '#6b7280', B1: '#3b82f6',
+                      B2: '#f59e0b', C1: '#ef4444', C2: '#8b5cf6',
+                    };
+                    const labels: Record<string, string> = {
+                      A1: 'A1 基础', A2: 'A2 初级', B1: 'B1 中级',
+                      B2: 'B2 中高级', C1: 'C1 高级', C2: 'C2 精通',
+                    };
+                    return <span key={l} style={{ color: colors[l] }}>● {labels[l]}</span>;
+                  })}
               </div>
             )}
           </div>
@@ -475,6 +490,19 @@ export function SettingsPanel({
         .mode-options {
           display: flex;
           gap: 8px;
+        }
+
+        .vocab-level-options {
+          display: flex;
+          gap: 4px;
+          flex-wrap: wrap;
+        }
+
+        .vocab-level-options .mode-btn {
+          flex: none;
+          padding: 6px 10px;
+          font-size: 13px;
+          min-width: 0;
         }
 
         .mode-btn {

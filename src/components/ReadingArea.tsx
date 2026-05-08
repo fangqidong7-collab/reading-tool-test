@@ -172,7 +172,14 @@ const Paragraph = React.memo(({
       const parsed = ttsSentenceId.match(/^tts-p(\d+)-s(\d+)$/);
       if (parsed && parseInt(parsed[1], 10) === pIndex) {
         const sIdx = parseInt(parsed[2], 10);
-        const rawParts = fullText.match(/[^.!?。！？；;]*[.!?。！？；;]+["'""''）)»\s]*/g) || [];
+        const ABBR_RE = /\b(Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|Gen|Gov|Sgt|Cpl|Pvt|Capt|Lt|Col|Maj|Rev|Hon|Drs|Messrs|Mmes|No|Nos|Vol|vs|etc|al|approx|dept|est|govt|incl|intl|natl|assn|ave|blvd|dept|dist|div|est|ext|ft|hwy|inc|ltd|mt|pkg|pres|govt|univ)\.\s/gi;
+        const placeholders: string[] = [];
+        const protected_ = fullText.replace(ABBR_RE, (match) => {
+          const idx = placeholders.length;
+          placeholders.push(match);
+          return `\x00ABBR${idx}\x00`;
+        });
+        const rawParts = protected_.match(/[^.!?。！？；;]*[.!?。！？；;]+["'""''）)»\s]*/g) || [];
         const merged: string[] = [];
         for (const part of rawParts) {
           if (merged.length > 0 && !/\s$/.test(merged[merged.length - 1])) {
@@ -181,10 +188,13 @@ const Paragraph = React.memo(({
             merged.push(part);
           }
         }
-        const remainder = fullText.slice(rawParts.join('').length).trim();
+        const remainder = protected_.slice(rawParts.join('').length).trim();
         const sentences = merged.map(s => s.trim()).filter(Boolean);
         if (remainder && /[a-zA-Z0-9\u4e00-\u9fff]/.test(remainder)) sentences.push(remainder);
         if (sentences.length === 0 && fullText.trim()) sentences.push(fullText.trim());
+        for (let i = 0; i < sentences.length; i++) {
+          sentences[i] = sentences[i].replace(/\x00ABBR(\d+)\x00/g, (_, j) => placeholders[parseInt(j)]);
+        }
         let offset = 0;
         sentences.forEach((s, i) => {
           const idx = fullText.indexOf(s, offset);
