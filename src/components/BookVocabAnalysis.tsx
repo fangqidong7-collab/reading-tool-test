@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useCallback } from "react";
 import { X } from "lucide-react";
 import type { ProcessedContent } from "@/hooks/useBookshelf";
 import { getWordLevel, LEVEL_COLORS, LEVEL_LABELS, type CEFRLevel } from "@/lib/vocabLevel";
-import { lemmatize } from "@/lib/dictionary";
+import { lemmatize, getWordMeaning, getWordMeaningEn } from "@/lib/dictionary";
+import { lookupExternalDict, lookupExternalDictEn } from "@/lib/dictLoader";
 
 interface BookVocabAnalysisProps {
   isOpen: boolean;
@@ -15,6 +16,10 @@ interface BookVocabAnalysisProps {
   textColor: string;
   isDarkMode: boolean;
   backgroundColor: string;
+  globalVocabulary?: Record<string, { root: string; meaning: string; pos: string }>;
+  onAddToVocabulary?: (word: string, meaning: string, pos: string) => void;
+  onBatchAddToVocabulary?: (entries: Record<string, { root: string; meaning: string; pos: string }>) => void;
+  dictMode?: 'zh' | 'en' | 'en-simple';
 }
 
 interface WordStat {
@@ -25,6 +30,15 @@ interface WordStat {
 
 const ALL_LEVELS: CEFRLevel[] = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 
+function lookupMeaning(word: string, dictMode: string): string {
+  const isEn = dictMode === 'en' || dictMode === 'en-simple';
+  if (isEn) {
+    return getWordMeaningEn(word) || lookupExternalDictEn(word) || '';
+  }
+  const entry = getWordMeaning(word);
+  return entry?.meaning || lookupExternalDict(word) || '';
+}
+
 export function BookVocabAnalysis({
   isOpen,
   onClose,
@@ -34,9 +48,15 @@ export function BookVocabAnalysis({
   textColor,
   isDarkMode,
   backgroundColor,
+  globalVocabulary,
+  onAddToVocabulary,
+  onBatchAddToVocabulary,
+  dictMode = 'zh',
 }: BookVocabAnalysisProps) {
   const [tab, setTab] = useState<'overview' | 'words'>('overview');
   const [filterLevel, setFilterLevel] = useState<CEFRLevel | 'unknown' | 'all'>('all');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [addedWords, setAddedWords] = useState<Set<string>>(new Set());
 
   const analysis = useMemo(() => {
     if (!processedContent) return null;
@@ -91,6 +111,47 @@ export function BookVocabAnalysis({
     };
   }, [processedContent]);
 
+  const isInVocab = useCallback((word: string) => {
+    return !!(globalVocabulary && globalVocabulary[word]) || addedWords.has(word);
+  }, [globalVocabulary, addedWords]);
+
+  const toggleSelect = useCallback((word: string) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(word)) next.delete(word);
+      else next.add(word);
+      return next;
+    });
+  }, []);
+
+  const handleAddSingle = useCallback((word: string) => {
+    if (!onAddToVocabulary) return;
+    const meaning = lookupMeaning(word, dictMode);
+    if (!meaning) return;
+    onAddToVocabulary(word, meaning, '');
+    setAddedWords(prev => new Set(prev).add(word));
+    setSelected(prev => { const n = new Set(prev); n.delete(word); return n; });
+  }, [onAddToVocabulary, dictMode]);
+
+  const handleBatchAdd = useCallback(() => {
+    if (!onBatchAddToVocabulary || selected.size === 0) return;
+    const entries: Record<string, { root: string; meaning: string; pos: string }> = {};
+    for (const word of selected) {
+      if (isInVocab(word)) continue;
+      const meaning = lookupMeaning(word, dictMode);
+      if (meaning) entries[word] = { root: word, meaning, pos: '' };
+    }
+    if (Object.keys(entries).length > 0) {
+      onBatchAddToVocabulary(entries);
+      setAddedWords(prev => {
+        const n = new Set(prev);
+        for (const k of Object.keys(entries)) n.add(k);
+        return n;
+      });
+    }
+    setSelected(new Set());
+  }, [onBatchAddToVocabulary, selected, dictMode, isInVocab]);
+
   if (!isOpen || !analysis) return null;
 
   const filteredWords = filterLevel === 'all'
@@ -98,6 +159,10 @@ export function BookVocabAnalysis({
     : filterLevel === 'unknown'
       ? analysis.words.filter(w => !w.level)
       : analysis.words.filter(w => w.level === filterLevel);
+
+  const addableFiltered = filteredWords.filter(w => !isInVocab(w.word));
+  const selectedInView = filteredWords.filter(w => selected.has(w.word) && !isInVocab(w.word));
+  const allAddableSelected = addableFiltered.length > 0 && addableFiltered.every(w => selected.has(w.word));
 
   const maxLevelCount = Math.max(...ALL_LEVELS.map(l => analysis.levelUniqueWords[l] || 0), analysis.unknownUniqueCount || 1);
 
@@ -216,20 +281,65 @@ export function BookVocabAnalysis({
                 >超纲</button>
               </div>
 
+              {/* Batch actions bar */}
+              {onAddToVocabulary && (
+                <div className="va-batch-bar">
+                  <label className="va-select-all" onClick={() => {
+                    if (allAddableSelected) {
+                      setSelected(prev => {
+                        const n = new Set(prev);
+                        addableFiltered.forEach(w => n.delete(w.word));
+                        return n;
+                      });
+                    } else {
+                      setSelected(prev => {
+                        const n = new Set(prev);
+                        addableFiltered.forEach(w => n.add(w.word));
+                        return n;
+                      });
+                    }
+                  }}>
+                    <input type="checkbox" checked={allAddableSelected} readOnly style={{ cursor: 'pointer' }} />
+                    <span>全选可添加 ({addableFiltered.length})</span>
+                  </label>
+                  {selectedInView.length > 0 && (
+                    <button className="va-batch-add-btn" onClick={handleBatchAdd}>
+                      加入词汇表 ({selectedInView.length})
+                    </button>
+                  )}
+                </div>
+              )}
+
               <div className="va-word-count" style={{ opacity: 0.6 }}>
                 共 {filteredWords.length} 个词
               </div>
 
               <div className="va-word-list">
-                {filteredWords.slice(0, 200).map((w) => (
-                  <div key={w.word} className="va-word-item">
-                    <span className="va-word-text">{w.word}</span>
-                    <span className="va-word-level" style={{ color: w.level ? LEVEL_COLORS[w.level] : (isDarkMode ? '#888' : '#999') }}>
-                      {w.level ? LEVEL_LABELS[w.level] : '超纲'}
-                    </span>
-                    <span className="va-word-freq">×{w.count}</span>
-                  </div>
-                ))}
+                {filteredWords.slice(0, 200).map((w) => {
+                  const inVocab = isInVocab(w.word);
+                  const isSelected = selected.has(w.word);
+                  return (
+                    <div key={w.word} className={`va-word-item ${inVocab ? 'in-vocab' : ''}`}>
+                      {onAddToVocabulary && !inVocab && (
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelect(w.word)}
+                          className="va-word-check"
+                        />
+                      )}
+                      {inVocab && <span className="va-word-done">✓</span>}
+                      <span className="va-word-text">{w.word}</span>
+                      <span className="va-word-level" style={{ color: w.level ? LEVEL_COLORS[w.level] : (isDarkMode ? '#888' : '#999') }}>
+                        {w.level ? LEVEL_LABELS[w.level] : '超纲'}
+                      </span>
+                      <span className="va-word-freq">×{w.count}</span>
+                      {onAddToVocabulary && !inVocab && (
+                        <button className="va-word-add" onClick={() => handleAddSingle(w.word)} title="加入词汇表">+</button>
+                      )}
+                    </div>
+                  );
+                })}
                 {filteredWords.length > 200 && (
                   <div style={{ padding: 12, textAlign: 'center', opacity: 0.5, fontSize: 13 }}>
                     仅显示前 200 个词
@@ -382,6 +492,36 @@ export function BookVocabAnalysis({
           color: white;
           border-color: #4a90d9;
         }
+        .va-batch-bar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 10px;
+          padding: 8px 10px;
+          border-radius: 8px;
+          background: rgba(128,128,128,0.06);
+        }
+        .va-select-all {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 12px;
+          cursor: pointer;
+          user-select: none;
+        }
+        .va-select-all input { width: 15px; height: 15px; margin: 0; }
+        .va-batch-add-btn {
+          padding: 5px 12px;
+          border: none;
+          border-radius: 6px;
+          background: #4a90d9;
+          color: white;
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: background 0.15s;
+        }
+        .va-batch-add-btn:hover { background: #3a7bc8; }
         .va-word-count { font-size: 12px; margin-bottom: 8px; }
         .va-word-list { display: flex; flex-direction: column; }
         .va-word-item {
@@ -390,10 +530,31 @@ export function BookVocabAnalysis({
           padding: 6px 0;
           border-bottom: 1px solid rgba(128,128,128,0.08);
           font-size: 14px;
+          gap: 6px;
         }
+        .va-word-item.in-vocab { opacity: 0.45; }
+        .va-word-check { width: 15px; height: 15px; margin: 0; cursor: pointer; flex-shrink: 0; }
+        .va-word-done { width: 15px; font-size: 11px; color: #22c55e; flex-shrink: 0; text-align: center; }
         .va-word-text { flex: 1; font-weight: 500; }
-        .va-word-level { font-size: 11px; margin-right: 12px; }
-        .va-word-freq { font-size: 12px; opacity: 0.5; min-width: 40px; text-align: right; }
+        .va-word-level { font-size: 11px; margin-right: 4px; flex-shrink: 0; }
+        .va-word-freq { font-size: 12px; opacity: 0.5; min-width: 32px; text-align: right; flex-shrink: 0; }
+        .va-word-add {
+          width: 24px; height: 24px;
+          border: 1px solid rgba(128,128,128,0.3);
+          border-radius: 6px;
+          background: transparent;
+          color: inherit;
+          font-size: 16px;
+          font-weight: 600;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          transition: all 0.15s;
+          margin-left: 4px;
+        }
+        .va-word-add:hover { background: #4a90d9; color: white; border-color: #4a90d9; }
       `}</style>
     </div>
   );

@@ -436,13 +436,15 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
   // Update book annotations
   const updateBookAnnotations = useCallback(
     (id: string, annotations: Record<string, { root: string; meaning: string; pos: string; count: number }>) => {
-      setBooks((prev) =>
-        prev.map((b) =>
+      setBooks((prev) => {
+        const book = prev.find((b) => b.id === id);
+        if (book && book.annotations === annotations) return prev;
+        return prev.map((b) =>
           b.id === id
             ? { ...b, annotations, lastReadAt: Date.now() }
             : b
-        )
-      );
+        );
+      });
     },
     []
   );

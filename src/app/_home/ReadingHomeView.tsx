@@ -157,6 +157,10 @@ export interface ReadingHomeViewProps {
   goToNextSearchResult: () => void;
   goToPrevSearchResult: () => void;
   closeSearch: () => void;
+  // Vocabulary
+  globalVocabulary?: Record<string, { root: string; meaning: string; pos: string }>;
+  addToGlobalVocabulary?: (word: string, meaning: string, pos: string) => void;
+  mergeGlobalVocabulary?: (entries: Record<string, { root: string; meaning: string; pos: string }>) => void;
 }
 
 const noteInputColors = {
@@ -279,6 +283,9 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
     goToNextSearchResult,
     goToPrevSearchResult,
     closeSearch,
+    globalVocabulary,
+    addToGlobalVocabulary,
+    mergeGlobalVocabulary,
   } = props;
 
   const [showNoteInput, setShowNoteInput] = React.useState(false);
@@ -475,6 +482,10 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
         textColor={textColor}
         isDarkMode={isDarkMode}
         backgroundColor={backgroundColor}
+        globalVocabulary={globalVocabulary}
+        onAddToVocabulary={addToGlobalVocabulary}
+        onBatchAddToVocabulary={mergeGlobalVocabulary}
+        dictMode={dictMode}
       />
 
       {/* Settings Panel */}

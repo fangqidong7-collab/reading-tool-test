@@ -745,10 +745,10 @@ export default function Home() {
 
   useLayoutEffect(() => {
     const bookId = currentBookIdRef.current;
-    if (bookId) {
-      updateBookAnnotations(bookId, persistableAnnotations);
-      lastPersistedAnnotationsRef.current = persistableAnnotations;
-    }
+    if (!bookId) return;
+    if (lastPersistedAnnotationsRef.current === persistableAnnotations) return;
+    updateBookAnnotations(bookId, persistableAnnotations);
+    lastPersistedAnnotationsRef.current = persistableAnnotations;
   }, [persistableAnnotations, updateBookAnnotations]);
 
   // Handle scroll - 已通过 ReadingArea 的 onProgressChange 回调保存进度百分比
@@ -1486,6 +1486,9 @@ export default function Home() {
       goToNextSearchResult={goToNextSearchResult}
       goToPrevSearchResult={goToPrevSearchResult}
       closeSearch={closeSearch}
+      globalVocabulary={globalVocabulary}
+      addToGlobalVocabulary={addToGlobalVocabulary}
+      mergeGlobalVocabulary={mergeGlobalVocabulary}
     />
   );
 }
