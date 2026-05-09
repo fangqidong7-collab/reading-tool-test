@@ -135,6 +135,9 @@ async function requestTranslation(
     saveCacheToSession();
     return translation;
   } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      return isEnglishLang ? "Timeout" : "翻译超时";
+    }
     console.error("Translation error:", error);
     return isEnglishLang ? "Definition failed" : "翻译失败";
   }
@@ -196,6 +199,9 @@ export async function translateSentence(sentence: string): Promise<string> {
     saveCacheToSession();
     return translation;
   } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      return "翻译超时";
+    }
     console.error("Sentence translation error:", error);
     return "翻译失败";
   }
