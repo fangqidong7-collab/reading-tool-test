@@ -18,12 +18,18 @@ export interface ReadingSettings {
 
 export type VocabLevelSetting = 'off' | 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2';
 
-export type FontFamilySetting = 'serif' | 'sans-serif' | 'system';
+export type FontFamilySetting = string;
 
-export const FONT_FAMILIES: { id: FontFamilySetting; label: string; css: string }[] = [
-  { id: 'serif', label: '衬线体', css: 'Georgia, "Times New Roman", "Noto Serif", serif' },
-  { id: 'sans-serif', label: '无衬线', css: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' },
-  { id: 'system', label: '系统默认', css: 'inherit' },
+export const FONT_FAMILIES: { id: FontFamilySetting; label: string; css: string; desc?: string }[] = [
+  { id: 'georgia', label: 'Georgia', css: 'Georgia, serif', desc: '经典衬线，适合长篇阅读' },
+  { id: 'palatino', label: 'Palatino', css: '"Palatino Linotype", Palatino, "Book Antiqua", serif', desc: '优雅衬线，印刷品质感' },
+  { id: 'iowan', label: 'Iowan', css: '"Iowan Old Style", "Palatino Linotype", Palatino, serif', desc: 'Apple 阅读字体' },
+  { id: 'athelas', label: 'Athelas', css: 'Athelas, Georgia, serif', desc: 'Apple Books 默认字体' },
+  { id: 'charter', label: 'Charter', css: 'Charter, Georgia, serif', desc: '清晰锐利，屏幕友好' },
+  { id: 'new-york', label: 'New York', css: '"New York", "Iowan Old Style", Georgia, serif', desc: 'Apple 现代衬线' },
+  { id: 'sans', label: '无衬线', css: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif', desc: '干净简洁' },
+  { id: 'verdana', label: 'Verdana', css: 'Verdana, Geneva, Tahoma, sans-serif', desc: '字母间距宽，小字号清晰' },
+  { id: 'system', label: '系统默认', css: 'inherit', desc: '跟随系统设置' },
 ];
 
 export interface ReadingSettingsStorage {
@@ -85,6 +91,12 @@ function getThemeColors(themeId: string): ReadingSettings {
   };
 }
 
+function migrateFontFamily(id: string): FontFamilySetting {
+  if (id === 'serif') return 'georgia';
+  if (id === 'sans-serif') return 'sans';
+  return id;
+}
+
 function loadSettingsFromStorage(): ReadingSettingsStorage {
   const defaults: ReadingSettingsStorage = {
     fontSize: DEFAULT_SETTINGS.fontSize,
@@ -95,7 +107,7 @@ function loadSettingsFromStorage(): ReadingSettingsStorage {
     pageTurnRatio: 0.9,
     clickToTurnPage: false,
     vocabLevel: "off" as VocabLevelSetting,
-    fontFamily: "serif" as FontFamilySetting,
+    fontFamily: "georgia" as FontFamilySetting,
     autoTheme: false,
   };
   if (typeof window === "undefined") return defaults;
@@ -109,7 +121,7 @@ function loadSettingsFromStorage(): ReadingSettingsStorage {
         ...parsed,
         clickToTurnPage: parsed.clickToTurnPage ?? false,
         vocabLevel: parsed.vocabLevel ?? 'off',
-        fontFamily: parsed.fontFamily ?? 'serif',
+        fontFamily: migrateFontFamily(parsed.fontFamily ?? 'georgia'),
         autoTheme: parsed.autoTheme ?? false,
       };
     }
@@ -141,7 +153,7 @@ export function useReadingSettings() {
     pageTurnRatio: 0.9,
     clickToTurnPage: false,
     vocabLevel: "off",
-    fontFamily: "serif",
+    fontFamily: "georgia",
     autoTheme: false,
   });
   const [isLoaded, setIsLoaded] = useState(false);
@@ -149,7 +161,7 @@ export function useReadingSettings() {
   const [pageTurnRatio, setPageTurnRatioState] = useState(0.9);
   const [clickToTurnPage, setClickToTurnPageState] = useState(false);
   const [vocabLevel, setVocabLevelState] = useState<VocabLevelSetting>('off');
-  const [fontFamily, setFontFamilyState] = useState<FontFamilySetting>('serif');
+  const [fontFamily, setFontFamilyState] = useState<FontFamilySetting>('georgia');
   const [autoTheme, setAutoThemeState] = useState(false);
   const autoThemeRef = useRef(false);
 
@@ -161,7 +173,7 @@ export function useReadingSettings() {
     setPageTurnRatioState(loaded.pageTurnRatio ?? 0.9);
     setClickToTurnPageState(loaded.clickToTurnPage ?? false);
     setVocabLevelState(loaded.vocabLevel ?? 'off');
-    setFontFamilyState(loaded.fontFamily ?? 'serif');
+    setFontFamilyState(migrateFontFamily(loaded.fontFamily ?? 'georgia'));
     setAutoThemeState(loaded.autoTheme ?? false);
     autoThemeRef.current = loaded.autoTheme ?? false;
 
@@ -272,7 +284,7 @@ export function useReadingSettings() {
       backgroundTheme: defaultTheme,
       sidebarOpenByBook: {},
       clickToTurnPage: false,
-      fontFamily: 'serif',
+      fontFamily: 'georgia',
       autoTheme: false,
     }));
     setDictModeState('zh');

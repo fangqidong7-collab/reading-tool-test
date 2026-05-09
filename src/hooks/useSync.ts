@@ -41,7 +41,7 @@ export interface BookManifestEntry {
 export type SyncMergedPayload = {
   vocabulary?: Record<
     string,
-    { root: string; meaning: string; pos: string; correctCount?: number }
+    { root: string; meaning: string; pos: string; correctCount?: number; meaningZh?: string; meaningEn?: string; meaningEnSimple?: string }
   >;
   bookProgress?: Record<string, unknown>;
   books?: Book[];

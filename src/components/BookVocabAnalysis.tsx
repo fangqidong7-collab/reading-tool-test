@@ -19,8 +19,8 @@ interface BookVocabAnalysisProps {
   isDarkMode: boolean;
   backgroundColor: string;
   globalVocabulary?: Record<string, { root: string; meaning: string; pos: string }>;
-  onAddToVocabulary?: (word: string, meaning: string, pos: string) => void;
-  onBatchAddToVocabulary?: (entries: Record<string, { root: string; meaning: string; pos: string }>) => void;
+  onAddToVocabulary?: (word: string, meaning: string, pos: string, langs?: { zh?: string; en?: string; enSimple?: string }) => void;
+  onBatchAddToVocabulary?: (entries: Record<string, { root: string; meaning: string; pos: string; meaningZh?: string; meaningEn?: string; meaningEnSimple?: string }>) => void;
   dictMode?: 'zh' | 'en' | 'en-simple';
 }
 
@@ -39,6 +39,19 @@ function lookupMeaning(word: string, dictMode: string): string {
   }
   const entry = getWordMeaning(word);
   return entry?.meaning || lookupExternalDict(word) || '';
+}
+
+function lookupAllLocal(word: string): { zh?: string; en?: string; enSimple?: string } {
+  const langs: { zh?: string; en?: string; enSimple?: string } = {};
+  const zhEntry = getWordMeaning(word);
+  const zhRaw = zhEntry?.meaning || lookupExternalDict(word) || '';
+  if (zhRaw) langs.zh = shortenTranslation(zhRaw, 'zh');
+  const enRaw = getWordMeaningEn(word) || lookupExternalDictEn(word) || '';
+  if (enRaw) {
+    langs.en = shortenTranslation(enRaw, 'en');
+    langs.enSimple = shortenTranslation(enRaw, 'en-simple');
+  }
+  return langs;
 }
 
 async function aiTranslate(word: string, dictMode: string): Promise<string> {
@@ -172,7 +185,11 @@ export function BookVocabAnalysis({
       setLoadingWord(null);
     }
     if (!meaning) return;
-    onAddToVocabulary(word, meaning, '');
+    const langs = lookupAllLocal(word);
+    if (dictMode === 'zh') langs.zh = meaning;
+    else if (dictMode === 'en') langs.en = meaning;
+    else langs.enSimple = meaning;
+    onAddToVocabulary(word, meaning, '', langs);
     setAddedWords(prev => new Set(prev).add(word));
     setSelected(prev => { const n = new Set(prev); n.delete(word); return n; });
   }, [onAddToVocabulary, dictMode]);
@@ -186,12 +203,16 @@ export function BookVocabAnalysis({
     }
     if (wordsToAdd.length === 0) return;
 
-    const localEntries: Record<string, { root: string; meaning: string; pos: string }> = {};
+    const localEntries: Record<string, { root: string; meaning: string; pos: string; meaningZh?: string; meaningEn?: string; meaningEnSimple?: string }> = {};
     const needAI: string[] = [];
     for (const word of wordsToAdd) {
       const meaning = lookupMeaning(word, dictMode);
       if (meaning) {
-        localEntries[word] = { root: word, meaning, pos: '' };
+        const langs = lookupAllLocal(word);
+        if (dictMode === 'zh') langs.zh = meaning;
+        else if (dictMode === 'en') langs.en = meaning;
+        else langs.enSimple = meaning;
+        localEntries[word] = { root: word, meaning, pos: '', meaningZh: langs.zh, meaningEn: langs.en, meaningEnSimple: langs.enSimple };
       } else {
         needAI.push(word);
       }
@@ -218,7 +239,11 @@ export function BookVocabAnalysis({
           const word = queue.shift()!;
           const meaning = await aiTranslate(word, dictMode);
           if (meaning && !batchAbortRef.current) {
-            onAddToVocabulary(word, meaning, '');
+            const langs = lookupAllLocal(word);
+            if (dictMode === 'zh') langs.zh = meaning;
+            else if (dictMode === 'en') langs.en = meaning;
+            else langs.enSimple = meaning;
+            onAddToVocabulary(word, meaning, '', langs);
             setAddedWords(prev => new Set(prev).add(word));
           }
           doneCount++;

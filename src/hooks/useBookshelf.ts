@@ -205,7 +205,7 @@ export function useBookshelf() {
     }
   }, [currentBookId]);
 const [globalVocabulary, setGlobalVocabulary] = useState<
-  Record<string, { root: string; meaning: string; pos: string; correctCount: number }>
+  Record<string, { root: string; meaning: string; pos: string; correctCount: number; meaningZh?: string; meaningEn?: string; meaningEnSimple?: string }>
 >({});
 
   const booksRef = useRef(books);
@@ -520,13 +520,24 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
     );
   }, []);
 
-    // 添加词到全局词汇表
+    // 添加词到全局词汇表（支持多语言释义）
   const addToGlobalVocabulary = useCallback(
-    (root: string, meaning: string, pos: string) => {
-      setGlobalVocabulary((prev) => ({
-        ...prev,
-        [root]: { root, meaning, pos, correctCount: prev[root]?.correctCount || 0 },
-      }));
+    (root: string, meaning: string, pos: string, langs?: { zh?: string; en?: string; enSimple?: string }) => {
+      setGlobalVocabulary((prev) => {
+        const existing = prev[root];
+        return {
+          ...prev,
+          [root]: {
+            root,
+            meaning,
+            pos,
+            correctCount: existing?.correctCount || 0,
+            meaningZh: langs?.zh ?? existing?.meaningZh,
+            meaningEn: langs?.en ?? existing?.meaningEn,
+            meaningEnSimple: langs?.enSimple ?? existing?.meaningEnSimple,
+          },
+        };
+      });
     },
     []
   );
@@ -569,13 +580,20 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
     setGlobalVocabulary({});
   }, []);
 
-  // 合并导入的词汇到全局词汇表（重复替换，不重复追加，不覆盖原有）
+  // 合并导入的词汇到全局词汇表（重复替换，不重复追加，保留已有多语言释义）
   const mergeGlobalVocabulary = useCallback(
-    (incoming: Record<string, { root: string; meaning: string; pos: string; correctCount?: number }>) => {
+    (incoming: Record<string, { root: string; meaning: string; pos: string; correctCount?: number; meaningZh?: string; meaningEn?: string; meaningEnSimple?: string }>) => {
       setGlobalVocabulary((prev) => {
         const merged = { ...prev };
         for (const [key, value] of Object.entries(incoming)) {
-          merged[key] = { ...value, correctCount: value.correctCount ?? 0 };
+          const existing = merged[key];
+          merged[key] = {
+            ...value,
+            correctCount: value.correctCount ?? 0,
+            meaningZh: value.meaningZh ?? existing?.meaningZh,
+            meaningEn: value.meaningEn ?? existing?.meaningEn,
+            meaningEnSimple: value.meaningEnSimple ?? existing?.meaningEnSimple,
+          };
         }
         return merged;
       });
@@ -834,7 +852,7 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
    * 词汇表直接替换；书籍列表直接替换（保留本地 sample book）。
    */
   const replaceAllFromRemote = useCallback((remote: {
-    vocabulary?: Record<string, { root: string; meaning: string; pos: string; correctCount?: number }>;
+    vocabulary?: Record<string, { root: string; meaning: string; pos: string; correctCount?: number; meaningZh?: string; meaningEn?: string; meaningEnSimple?: string }>;
     books?: Book[];
     bookProgress?: Record<string, unknown>;
   }) => {

@@ -158,15 +158,17 @@ export function SettingsPanel({
             <div className="setting-label">
               <span className="label-text">字体</span>
             </div>
-            <div className="mode-options">
+            <div className="font-grid">
               {FONT_FAMILIES.map((f) => (
                 <button
                   key={f.id}
-                  className={`mode-btn ${fontFamily === f.id ? 'active' : ''}`}
+                  className={`font-btn ${fontFamily === f.id ? 'active' : ''}`}
                   onClick={() => onFontFamilyChange(f.id)}
-                  style={fontFamily === f.id ? undefined : { fontFamily: f.css }}
+                  style={{ fontFamily: f.css }}
+                  title={f.desc}
                 >
-                  {f.label}
+                  <span className="font-btn-label">{f.label}</span>
+                  <span className="font-btn-preview">Aa</span>
                 </button>
               ))}
             </div>
@@ -371,6 +373,9 @@ export function SettingsPanel({
         .settings-panel {
           width: 100%;
           max-width: 400px;
+          max-height: calc(100vh - 80px);
+          display: flex;
+          flex-direction: column;
           border-radius: 0 0 16px 16px;
           box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
           animation: slideDown 0.2s ease;
@@ -420,6 +425,8 @@ export function SettingsPanel({
 
         .settings-content {
           padding: 20px;
+          overflow-y: auto;
+          -webkit-overflow-scrolling: touch;
         }
 
         .setting-item {
@@ -521,6 +528,57 @@ export function SettingsPanel({
         .theme-btn.active {
           border-width: 3px;
           box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .font-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 8px;
+        }
+
+        .font-btn {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 2px;
+          padding: 8px 4px 6px;
+          border: 1px solid rgba(128, 128, 128, 0.3);
+          border-radius: 8px;
+          background: transparent;
+          color: inherit;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+
+        .font-btn:hover {
+          background: rgba(128, 128, 128, 0.1);
+        }
+
+        .font-btn.active {
+          background: #4a90d9;
+          color: white;
+          border-color: #4a90d9;
+        }
+
+        :global(.dark) .font-btn.active {
+          background: #6ba3e0;
+          border-color: #6ba3e0;
+        }
+
+        .font-btn-label {
+          font-size: 11px;
+          line-height: 1.2;
+          font-family: -apple-system, sans-serif !important;
+        }
+
+        .font-btn-preview {
+          font-size: 18px;
+          line-height: 1;
+          opacity: 0.8;
+        }
+
+        .font-btn.active .font-btn-preview {
+          opacity: 1;
         }
 
         .mode-options {

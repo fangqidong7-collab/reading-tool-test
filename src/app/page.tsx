@@ -526,6 +526,52 @@ export default function Home() {
     };
   }, []);
 
+  const vocabMigratedRef = useRef(false);
+  useEffect(() => {
+    if (!isLoaded || vocabMigratedRef.current) return;
+    const entries = Object.entries(globalVocabulary);
+    if (entries.length === 0) return;
+
+    const needsMigration = entries.some(
+      ([, v]) => v.meaningZh === undefined && v.meaningEn === undefined
+    );
+    if (!needsMigration) {
+      vocabMigratedRef.current = true;
+      return;
+    }
+    vocabMigratedRef.current = true;
+
+    const patch: Record<string, { root: string; meaning: string; pos: string; meaningZh?: string; meaningEn?: string; meaningEnSimple?: string }> = {};
+    let patchCount = 0;
+    for (const [key, entry] of entries) {
+      if (entry.meaningZh !== undefined || entry.meaningEn !== undefined) continue;
+
+      const zhEntry = getWordMeaning(key);
+      const zhRaw = zhEntry?.meaning || lookupExternalDict(key) || '';
+      const enRaw = getWordMeaningEn(key) || lookupExternalDictEn(key) || '';
+
+      const meaningZh = zhRaw ? shortenTranslation(zhRaw, 'zh') : undefined;
+      const meaningEn = enRaw ? shortenTranslation(enRaw, 'en') : undefined;
+      const meaningEnSimple = enRaw ? shortenTranslation(enRaw, 'en-simple') : undefined;
+
+      const existingMeaning = entry.meaning || '';
+      const hasChinese = /[\u4e00-\u9fff]/.test(existingMeaning);
+
+      patch[key] = {
+        root: entry.root,
+        meaning: entry.meaning,
+        pos: entry.pos,
+        meaningZh: meaningZh ?? (hasChinese ? existingMeaning : undefined),
+        meaningEn: meaningEn ?? (!hasChinese && existingMeaning ? existingMeaning : undefined),
+        meaningEnSimple: meaningEnSimple ?? (!hasChinese && existingMeaning ? existingMeaning : undefined),
+      };
+      patchCount++;
+    }
+
+    if (patchCount > 0) {
+      mergeGlobalVocabulary(patch);
+    }
+  }, [isLoaded, globalVocabulary, mergeGlobalVocabulary]);
 
   // Effect-book: sync book content/annotations and process on first open
   useEffect(() => {
@@ -792,6 +838,19 @@ export default function Home() {
     []
   );
 
+  const lookupAllLocalMeanings = useCallback((word: string, root: string) => {
+    const langs: { zh?: string; en?: string; enSimple?: string } = {};
+    const zhEntry = getWordMeaning(root);
+    const zhRaw = zhEntry?.meaning || lookupExternalDict(root) || lookupExternalDict(word) || '';
+    if (zhRaw) langs.zh = shortenTranslation(zhRaw, 'zh');
+    const enRaw = getWordMeaningEn(root) || lookupExternalDictEn(root) || lookupExternalDictEn(word) || '';
+    if (enRaw) {
+      langs.en = shortenTranslation(enRaw, 'en');
+      langs.enSimple = shortenTranslation(enRaw, 'en-simple');
+    }
+    return langs;
+  }, []);
+
   // Handle word double click - auto annotate without popup
   const handleWordDoubleClick = useCallback(
     async (word: string, lemma: string, event: React.MouseEvent) => {
@@ -858,10 +917,14 @@ export default function Home() {
           ...prev,
           [root]: newAnnotation,
         }));
-        addToGlobalVocabulary(root, shortMeaning, "");
+        const langs = lookupAllLocalMeanings(cleanWord, root);
+        if (dictMode === 'zh') langs.zh = shortMeaning;
+        else if (dictMode === 'en') langs.en = shortMeaning;
+        else langs.enSimple = shortMeaning;
+        addToGlobalVocabulary(root, shortMeaning, "", langs);
       }
     },
-    [annotations, currentBook, dictMode, addToGlobalVocabulary]
+    [annotations, currentBook, dictMode, addToGlobalVocabulary, lookupAllLocalMeanings]
   );
 
   // Annotate all occurrences of a word
@@ -938,7 +1001,11 @@ export default function Home() {
             count: family.length,
           },
         }));
-        addToGlobalVocabulary(root, meaning, "");
+        const langs = lookupAllLocalMeanings(cleanWord, root);
+        if (dictMode === 'zh') langs.zh = meaning;
+        else if (dictMode === 'en') langs.en = meaning;
+        else langs.enSimple = meaning;
+        addToGlobalVocabulary(root, meaning, "", langs);
 
       } catch (err) {
         console.error("Annotation error:", err);
@@ -947,7 +1014,7 @@ export default function Home() {
         setSelectedWord(null);
       }
     },
-    [annotations, text, dictMode, addToGlobalVocabulary]
+    [annotations, text, dictMode, addToGlobalVocabulary, lookupAllLocalMeanings]
   );
 
   const prevVocabLevelRef = useRef(vocabLevel);
@@ -1015,6 +1082,33 @@ export default function Home() {
       return { ...next, ...batch };
     });
   }, [vocabLevel, processedContent, dictMode]);
+
+  const prevDictModeRef = useRef(dictMode);
+  useEffect(() => {
+    if (prevDictModeRef.current === dictMode) return;
+    prevDictModeRef.current = dictMode;
+
+    setAnnotations((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      for (const [key, ann] of Object.entries(next)) {
+        if (ann.cefrLevel) continue;
+        const vocabEntry = globalVocabulary[key];
+        if (!vocabEntry) continue;
+
+        let targetMeaning: string | undefined;
+        if (dictMode === 'zh') targetMeaning = vocabEntry.meaningZh;
+        else if (dictMode === 'en') targetMeaning = vocabEntry.meaningEn;
+        else if (dictMode === 'en-simple') targetMeaning = vocabEntry.meaningEnSimple;
+
+        if (targetMeaning && targetMeaning !== ann.meaning) {
+          next[key] = { ...ann, meaning: targetMeaning };
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [dictMode, globalVocabulary]);
 
   // Remove annotation
   const removeAnnotation = useCallback((word: string, lemmaOverride?: string) => {
