@@ -86,6 +86,17 @@ export function BookVocabAnalysis({
     localStorage.setItem('va-min-word-len', String(v));
   }, []);
 
+  const [minFreq, setMinFreq] = useState<number>(() => {
+    if (typeof window === 'undefined') return 0;
+    const saved = localStorage.getItem('va-min-word-freq');
+    return saved ? parseInt(saved, 10) || 0 : 0;
+  });
+  const handleMinFreqChange = useCallback((val: number) => {
+    const v = Math.max(0, Math.min(999, val));
+    setMinFreq(v);
+    localStorage.setItem('va-min-word-freq', String(v));
+  }, []);
+
   const analysis = useMemo(() => {
     if (!processedContent) return null;
 
@@ -229,7 +240,7 @@ export function BookVocabAnalysis({
     : filterLevel === 'unknown'
       ? analysis.words.filter(w => !w.level)
       : analysis.words.filter(w => w.level === filterLevel)
-  ).filter(w => minLen <= 0 || w.word.length >= minLen);
+  ).filter(w => (minLen <= 0 || w.word.length >= minLen) && (minFreq <= 0 || w.count >= minFreq));
 
   const addableFiltered = filteredWords.filter(w => !isInVocab(w.word));
   const selectedInView = filteredWords.filter(w => selected.has(w.word) && !isInVocab(w.word));
@@ -357,6 +368,11 @@ export function BookVocabAnalysis({
                 <button className="va-len-btn" onClick={() => handleMinLenChange(minLen - 1)} disabled={minLen <= 0}>−</button>
                 <span className="va-len-val">{minLen > 0 ? `≥${minLen}字母` : '不限'}</span>
                 <button className="va-len-btn" onClick={() => handleMinLenChange(minLen + 1)}>+</button>
+                <span className="va-len-sep" />
+                <span className="va-len-label">频率</span>
+                <button className="va-len-btn" onClick={() => handleMinFreqChange(minFreq - 1)} disabled={minFreq <= 0}>−</button>
+                <span className="va-len-val">{minFreq > 0 ? `≥${minFreq}次` : '不限'}</span>
+                <button className="va-len-btn" onClick={() => handleMinFreqChange(minFreq + 1)}>+</button>
               </div>
 
               {/* Batch actions bar */}
@@ -603,7 +619,8 @@ export function BookVocabAnalysis({
           justify-content: center;
         }
         .va-len-btn:disabled { opacity: 0.25; cursor: default; }
-        .va-len-val { min-width: 52px; text-align: center; font-weight: 500; }
+        .va-len-val { min-width: 44px; text-align: center; font-weight: 500; }
+        .va-len-sep { width: 1px; height: 16px; background: rgba(128,128,128,0.2); margin: 0 4px; }
         .va-filter-btn.active {
           background: #4a90d9;
           color: white;
