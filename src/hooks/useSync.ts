@@ -27,6 +27,7 @@ function apiFailMessage(kind: string, res: Response, parsed: { error?: string; c
 
 export interface SyncData {
   vocabulary: Record<string, unknown>;
+  masteredWords?: string[];
   bookProgress: Record<string, unknown>;
   books?: Book[];
 }

@@ -47,6 +47,7 @@ export default function Home() {
     addBookmark,
     removeBookmark,
     globalVocabulary,
+    masteredWords,
     addToGlobalVocabulary,
     removeFromGlobalVocabulary,
     clearGlobalVocabulary,
@@ -210,6 +211,7 @@ export default function Home() {
     return {
       data: {
         vocabulary: globalVocabulary,
+        masteredWords: [...masteredWords],
         bookProgress: books.reduce((acc: Record<string, {
           title: string;
           lastScrollPosition: number;
@@ -238,7 +240,7 @@ export default function Home() {
       bookManifest,
       contentHashes,
     };
-  }, [globalVocabulary, books]);
+  }, [globalVocabulary, masteredWords, books]);
 
   // 按 ID 列表构建完整书籍数据（仅在 needBooks 时调用）
   const buildBooksPayload = useCallback((bookIds: string[]): Book[] => {
@@ -276,6 +278,7 @@ export default function Home() {
     return {
       data: {
         vocabulary: globalVocabulary,
+        masteredWords: [...masteredWords],
         bookProgress: books.reduce((acc: Record<string, {
           title: string;
           lastScrollPosition: number;
@@ -304,7 +307,7 @@ export default function Home() {
       },
       contentHashes,
     };
-  }, [globalVocabulary, books]);
+  }, [globalVocabulary, masteredWords, books]);
 
   // Handle create sync - push current local data to cloud (full payload with books)
   const handleCreateSync = useCallback(async () => {
@@ -1628,6 +1631,7 @@ export default function Home() {
       goToPrevSearchResult={goToPrevSearchResult}
       closeSearch={closeSearch}
       globalVocabulary={globalVocabulary}
+      masteredWords={masteredWords}
       addToGlobalVocabulary={addToGlobalVocabulary}
       mergeGlobalVocabulary={mergeGlobalVocabulary}
     />

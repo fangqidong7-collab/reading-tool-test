@@ -157,6 +157,7 @@ function dedupeBooksByNormalizedTitle(books: Book[], preferExistingIds: Set<stri
 
 const STORAGE_KEY = "english-reader-books";
 const GLOBAL_VOCAB_KEY = "english-reader-global-vocabulary";
+const MASTERED_WORDS_KEY = "english-reader-mastered-words";
 const SAMPLE_BOOK: Book = {
   id: "sample-book-1",
   title: "The Art of Learning",
@@ -208,6 +209,7 @@ export function useBookshelf() {
 const [globalVocabulary, setGlobalVocabulary] = useState<
   Record<string, { root: string; meaning: string; pos: string; correctCount: number; meaningZh?: string; meaningEn?: string; meaningEnSimple?: string }>
 >({});
+const [masteredWords, setMasteredWords] = useState<Set<string>>(new Set());
 
   const booksRef = useRef(books);
   useEffect(() => { booksRef.current = books; }, [books]);
@@ -302,6 +304,16 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
         console.warn("加载全局词汇表失败");
       }
 
+      try {
+        const masteredStr = await idbGet(MASTERED_WORDS_KEY);
+        if (masteredStr) {
+          const arr = JSON.parse(masteredStr);
+          if (Array.isArray(arr)) setMasteredWords(new Set(arr));
+        }
+      } catch {
+        console.warn("加载已掌握词汇失败");
+      }
+
       setIsLoaded(true);
 
     })();
@@ -358,6 +370,19 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
     return () => clearTimeout(timeoutId);
   }, [globalVocabulary, isLoaded]);
 
+  useEffect(() => {
+    if (!isLoaded || typeof window === "undefined") return;
+    const timeoutId = setTimeout(() => {
+      (async () => {
+        try {
+          await idbSet(MASTERED_WORDS_KEY, JSON.stringify([...masteredWords]));
+        } catch (error) {
+          console.warn("保存已掌握词汇失败:", error);
+        }
+      })();
+    }, 500);
+    return () => clearTimeout(timeoutId);
+  }, [masteredWords, isLoaded]);
 
   // Get current book
   const currentBook = books.find((b) => b.id === currentBookId) || null;
@@ -557,6 +582,12 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
           },
         };
       });
+      setMasteredWords((prev) => {
+        if (!prev.has(root)) return prev;
+        const next = new Set(prev);
+        next.delete(root);
+        return next;
+      });
     },
     []
   );
@@ -576,20 +607,37 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
   const clearMasteredWords = useCallback((threshold: number) => {
     setGlobalVocabulary((prev) => {
       const next: typeof prev = {};
+      const removed: string[] = [];
       for (const [key, value] of Object.entries(prev)) {
         if ((value.correctCount || 0) < threshold) {
           next[key] = value;
+        } else {
+          removed.push(key);
         }
+      }
+      if (removed.length > 0) {
+        setMasteredWords((ms) => {
+          const n = new Set(ms);
+          for (const r of removed) n.add(r);
+          return n;
+        });
       }
       return next;
     });
   }, []);
 
-  // 从全局词汇表删除词
+  // 从全局词汇表删除词（标记为已掌握）
   const removeFromGlobalVocabulary = useCallback((root: string) => {
     setGlobalVocabulary((prev) => {
+      if (!prev[root]) return prev;
       const next = { ...prev };
       delete next[root];
+      return next;
+    });
+    setMasteredWords((prev) => {
+      if (prev.has(root)) return prev;
+      const next = new Set(prev);
+      next.add(root);
       return next;
     });
   }, []);
@@ -872,6 +920,7 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
    */
   const replaceAllFromRemote = useCallback((remote: {
     vocabulary?: Record<string, { root: string; meaning: string; pos: string; correctCount?: number; meaningZh?: string; meaningEn?: string; meaningEnSimple?: string }>;
+    masteredWords?: string[];
     books?: Book[];
     bookProgress?: Record<string, unknown>;
   }) => {
@@ -881,6 +930,9 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
         normalized[k] = { ...v, correctCount: v.correctCount ?? 0 };
       }
       setGlobalVocabulary(normalized);
+    }
+    if (remote.masteredWords && Array.isArray(remote.masteredWords)) {
+      setMasteredWords(new Set(remote.masteredWords));
     }
 
     if (remote.books) {
@@ -981,6 +1033,7 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
     addBookmark,
     removeBookmark,
     globalVocabulary,
+    masteredWords,
     addToGlobalVocabulary,
     removeFromGlobalVocabulary,
     clearGlobalVocabulary,

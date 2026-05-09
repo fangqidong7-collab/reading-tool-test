@@ -160,6 +160,7 @@ export interface ReadingHomeViewProps {
   closeSearch: () => void;
   // Vocabulary
   globalVocabulary?: Record<string, { root: string; meaning: string; pos: string }>;
+  masteredWords?: Set<string>;
   addToGlobalVocabulary?: (word: string, meaning: string, pos: string, langs?: { zh?: string; en?: string; enSimple?: string }) => void;
   mergeGlobalVocabulary?: (entries: Record<string, { root: string; meaning: string; pos: string; meaningZh?: string; meaningEn?: string; meaningEnSimple?: string }>) => void;
 }
@@ -286,6 +287,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
     goToPrevSearchResult,
     closeSearch,
     globalVocabulary,
+    masteredWords,
     addToGlobalVocabulary,
     mergeGlobalVocabulary,
   } = props;
@@ -485,6 +487,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
         isDarkMode={isDarkMode}
         backgroundColor={backgroundColor}
         globalVocabulary={globalVocabulary}
+        masteredWords={masteredWords}
         onAddToVocabulary={addToGlobalVocabulary}
         onBatchAddToVocabulary={mergeGlobalVocabulary}
         dictMode={dictMode}

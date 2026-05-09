@@ -19,6 +19,7 @@ interface BookVocabAnalysisProps {
   isDarkMode: boolean;
   backgroundColor: string;
   globalVocabulary?: Record<string, { root: string; meaning: string; pos: string }>;
+  masteredWords?: Set<string>;
   onAddToVocabulary?: (word: string, meaning: string, pos: string, langs?: { zh?: string; en?: string; enSimple?: string }) => void;
   onBatchAddToVocabulary?: (entries: Record<string, { root: string; meaning: string; pos: string; meaningZh?: string; meaningEn?: string; meaningEnSimple?: string }>) => void;
   dictMode?: 'zh' | 'en' | 'en-simple';
@@ -76,6 +77,7 @@ export function BookVocabAnalysis({
   isDarkMode,
   backgroundColor,
   globalVocabulary,
+  masteredWords,
   onAddToVocabulary,
   onBatchAddToVocabulary,
   dictMode = 'zh',
@@ -84,6 +86,7 @@ export function BookVocabAnalysis({
   const [filterLevels, setFilterLevels] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [hideInVocab, setHideInVocab] = useState(false);
+  const [hideMastered, setHideMastered] = useState(false);
   const [addedWords, setAddedWords] = useState<Set<string>>(new Set());
   const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
   const [loadingWord, setLoadingWord] = useState<string | null>(null);
@@ -171,7 +174,11 @@ export function BookVocabAnalysis({
     return !!(globalVocabulary && globalVocabulary[word]) || addedWords.has(word);
   }, [globalVocabulary, addedWords]);
 
-  useEffect(() => { setVisibleCount(100); }, [filterLevels, minLen, minFreq, hideInVocab]);
+  const isMastered = useCallback((word: string) => {
+    return !!(masteredWords && masteredWords.has(word));
+  }, [masteredWords]);
+
+  useEffect(() => { setVisibleCount(100); }, [filterLevels, minLen, minFreq, hideInVocab, hideMastered]);
 
   const handleBodyScroll = useCallback(() => {
     const el = bodyRef.current;
@@ -284,6 +291,7 @@ export function BookVocabAnalysis({
     if (minLen > 0 && w.word.length < minLen) return false;
     if (minFreq > 0 && w.count < minFreq) return false;
     if (hideInVocab && isInVocab(w.word)) return false;
+    if (hideMastered && isMastered(w.word)) return false;
     return true;
   });
 
@@ -441,6 +449,10 @@ export function BookVocabAnalysis({
                   <input type="checkbox" checked={hideInVocab} onChange={e => setHideInVocab(e.target.checked)} />
                   <span>隐藏已加入</span>
                 </label>
+                <label className="va-hide-vocab">
+                  <input type="checkbox" checked={hideMastered} onChange={e => setHideMastered(e.target.checked)} />
+                  <span>隐藏已掌握</span>
+                </label>
               </div>
 
               {/* Batch actions bar */}
@@ -491,10 +503,11 @@ export function BookVocabAnalysis({
               <div className="va-word-list">
                 {filteredWords.slice(0, visibleCount).map((w) => {
                   const inVocab = isInVocab(w.word);
+                  const mastered = isMastered(w.word);
                   const isSelected = selected.has(w.word);
                   return (
-                    <div key={w.word} className={`va-word-item ${inVocab ? 'in-vocab' : ''}`}>
-                      {onAddToVocabulary && !inVocab && (
+                    <div key={w.word} className={`va-word-item ${inVocab ? 'in-vocab' : ''} ${mastered && !inVocab ? 'mastered' : ''}`}>
+                      {onAddToVocabulary && !inVocab && !mastered && (
                         <input
                           type="checkbox"
                           checked={isSelected}
@@ -503,12 +516,13 @@ export function BookVocabAnalysis({
                         />
                       )}
                       {inVocab && <span className="va-word-done">✓</span>}
+                      {mastered && !inVocab && <span className="va-word-mastered">★</span>}
                       <span className="va-word-text">{w.word}</span>
                       <span className="va-word-level" style={{ color: w.level ? LEVEL_COLORS[w.level] : (isDarkMode ? '#888' : '#999') }}>
                         {w.level ? LEVEL_LABELS[w.level] : '超纲'}
                       </span>
                       <span className="va-word-freq">×{w.count}</span>
-                      {onAddToVocabulary && !inVocab && (
+                      {onAddToVocabulary && !inVocab && !mastered && (
                         <button
                           className="va-word-add"
                           onClick={() => handleAddSingle(w.word)}
@@ -786,8 +800,10 @@ export function BookVocabAnalysis({
           gap: 6px;
         }
         .va-word-item.in-vocab { opacity: 0.45; }
+        .va-word-item.mastered { opacity: 0.4; }
         .va-word-check { width: 15px; height: 15px; margin: 0; cursor: pointer; flex-shrink: 0; }
         .va-word-done { width: 15px; font-size: 11px; color: #22c55e; flex-shrink: 0; text-align: center; }
+        .va-word-mastered { width: 15px; font-size: 11px; color: #f59e0b; flex-shrink: 0; text-align: center; }
         .va-word-text { flex: 1; font-weight: 500; }
         .va-word-level { font-size: 11px; margin-right: 4px; flex-shrink: 0; }
         .va-word-freq { font-size: 12px; opacity: 0.5; min-width: 32px; text-align: right; flex-shrink: 0; }
