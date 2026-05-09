@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState, useCallback, useRef } from "react";
+import React, { useMemo, useState, useCallback, useRef, useEffect } from "react";
 import { X } from "lucide-react";
 import type { ProcessedContent } from "@/hooks/useBookshelf";
 import { getWordLevel, LEVEL_COLORS, LEVEL_LABELS, type CEFRLevel } from "@/lib/vocabLevel";
@@ -81,12 +81,16 @@ export function BookVocabAnalysis({
   dictMode = 'zh',
 }: BookVocabAnalysisProps) {
   const [tab, setTab] = useState<'overview' | 'words'>('overview');
-  const [filterLevel, setFilterLevel] = useState<CEFRLevel | 'unknown' | 'all'>('all');
+  const [filterLevels, setFilterLevels] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [hideInVocab, setHideInVocab] = useState(false);
   const [addedWords, setAddedWords] = useState<Set<string>>(new Set());
   const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
   const [loadingWord, setLoadingWord] = useState<string | null>(null);
   const batchAbortRef = useRef(false);
+  const [visibleCount, setVisibleCount] = useState(100);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  const bodyRef = useRef<HTMLDivElement>(null);
 
   const [minLen, setMinLen] = useState<number>(() => {
     if (typeof window === 'undefined') return 0;
@@ -166,6 +170,18 @@ export function BookVocabAnalysis({
   const isInVocab = useCallback((word: string) => {
     return !!(globalVocabulary && globalVocabulary[word]) || addedWords.has(word);
   }, [globalVocabulary, addedWords]);
+
+  useEffect(() => { setVisibleCount(100); }, [filterLevels, minLen, minFreq, hideInVocab]);
+
+  const handleBodyScroll = useCallback(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    setShowScrollTop(el.scrollTop > 300);
+  }, []);
+
+  const scrollToTop = useCallback(() => {
+    bodyRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
 
   const toggleSelect = useCallback((word: string) => {
     setSelected(prev => {
@@ -260,12 +276,16 @@ export function BookVocabAnalysis({
 
   if (!isOpen || !analysis) return null;
 
-  const filteredWords = (filterLevel === 'all'
-    ? analysis.words
-    : filterLevel === 'unknown'
-      ? analysis.words.filter(w => !w.level)
-      : analysis.words.filter(w => w.level === filterLevel)
-  ).filter(w => (minLen <= 0 || w.word.length >= minLen) && (minFreq <= 0 || w.count >= minFreq));
+  const filteredWords = analysis.words.filter(w => {
+    if (filterLevels.size > 0) {
+      const wLevel = w.level || 'unknown';
+      if (!filterLevels.has(wLevel)) return false;
+    }
+    if (minLen > 0 && w.word.length < minLen) return false;
+    if (minFreq > 0 && w.count < minFreq) return false;
+    if (hideInVocab && isInVocab(w.word)) return false;
+    return true;
+  });
 
   const addableFiltered = filteredWords.filter(w => !isInVocab(w.word));
   const selectedInView = filteredWords.filter(w => selected.has(w.word) && !isInVocab(w.word));
@@ -290,7 +310,7 @@ export function BookVocabAnalysis({
           </button>
         </div>
 
-        <div className="va-body" style={{ backgroundColor, color: textColor }}>
+        <div className="va-body" ref={bodyRef} onScroll={handleBodyScroll} style={{ backgroundColor, color: textColor }}>
           {tab === 'overview' && (
             <div className="va-overview">
               <div className="va-summary">
@@ -371,20 +391,28 @@ export function BookVocabAnalysis({
             <div className="va-words">
               <div className="va-filter">
                 <button
-                  className={`va-filter-btn ${filterLevel === 'all' ? 'active' : ''}`}
-                  onClick={() => setFilterLevel('all')}
+                  className={`va-filter-btn ${filterLevels.size === 0 ? 'active' : ''}`}
+                  onClick={() => setFilterLevels(new Set())}
                 >全部</button>
                 {ALL_LEVELS.map(l => (
                   <button
                     key={l}
-                    className={`va-filter-btn ${filterLevel === l ? 'active' : ''}`}
-                    onClick={() => setFilterLevel(l)}
-                    style={filterLevel === l ? { backgroundColor: LEVEL_COLORS[l], borderColor: LEVEL_COLORS[l] } : undefined}
+                    className={`va-filter-btn ${filterLevels.has(l) ? 'active' : ''}`}
+                    onClick={() => setFilterLevels(prev => {
+                      const next = new Set(prev);
+                      if (next.has(l)) next.delete(l); else next.add(l);
+                      return next;
+                    })}
+                    style={filterLevels.has(l) ? { backgroundColor: LEVEL_COLORS[l], borderColor: LEVEL_COLORS[l] } : undefined}
                   >{l}</button>
                 ))}
                 <button
-                  className={`va-filter-btn ${filterLevel === 'unknown' ? 'active' : ''}`}
-                  onClick={() => setFilterLevel('unknown')}
+                  className={`va-filter-btn ${filterLevels.has('unknown') ? 'active' : ''}`}
+                  onClick={() => setFilterLevels(prev => {
+                    const next = new Set(prev);
+                    if (next.has('unknown')) next.delete('unknown'); else next.add('unknown');
+                    return next;
+                  })}
                 >超纲</button>
               </div>
 
@@ -408,6 +436,11 @@ export function BookVocabAnalysis({
                   placeholder="不限"
                   onChange={e => handleMinFreqChange(parseInt(e.target.value, 10) || 0)}
                 />
+                <span className="va-len-sep" />
+                <label className="va-hide-vocab">
+                  <input type="checkbox" checked={hideInVocab} onChange={e => setHideInVocab(e.target.checked)} />
+                  <span>隐藏已加入</span>
+                </label>
               </div>
 
               {/* Batch actions bar */}
@@ -456,7 +489,7 @@ export function BookVocabAnalysis({
               </div>
 
               <div className="va-word-list">
-                {filteredWords.slice(0, 200).map((w) => {
+                {filteredWords.slice(0, visibleCount).map((w) => {
                   const inVocab = isInVocab(w.word);
                   const isSelected = selected.has(w.word);
                   return (
@@ -486,12 +519,18 @@ export function BookVocabAnalysis({
                     </div>
                   );
                 })}
-                {filteredWords.length > 200 && (
-                  <div style={{ padding: 12, textAlign: 'center', opacity: 0.5, fontSize: 13 }}>
-                    仅显示前 200 个词
+                {visibleCount < filteredWords.length && (
+                  <div className="va-load-more">
+                    <button onClick={() => setVisibleCount(prev => prev + 100)}>
+                      加载更多（已显示 {Math.min(visibleCount, filteredWords.length)}/{filteredWords.length}）
+                    </button>
                   </div>
                 )}
               </div>
+
+              {showScrollTop && (
+                <button className="va-scroll-top" onClick={scrollToTop} title="回到顶部">↑</button>
+              )}
             </div>
           )}
         </div>
@@ -657,6 +696,16 @@ export function BookVocabAnalysis({
         .va-len-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
         .va-len-input:focus { border-color: #4a90d9; }
         .va-len-sep { width: 1px; height: 16px; background: rgba(128,128,128,0.2); flex-shrink: 0; }
+        .va-hide-vocab {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          cursor: pointer;
+          white-space: nowrap;
+          opacity: 0.6;
+          font-size: 12px;
+        }
+        .va-hide-vocab input { width: 14px; height: 14px; cursor: pointer; margin: 0; }
         .va-filter-btn.active {
           background: #4a90d9;
           color: white;
@@ -759,6 +808,43 @@ export function BookVocabAnalysis({
           margin-left: 4px;
         }
         .va-word-add:hover { background: #4a90d9; color: white; border-color: #4a90d9; }
+        .va-load-more {
+          padding: 12px 0;
+          text-align: center;
+        }
+        .va-load-more button {
+          padding: 6px 20px;
+          border: 1px solid rgba(128,128,128,0.3);
+          border-radius: 8px;
+          background: transparent;
+          color: inherit;
+          font-size: 13px;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+        .va-load-more button:hover { background: rgba(128,128,128,0.1); }
+        .va-scroll-top {
+          position: sticky;
+          bottom: 12px;
+          float: right;
+          margin-right: 4px;
+          width: 36px;
+          height: 36px;
+          border-radius: 50%;
+          border: none;
+          background: #4a90d9;
+          color: white;
+          font-size: 18px;
+          font-weight: 700;
+          cursor: pointer;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 10;
+          transition: opacity 0.2s;
+        }
+        .va-scroll-top:hover { opacity: 0.85; }
       `}</style>
     </div>
   );
