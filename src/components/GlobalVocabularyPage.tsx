@@ -4,7 +4,7 @@ import React, { useState, useCallback, useRef } from "react";
 import { speakWord } from "@/lib/speak";
 import { getWordMeaning, getWordMeaningEn } from "@/lib/dictionary";
 import { lookupExternalDict, lookupExternalDictEn } from "@/lib/dictLoader";
-import { translateWord, translateWordEn, translateWordEnSimple } from "@/lib/translate";
+import { translateWord, translateWordEn, translateWordEnSimple, isTranslationError } from "@/lib/translate";
 import { shortenTranslation } from "@/lib/annotationText";
 
 interface VocabItem {
@@ -54,7 +54,9 @@ async function aiTranslateWord(word: string, mode: 'zh' | 'en' | 'en-simple'): P
     if (mode === 'en-simple') raw = await translateWordEnSimple(word);
     else if (mode === 'en') raw = await translateWordEn(word);
     else raw = await translateWord(word);
-    return shortenTranslation(raw, mode);
+    if (isTranslationError(raw)) return '';
+    const result = shortenTranslation(raw, mode);
+    return isTranslationError(result) ? '' : result;
   } catch {
     return '';
   }

@@ -1,3 +1,13 @@
+const FAILED_MEANINGS = new Set([
+  '翻译失败', '翻译超时', '未找到释义',
+  'Definition failed', 'Timeout', 'No definition found',
+]);
+
+export function isTranslationError(s: string | undefined | null): boolean {
+  if (!s) return true;
+  return FAILED_MEANINGS.has(s.replace(/\.{3}$/, ''));
+}
+
 // Translation cache (with sessionStorage persistence)
 let translationCache: Record<string, string> = {};
 

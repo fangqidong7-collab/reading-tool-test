@@ -30,6 +30,7 @@ export interface ReadingHomeViewProps {
   processedContent: ProcessedContent | null;
   annotations: Record<string, AnnotatedWord>;
   mergedAnnotationsForRender: Record<string, AnnotatedWord>;
+  sidebarAnnotations: Record<string, AnnotatedWord>;
   // State
   text: string;
   loading: boolean;
@@ -177,6 +178,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
     processedContent,
     annotations,
     mergedAnnotationsForRender,
+    sidebarAnnotations,
     text,
     loading,
     annotating,
@@ -1342,7 +1344,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
 
         {/* Sidebar */}
         <VocabularySidebar
-          annotations={mergedAnnotationsForRender}
+          annotations={sidebarAnnotations}
           isOpen={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
           onClearAll={clearAllAnnotations}

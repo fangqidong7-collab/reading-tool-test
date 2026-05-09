@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { idbGet, idbSet } from "@/lib/storage";
+import { isTranslationError } from "@/lib/translate";
 
 // Processed content segment type
 export interface ProcessedSegment {
@@ -284,6 +285,17 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
         const vocabStr = await idbGet(GLOBAL_VOCAB_KEY);
         if (vocabStr) {
           const parsed = JSON.parse(vocabStr);
+          let cleaned = false;
+          for (const [key, entry] of Object.entries(parsed) as [string, Record<string, unknown>][]) {
+            if (isTranslationError(entry.meaning as string)) { entry.meaning = ''; cleaned = true; }
+            if (isTranslationError(entry.meaningZh as string)) { delete entry.meaningZh; cleaned = true; }
+            if (isTranslationError(entry.meaningEn as string)) { delete entry.meaningEn; cleaned = true; }
+            if (isTranslationError(entry.meaningEnSimple as string)) { delete entry.meaningEnSimple; cleaned = true; }
+            if (!entry.meaning && !entry.meaningZh && !entry.meaningEn && !entry.meaningEnSimple) {
+              delete parsed[key]; cleaned = true;
+            }
+          }
+          if (cleaned) console.log('[vocab] cleaned error meanings from vocabulary');
           setGlobalVocabulary(parsed);
         }
       } catch {
@@ -523,18 +535,25 @@ const [globalVocabulary, setGlobalVocabulary] = useState<
     // 添加词到全局词汇表（支持多语言释义）
   const addToGlobalVocabulary = useCallback(
     (root: string, meaning: string, pos: string, langs?: { zh?: string; en?: string; enSimple?: string }) => {
+      const safeMeaning = isTranslationError(meaning) ? '' : meaning;
+      const safeZh = (langs?.zh && !isTranslationError(langs.zh)) ? langs.zh : undefined;
+      const safeEn = (langs?.en && !isTranslationError(langs.en)) ? langs.en : undefined;
+      const safeEnSimple = (langs?.enSimple && !isTranslationError(langs.enSimple)) ? langs.enSimple : undefined;
+
       setGlobalVocabulary((prev) => {
         const existing = prev[root];
+        const finalMeaning = safeMeaning || existing?.meaning || '';
+        if (!finalMeaning && !safeZh && !safeEn && !safeEnSimple && !existing) return prev;
         return {
           ...prev,
           [root]: {
             root,
-            meaning,
+            meaning: finalMeaning,
             pos,
             correctCount: existing?.correctCount || 0,
-            meaningZh: langs?.zh ?? existing?.meaningZh,
-            meaningEn: langs?.en ?? existing?.meaningEn,
-            meaningEnSimple: langs?.enSimple ?? existing?.meaningEnSimple,
+            meaningZh: safeZh ?? existing?.meaningZh,
+            meaningEn: safeEn ?? existing?.meaningEn,
+            meaningEnSimple: safeEnSimple ?? existing?.meaningEnSimple,
           },
         };
       });

@@ -6,7 +6,7 @@ import type { ProcessedContent } from "@/hooks/useBookshelf";
 import { getWordLevel, LEVEL_COLORS, LEVEL_LABELS, type CEFRLevel } from "@/lib/vocabLevel";
 import { lemmatize, getWordMeaning, getWordMeaningEn } from "@/lib/dictionary";
 import { lookupExternalDict, lookupExternalDictEn } from "@/lib/dictLoader";
-import { translateWord, translateWordEn, translateWordEnSimple } from "@/lib/translate";
+import { translateWord, translateWordEn, translateWordEnSimple, isTranslationError } from "@/lib/translate";
 import { shortenTranslation } from "@/lib/annotationText";
 
 interface BookVocabAnalysisProps {
@@ -195,12 +195,12 @@ export function BookVocabAnalysis({
   const handleAddSingle = useCallback(async (word: string) => {
     if (!onAddToVocabulary) return;
     let meaning = lookupMeaning(word, dictMode);
-    if (!meaning) {
+    if (!meaning || isTranslationError(meaning)) {
       setLoadingWord(word);
       meaning = await aiTranslate(word, dictMode);
       setLoadingWord(null);
     }
-    if (!meaning) return;
+    if (!meaning || isTranslationError(meaning)) return;
     const langs = lookupAllLocal(word);
     if (dictMode === 'zh') langs.zh = meaning;
     else if (dictMode === 'en') langs.en = meaning;
@@ -254,7 +254,7 @@ export function BookVocabAnalysis({
         while (queue.length > 0 && !batchAbortRef.current) {
           const word = queue.shift()!;
           const meaning = await aiTranslate(word, dictMode);
-          if (meaning && !batchAbortRef.current) {
+          if (meaning && !isTranslationError(meaning) && !batchAbortRef.current) {
             const langs = lookupAllLocal(word);
             if (dictMode === 'zh') langs.zh = meaning;
             else if (dictMode === 'en') langs.en = meaning;

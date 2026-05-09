@@ -13,7 +13,7 @@ import { useReadingSettings } from "@/hooks/useReadingSettings";
 import { useReadingStats } from "@/hooks/useReadingStats";
 import { useBookshelfTheme } from "@/hooks/useBookshelfTheme";
 import { lemmatize, getWordMeaning, getWordMeaningEn, findWordFamily, loadBuiltinDictionary, loadBuiltinDictionaryEn } from "@/lib/dictionary";
-import { translateWord, translateWordEn, translateWordEnSimple, translateSentence } from "@/lib/translate";
+import { translateWord, translateWordEn, translateWordEnSimple, translateSentence, isTranslationError } from "@/lib/translate";
 import { forceReloadDictionary, lookupExternalDict, lookupExternalDictEn, loadExternalDictionaryEn, type DictLoadStatus } from "@/lib/dictLoader";
 import { cleanTranslation, shortenTranslation } from "@/lib/annotationText";
 import { processTextToSegmentsAsync } from "@/lib/processBookContent";
@@ -910,18 +910,20 @@ export default function Home() {
         }
       }
 
-      if (rawMeaning) {
+      if (rawMeaning && !isTranslationError(rawMeaning)) {
         const shortMeaning = shortenTranslation(rawMeaning, dictMode);
-        const newAnnotation = { root, meaning: shortMeaning, pos: "", count: 1 };
-        setAnnotations((prev) => ({
-          ...prev,
-          [root]: newAnnotation,
-        }));
-        const langs = lookupAllLocalMeanings(cleanWord, root);
-        if (dictMode === 'zh') langs.zh = shortMeaning;
-        else if (dictMode === 'en') langs.en = shortMeaning;
-        else langs.enSimple = shortMeaning;
-        addToGlobalVocabulary(root, shortMeaning, "", langs);
+        if (!isTranslationError(shortMeaning)) {
+          const newAnnotation = { root, meaning: shortMeaning, pos: "", count: 1 };
+          setAnnotations((prev) => ({
+            ...prev,
+            [root]: newAnnotation,
+          }));
+          const langs = lookupAllLocalMeanings(cleanWord, root);
+          if (dictMode === 'zh') langs.zh = shortMeaning;
+          else if (dictMode === 'en') langs.en = shortMeaning;
+          else langs.enSimple = shortMeaning;
+          addToGlobalVocabulary(root, shortMeaning, "", langs);
+        }
       }
     },
     [annotations, currentBook, dictMode, addToGlobalVocabulary, lookupAllLocalMeanings]
@@ -988,7 +990,9 @@ export default function Home() {
           }
         }
 
+        if (isTranslationError(rawMeaning)) throw new Error('translation failed');
         const meaning = shortenTranslation(rawMeaning, dictMode);
+        if (isTranslationError(meaning)) throw new Error('translation failed');
 
         const family = findWordFamily(root, text);
 
@@ -1135,6 +1139,7 @@ export default function Home() {
       return next;
     });
     removeFromGlobalVocabulary(root);
+    if (original !== root) removeFromGlobalVocabulary(original);
     setSelectedWord(null);
   }, [removeFromGlobalVocabulary]);
 
@@ -1421,17 +1426,31 @@ export default function Home() {
       if (dictMode === 'zh' && vocab.meaningZh) displayMeaning = vocab.meaningZh;
       else if (dictMode === 'en' && vocab.meaningEn) displayMeaning = vocab.meaningEn;
       else if (dictMode === 'en-simple' && vocab.meaningEnSimple) displayMeaning = vocab.meaningEnSimple;
-      const entry = { root: vocab.root, meaning: displayMeaning, pos: vocab.pos, count: 0 };
-      merged[root] = entry;
+      merged[root] = { root, meaning: displayMeaning, pos: vocab.pos, count: 0 };
       const rootLemma = lemmatize(root);
       if (rootLemma !== root && !merged[rootLemma]) {
-        merged[rootLemma] = entry;
+        merged[rootLemma] = { root: rootLemma, meaning: displayMeaning, pos: vocab.pos, count: 0 };
       }
     }
     for (const [root, ann] of Object.entries(annotations)) {
       merged[root] = ann;
     }
     return merged;
+  }, [annotations, globalVocabulary, dictMode]);
+
+  const sidebarAnnotations = React.useMemo(() => {
+    const result: Record<string, { root: string; meaning: string; pos: string; count: number; cefrLevel?: string }> = {};
+    for (const [root, vocab] of Object.entries(globalVocabulary)) {
+      let displayMeaning = vocab.meaning;
+      if (dictMode === 'zh' && vocab.meaningZh) displayMeaning = vocab.meaningZh;
+      else if (dictMode === 'en' && vocab.meaningEn) displayMeaning = vocab.meaningEn;
+      else if (dictMode === 'en-simple' && vocab.meaningEnSimple) displayMeaning = vocab.meaningEnSimple;
+      result[root] = { root, meaning: displayMeaning, pos: vocab.pos, count: 0 };
+    }
+    for (const [root, ann] of Object.entries(annotations)) {
+      result[root] = ann;
+    }
+    return result;
   }, [annotations, globalVocabulary, dictMode]);
 
   // Show loading while initializing
@@ -1501,6 +1520,7 @@ export default function Home() {
       processedContent={processedContent}
       annotations={annotations}
       mergedAnnotationsForRender={mergedAnnotationsForRender}
+      sidebarAnnotations={sidebarAnnotations}
       text={text}
       loading={loading}
       annotating={annotating}
