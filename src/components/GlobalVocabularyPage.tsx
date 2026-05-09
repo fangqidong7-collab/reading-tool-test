@@ -88,10 +88,10 @@ export function GlobalVocabularyPage({
     migrateAbortRef.current = false;
 
     const entries = Object.entries(vocabulary);
-    const needWork: { key: string; entry: VocabItem; missingModes: string[] }[] = [];
+    const needWork: { key: string; entry: VocabItem; missingModes: ('zh' | 'en' | 'en-simple')[] }[] = [];
 
     for (const [key, entry] of entries) {
-      const missing: string[] = [];
+      const missing: ('zh' | 'en' | 'en-simple')[] = [];
       if (!entry.meaningZh) missing.push('zh');
       if (!entry.meaningEn) missing.push('en');
       if (!entry.meaningEnSimple) missing.push('en-simple');
@@ -120,7 +120,7 @@ export function GlobalVocabularyPage({
         meaningZh: mZh, meaningEn: mEn, meaningEnSimple: mEnSimple,
       };
 
-      const stillMissing: string[] = [];
+      const stillMissing: ('zh' | 'en' | 'en-simple')[] = [];
       if (!mZh) stillMissing.push('zh');
       if (!mEn) stillMissing.push('en');
       if (!mEnSimple) stillMissing.push('en-simple');
