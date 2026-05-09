@@ -6,6 +6,7 @@ import { AddBookModal } from "./AddBookModal";
 import type { Book } from "@/hooks/useBookshelf";
 import type { TocEntry } from "@/lib/fileParser";
 import { BOOKSHELF_THEMES, type BookshelfTheme } from "@/hooks/useBookshelfTheme";
+import type { ReadingStatsReturn } from "@/hooks/useReadingStats";
 
 interface BookshelfProps {
   books: Book[];
@@ -21,6 +22,8 @@ interface BookshelfProps {
   bookshelfTheme: BookshelfTheme;
   bookshelfThemeId: string;
   setBookshelfThemeId: (id: string) => void;
+  readingStats?: ReadingStatsReturn;
+  onStatsClick?: () => void;
 }
 
 function formatSyncTime(ts: number): string {
@@ -48,6 +51,8 @@ export function Bookshelf({
   bookshelfTheme,
   bookshelfThemeId,
   setBookshelfThemeId,
+  readingStats,
+  onStatsClick,
 }: BookshelfProps) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -190,6 +195,75 @@ export function Bookshelf({
           </button>
         )}
       </div>
+
+      {/* Reading Stats Card */}
+      {readingStats && (
+        <div
+          className="stats-card"
+          onClick={onStatsClick}
+          style={{
+            background: t.isDark
+              ? 'linear-gradient(135deg, #1e293b 0%, #334155 100%)'
+              : 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+            borderColor: t.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+            color: t.textColor,
+          }}
+        >
+          <div className="stats-row">
+            <div className="stats-item">
+              <div className="stats-value" style={{ color: t.isDark ? '#93c5fd' : '#2563eb' }}>
+                {readingStats.todayMinutes < 60
+                  ? `${readingStats.todayMinutes}分钟`
+                  : `${Math.floor(readingStats.todayMinutes / 60)}h${readingStats.todayMinutes % 60 > 0 ? readingStats.todayMinutes % 60 + 'm' : ''}`}
+              </div>
+              <div className="stats-label">今日</div>
+            </div>
+            <div className="stats-divider" style={{ backgroundColor: t.isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)' }} />
+            <div className="stats-item">
+              <div className="stats-value" style={{ color: t.isDark ? '#93c5fd' : '#2563eb' }}>
+                {readingStats.streak}天
+              </div>
+              <div className="stats-label">连续</div>
+            </div>
+            <div className="stats-divider" style={{ backgroundColor: t.isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)' }} />
+            <div className="stats-item">
+              <div className="stats-value" style={{ color: t.isDark ? '#93c5fd' : '#2563eb' }}>
+                {readingStats.totalMinutes < 60
+                  ? `${readingStats.totalMinutes}分`
+                  : readingStats.totalMinutes < 1440
+                    ? `${Math.floor(readingStats.totalMinutes / 60)}h`
+                    : `${Math.floor(readingStats.totalMinutes / 60)}h`}
+              </div>
+              <div className="stats-label">累计</div>
+            </div>
+            <div className="stats-divider" style={{ backgroundColor: t.isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)' }} />
+            <div className="stats-mini-chart">
+              {readingStats.weekData.map((d, i) => {
+                const maxMin = Math.max(...readingStats.weekData.map(x => x.minutes), 1);
+                const h = d.minutes > 0 ? Math.max((d.minutes / maxMin) * 24, 3) : 0;
+                const isToday = i === readingStats.weekData.length - 1;
+                return (
+                  <div
+                    key={i}
+                    className="stats-mini-bar"
+                    style={{
+                      height: h,
+                      backgroundColor: isToday ? (t.isDark ? '#93c5fd' : '#2563eb') : (t.isDark ? '#475569' : '#cbd5e1'),
+                      borderRadius: 2,
+                    }}
+                  />
+                );
+              })}
+            </div>
+          </div>
+          <div className="stats-hint">
+            <span>点击查看详情</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ opacity: 0.4 }}>
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </div>
+        </div>
+      )}
 
       <div className="book-grid">
         {[...userBooks]

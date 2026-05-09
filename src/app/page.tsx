@@ -1365,6 +1365,7 @@ export default function Home() {
         handleBindSync={handleBindSync}
         handleSync={handleSync}
         unbind={unbind}
+        readingStats={readingStats}
       />
     );
   }

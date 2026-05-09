@@ -1,12 +1,15 @@
 "use client";
 
+import React from "react";
 import dynamic from "next/dynamic";
 import { Bookshelf } from "@/components/Bookshelf";
 import { GlobalVocabularyPage } from "@/components/GlobalVocabularyPage";
 import { ExportImportModal } from "@/components/ExportImportModal";
 import { DataBackupPanel } from "@/components/DataBackupPanel";
+import { ReadingStatsPanel } from "@/components/ReadingStatsPanel";
 import type { Book, TocEntry } from "@/hooks/useBookshelf";
 import type { BookshelfTheme } from "@/hooks/useBookshelfTheme";
+import type { ReadingStatsReturn } from "@/hooks/useReadingStats";
 
 // Lazy-load heavy modal components that are only rendered on demand
 const VocabularyQuiz = dynamic(() => import("@/components/VocabularyQuiz").then((m) => m.VocabularyQuiz), {
@@ -63,6 +66,7 @@ export interface BookshelfHomeViewProps {
   clearMasteredWords: (threshold: number) => void;
   mergeGlobalVocabulary: (vocab: Record<string, { root: string; meaning: string; pos: string }>) => void;
   incrementCorrectCount: (word: string) => void;
+  readingStats: ReadingStatsReturn;
 }
 
 export function BookshelfHomeView({
@@ -104,9 +108,24 @@ export function BookshelfHomeView({
   handleBindSync,
   handleSync,
   unbind,
+  readingStats,
 }: BookshelfHomeViewProps) {
+  const [statsOpen, setStatsOpen] = React.useState(false);
+
   return (
     <>
+      {/* Reading Stats Detail Panel */}
+      <ReadingStatsPanel
+        isOpen={statsOpen}
+        onClose={() => setStatsOpen(false)}
+        stats={readingStats}
+        headerBg={isDarkMode ? '#16213E' : '#FFFFFF'}
+        headerTextColor={isDarkMode ? '#FFFFFF' : '#333333'}
+        textColor={isDarkMode ? '#CCCCCC' : '#333333'}
+        isDarkMode={isDarkMode}
+        backgroundColor={isDarkMode ? '#1A1A2E' : '#FFFFFF'}
+      />
+
       <div className="bookshelf-page" style={{ backgroundColor: bookshelfTheme.pageBg }}>
         {/* 主内容区域 */}
         {activeTab === "bookshelf" ? (
@@ -129,6 +148,8 @@ export function BookshelfHomeView({
             bookshelfTheme={bookshelfTheme}
             bookshelfThemeId={bookshelfThemeId}
             setBookshelfThemeId={setBookshelfThemeId}
+            readingStats={readingStats}
+            onStatsClick={() => setStatsOpen(true)}
           />
         ) : activeTab === "vocabulary" ? (
           <GlobalVocabularyPage
