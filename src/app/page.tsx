@@ -192,7 +192,7 @@ export default function Home() {
 
   // 轻量同步数据：vocab + progress + bookManifest，不含书籍正文
   const buildLightSyncData = useCallback(async (): Promise<{
-    data: { vocabulary: Record<string, unknown>; bookProgress: Record<string, unknown> };
+    data: { vocabulary: Record<string, unknown>; masteredWords?: string[]; bookProgress: Record<string, unknown> };
     bookManifest: BookManifestEntry[];
     contentHashes: Record<string, string>;
   }> => {
