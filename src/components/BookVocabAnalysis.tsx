@@ -1,11 +1,13 @@
 "use client";
 
-import React, { useMemo, useState, useCallback } from "react";
+import React, { useMemo, useState, useCallback, useRef } from "react";
 import { X } from "lucide-react";
 import type { ProcessedContent } from "@/hooks/useBookshelf";
 import { getWordLevel, LEVEL_COLORS, LEVEL_LABELS, type CEFRLevel } from "@/lib/vocabLevel";
 import { lemmatize, getWordMeaning, getWordMeaningEn } from "@/lib/dictionary";
 import { lookupExternalDict, lookupExternalDictEn } from "@/lib/dictLoader";
+import { translateWord, translateWordEn, translateWordEnSimple } from "@/lib/translate";
+import { shortenTranslation } from "@/lib/annotationText";
 
 interface BookVocabAnalysisProps {
   isOpen: boolean;
@@ -39,6 +41,18 @@ function lookupMeaning(word: string, dictMode: string): string {
   return entry?.meaning || lookupExternalDict(word) || '';
 }
 
+async function aiTranslate(word: string, dictMode: string): Promise<string> {
+  try {
+    let raw: string;
+    if (dictMode === 'en-simple') raw = await translateWordEnSimple(word);
+    else if (dictMode === 'en') raw = await translateWordEn(word);
+    else raw = await translateWord(word);
+    return shortenTranslation(raw, dictMode);
+  } catch {
+    return '';
+  }
+}
+
 export function BookVocabAnalysis({
   isOpen,
   onClose,
@@ -57,6 +71,9 @@ export function BookVocabAnalysis({
   const [filterLevel, setFilterLevel] = useState<CEFRLevel | 'unknown' | 'all'>('all');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [addedWords, setAddedWords] = useState<Set<string>>(new Set());
+  const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
+  const [loadingWord, setLoadingWord] = useState<string | null>(null);
+  const batchAbortRef = useRef(false);
 
   const analysis = useMemo(() => {
     if (!processedContent) return null;
@@ -124,33 +141,75 @@ export function BookVocabAnalysis({
     });
   }, []);
 
-  const handleAddSingle = useCallback((word: string) => {
+  const handleAddSingle = useCallback(async (word: string) => {
     if (!onAddToVocabulary) return;
-    const meaning = lookupMeaning(word, dictMode);
+    let meaning = lookupMeaning(word, dictMode);
+    if (!meaning) {
+      setLoadingWord(word);
+      meaning = await aiTranslate(word, dictMode);
+      setLoadingWord(null);
+    }
     if (!meaning) return;
     onAddToVocabulary(word, meaning, '');
     setAddedWords(prev => new Set(prev).add(word));
     setSelected(prev => { const n = new Set(prev); n.delete(word); return n; });
   }, [onAddToVocabulary, dictMode]);
 
-  const handleBatchAdd = useCallback(() => {
-    if (!onBatchAddToVocabulary || selected.size === 0) return;
-    const entries: Record<string, { root: string; meaning: string; pos: string }> = {};
+  const handleBatchAdd = useCallback(async () => {
+    if (!onBatchAddToVocabulary || !onAddToVocabulary || selected.size === 0) return;
+
+    const wordsToAdd: string[] = [];
     for (const word of selected) {
-      if (isInVocab(word)) continue;
-      const meaning = lookupMeaning(word, dictMode);
-      if (meaning) entries[word] = { root: word, meaning, pos: '' };
+      if (!isInVocab(word)) wordsToAdd.push(word);
     }
-    if (Object.keys(entries).length > 0) {
-      onBatchAddToVocabulary(entries);
+    if (wordsToAdd.length === 0) return;
+
+    const localEntries: Record<string, { root: string; meaning: string; pos: string }> = {};
+    const needAI: string[] = [];
+    for (const word of wordsToAdd) {
+      const meaning = lookupMeaning(word, dictMode);
+      if (meaning) {
+        localEntries[word] = { root: word, meaning, pos: '' };
+      } else {
+        needAI.push(word);
+      }
+    }
+
+    if (Object.keys(localEntries).length > 0) {
+      onBatchAddToVocabulary(localEntries);
       setAddedWords(prev => {
         const n = new Set(prev);
-        for (const k of Object.keys(entries)) n.add(k);
+        for (const k of Object.keys(localEntries)) n.add(k);
         return n;
       });
     }
+
+    if (needAI.length > 0) {
+      batchAbortRef.current = false;
+      setBatchProgress({ done: 0, total: needAI.length });
+      const CONCURRENCY = 3;
+      let doneCount = 0;
+      const queue = [...needAI];
+
+      const worker = async () => {
+        while (queue.length > 0 && !batchAbortRef.current) {
+          const word = queue.shift()!;
+          const meaning = await aiTranslate(word, dictMode);
+          if (meaning && !batchAbortRef.current) {
+            onAddToVocabulary(word, meaning, '');
+            setAddedWords(prev => new Set(prev).add(word));
+          }
+          doneCount++;
+          setBatchProgress({ done: doneCount, total: needAI.length });
+        }
+      };
+
+      await Promise.all(Array.from({ length: Math.min(CONCURRENCY, needAI.length) }, () => worker()));
+      setBatchProgress(null);
+    }
+
     setSelected(new Set());
-  }, [onBatchAddToVocabulary, selected, dictMode, isInVocab]);
+  }, [onBatchAddToVocabulary, onAddToVocabulary, selected, dictMode, isInVocab]);
 
   if (!isOpen || !analysis) return null;
 
@@ -284,28 +343,40 @@ export function BookVocabAnalysis({
               {/* Batch actions bar */}
               {onAddToVocabulary && (
                 <div className="va-batch-bar">
-                  <label className="va-select-all" onClick={() => {
-                    if (allAddableSelected) {
-                      setSelected(prev => {
-                        const n = new Set(prev);
-                        addableFiltered.forEach(w => n.delete(w.word));
-                        return n;
-                      });
-                    } else {
-                      setSelected(prev => {
-                        const n = new Set(prev);
-                        addableFiltered.forEach(w => n.add(w.word));
-                        return n;
-                      });
-                    }
-                  }}>
-                    <input type="checkbox" checked={allAddableSelected} readOnly style={{ cursor: 'pointer' }} />
-                    <span>全选可添加 ({addableFiltered.length})</span>
-                  </label>
-                  {selectedInView.length > 0 && (
-                    <button className="va-batch-add-btn" onClick={handleBatchAdd}>
-                      加入词汇表 ({selectedInView.length})
-                    </button>
+                  {batchProgress ? (
+                    <div className="va-progress-row">
+                      <div className="va-progress-bar">
+                        <div className="va-progress-fill" style={{ width: `${batchProgress.total > 0 ? (batchProgress.done / batchProgress.total * 100) : 0}%` }} />
+                      </div>
+                      <span className="va-progress-text">AI翻译中 {batchProgress.done}/{batchProgress.total}</span>
+                      <button className="va-progress-cancel" onClick={() => { batchAbortRef.current = true; }}>取消</button>
+                    </div>
+                  ) : (
+                    <>
+                      <label className="va-select-all" onClick={() => {
+                        if (allAddableSelected) {
+                          setSelected(prev => {
+                            const n = new Set(prev);
+                            addableFiltered.forEach(w => n.delete(w.word));
+                            return n;
+                          });
+                        } else {
+                          setSelected(prev => {
+                            const n = new Set(prev);
+                            addableFiltered.forEach(w => n.add(w.word));
+                            return n;
+                          });
+                        }
+                      }}>
+                        <input type="checkbox" checked={allAddableSelected} readOnly style={{ cursor: 'pointer' }} />
+                        <span>全选可添加 ({addableFiltered.length})</span>
+                      </label>
+                      {selectedInView.length > 0 && (
+                        <button className="va-batch-add-btn" onClick={handleBatchAdd}>
+                          加入词汇表 ({selectedInView.length})
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
               )}
@@ -335,7 +406,12 @@ export function BookVocabAnalysis({
                       </span>
                       <span className="va-word-freq">×{w.count}</span>
                       {onAddToVocabulary && !inVocab && (
-                        <button className="va-word-add" onClick={() => handleAddSingle(w.word)} title="加入词汇表">+</button>
+                        <button
+                          className="va-word-add"
+                          onClick={() => handleAddSingle(w.word)}
+                          title="加入词汇表"
+                          disabled={loadingWord === w.word}
+                        >{loadingWord === w.word ? '…' : '+'}</button>
                       )}
                     </div>
                   );
@@ -522,6 +598,40 @@ export function BookVocabAnalysis({
           transition: background 0.15s;
         }
         .va-batch-add-btn:hover { background: #3a7bc8; }
+        .va-progress-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          width: 100%;
+        }
+        .va-progress-bar {
+          flex: 1;
+          height: 6px;
+          border-radius: 3px;
+          background: rgba(128,128,128,0.15);
+          overflow: hidden;
+        }
+        .va-progress-fill {
+          height: 100%;
+          border-radius: 3px;
+          background: #4a90d9;
+          transition: width 0.3s ease;
+        }
+        .va-progress-text {
+          font-size: 11px;
+          opacity: 0.7;
+          white-space: nowrap;
+        }
+        .va-progress-cancel {
+          padding: 2px 8px;
+          border: 1px solid rgba(128,128,128,0.3);
+          border-radius: 4px;
+          background: transparent;
+          color: inherit;
+          font-size: 11px;
+          cursor: pointer;
+          white-space: nowrap;
+        }
         .va-word-count { font-size: 12px; margin-bottom: 8px; }
         .va-word-list { display: flex; flex-direction: column; }
         .va-word-item {

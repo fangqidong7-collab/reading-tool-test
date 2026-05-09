@@ -197,73 +197,59 @@ export function Bookshelf({
       </div>
 
       {/* Reading Stats Card */}
-      {readingStats && (
-        <div
-          className="stats-card"
-          onClick={onStatsClick}
-          style={{
-            background: t.isDark
-              ? 'linear-gradient(135deg, #1e293b 0%, #334155 100%)'
-              : 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
-            borderColor: t.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
-            color: t.textColor,
-          }}
-        >
-          <div className="stats-row">
-            <div className="stats-item">
-              <div className="stats-value" style={{ color: t.isDark ? '#93c5fd' : '#2563eb' }}>
-                {readingStats.todayMinutes < 60
-                  ? `${readingStats.todayMinutes}分钟`
-                  : `${Math.floor(readingStats.todayMinutes / 60)}h${readingStats.todayMinutes % 60 > 0 ? readingStats.todayMinutes % 60 + 'm' : ''}`}
-              </div>
-              <div className="stats-label">今日</div>
+      {readingStats && (() => {
+        const totalHours = Math.floor(readingStats.totalMinutes / 60);
+        const todayDisplay = readingStats.todayMinutes < 60
+          ? `${readingStats.todayMinutes}`
+          : `${Math.floor(readingStats.todayMinutes / 60)}h${readingStats.todayMinutes % 60 > 0 ? readingStats.todayMinutes % 60 : ''}`;
+        const todayUnit = readingStats.todayMinutes < 60 ? '分钟' : '';
+        const gradientBg = t.isDark
+          ? `linear-gradient(135deg, ${t.accent}33 0%, ${t.accent}1a 100%)`
+          : `linear-gradient(135deg, ${t.accent}30 0%, ${t.accent}18 100%)`;
+        const cardBg = t.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.75)';
+        const numColor = t.isDark ? '#e2e8f0' : '#2d3748';
+        const iconColor = t.accent;
+        return (
+          <div className="stats-card" onClick={onStatsClick} style={{ background: gradientBg, borderColor: t.isDark ? 'rgba(255,255,255,0.08)' : `${t.accent}20` }}>
+            <div className="stats-card-header" style={{ color: t.textColor }}>
+              <span>阅读统计</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ opacity: 0.4 }}>
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
             </div>
-            <div className="stats-divider" style={{ backgroundColor: t.isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)' }} />
-            <div className="stats-item">
-              <div className="stats-value" style={{ color: t.isDark ? '#93c5fd' : '#2563eb' }}>
-                {readingStats.streak}天
+            <div className="stats-grid">
+              <div className="stats-grid-item" style={{ background: cardBg }}>
+                <div className="stats-grid-top">
+                  <span className="stats-grid-num" style={{ color: numColor }}>{todayDisplay}</span>
+                  <svg className="stats-grid-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={iconColor} strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                </div>
+                <div className="stats-grid-label" style={{ color: t.textColor }}>今日{todayUnit}</div>
               </div>
-              <div className="stats-label">连续</div>
-            </div>
-            <div className="stats-divider" style={{ backgroundColor: t.isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)' }} />
-            <div className="stats-item">
-              <div className="stats-value" style={{ color: t.isDark ? '#93c5fd' : '#2563eb' }}>
-                {readingStats.totalMinutes < 60
-                  ? `${readingStats.totalMinutes}分`
-                  : readingStats.totalMinutes < 1440
-                    ? `${Math.floor(readingStats.totalMinutes / 60)}h`
-                    : `${Math.floor(readingStats.totalMinutes / 60)}h`}
+              <div className="stats-grid-item" style={{ background: cardBg }}>
+                <div className="stats-grid-top">
+                  <span className="stats-grid-num" style={{ color: numColor }}>{readingStats.streak}</span>
+                  <svg className="stats-grid-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={iconColor} strokeWidth="1.8" strokeLinecap="round"><path d="M12 2c1 3 4 6 4 10a6 6 0 01-8 0c0-4 3-7 4-10z"/></svg>
+                </div>
+                <div className="stats-grid-label" style={{ color: t.textColor }}>天连续</div>
               </div>
-              <div className="stats-label">累计</div>
-            </div>
-            <div className="stats-divider" style={{ backgroundColor: t.isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)' }} />
-            <div className="stats-mini-chart">
-              {readingStats.weekData.map((d, i) => {
-                const maxMin = Math.max(...readingStats.weekData.map(x => x.minutes), 1);
-                const h = d.minutes > 0 ? Math.max((d.minutes / maxMin) * 24, 3) : 0;
-                const isToday = i === readingStats.weekData.length - 1;
-                return (
-                  <div
-                    key={i}
-                    className="stats-mini-bar"
-                    style={{
-                      height: h,
-                      backgroundColor: isToday ? (t.isDark ? '#93c5fd' : '#2563eb') : (t.isDark ? '#475569' : '#cbd5e1'),
-                      borderRadius: 2,
-                    }}
-                  />
-                );
-              })}
+              <div className="stats-grid-item" style={{ background: cardBg }}>
+                <div className="stats-grid-top">
+                  <span className="stats-grid-num" style={{ color: numColor }}>{totalHours}</span>
+                  <svg className="stats-grid-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={iconColor} strokeWidth="1.8" strokeLinecap="round"><rect x="3" y="3" width="7" height="13" rx="1"/><rect x="14" y="3" width="7" height="9" rx="1"/><rect x="14" y="15" width="7" height="6" rx="1"/></svg>
+                </div>
+                <div className="stats-grid-label" style={{ color: t.textColor }}>小时累计</div>
+              </div>
+              <div className="stats-grid-item" style={{ background: cardBg }}>
+                <div className="stats-grid-top">
+                  <span className="stats-grid-num" style={{ color: numColor }}>{readingStats.monthMinutes < 60 ? readingStats.monthMinutes : Math.floor(readingStats.monthMinutes / 60)}</span>
+                  <svg className="stats-grid-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={iconColor} strokeWidth="1.8" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                </div>
+                <div className="stats-grid-label" style={{ color: t.textColor }}>{readingStats.monthMinutes < 60 ? '分钟本月' : '小时本月'}</div>
+              </div>
             </div>
           </div>
-          <div className="stats-hint">
-            <span>点击查看详情</span>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ opacity: 0.4 }}>
-              <polyline points="9 18 15 12 9 6" />
-            </svg>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       <div className="book-grid">
         {[...userBooks]
