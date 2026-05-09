@@ -734,12 +734,20 @@ export default function Home() {
     }
   }, [currentBook, currentScrollPercent, addBookmark, removeBookmark]);
 
-  // 先于浏览器绘制把标注写回书架，缩短「页面 state 已删、书本对象仍是旧引用」的窗口；并记录引用供上方 effect 识别回声
+  // 先于浏览器绘制把标注写回书架；用结构比较保持引用稳定，防止 memo 重算触发无限循环
+  const prevPersistableRef = useRef<typeof annotations>({});
   const persistableAnnotations = React.useMemo(() => {
     const result: typeof annotations = {};
     for (const [key, ann] of Object.entries(annotations)) {
       if (!ann.cefrLevel) result[key] = ann;
     }
+    const prev = prevPersistableRef.current;
+    const resultKeys = Object.keys(result);
+    const prevKeys = Object.keys(prev);
+    if (resultKeys.length === prevKeys.length && resultKeys.every(k => result[k] === prev[k])) {
+      return prev;
+    }
+    prevPersistableRef.current = result;
     return result;
   }, [annotations]);
 
