@@ -1088,12 +1088,21 @@ export default function Home() {
     if (prevDictModeRef.current === dictMode) return;
     prevDictModeRef.current = dictMode;
 
+    const lemmaToVocab = new Map<string, typeof globalVocabulary[string]>();
+    for (const [vKey, vEntry] of Object.entries(globalVocabulary)) {
+      lemmaToVocab.set(vKey, vEntry);
+      const vLemma = lemmatize(vKey);
+      if (vLemma !== vKey && !lemmaToVocab.has(vLemma)) {
+        lemmaToVocab.set(vLemma, vEntry);
+      }
+    }
+
     setAnnotations((prev) => {
       const next = { ...prev };
       let changed = false;
       for (const [key, ann] of Object.entries(next)) {
         if (ann.cefrLevel) continue;
-        const vocabEntry = globalVocabulary[key];
+        const vocabEntry = lemmaToVocab.get(key);
         if (!vocabEntry) continue;
 
         let targetMeaning: string | undefined;
@@ -1408,13 +1417,22 @@ export default function Home() {
   const mergedAnnotationsForRender = React.useMemo(() => {
     const merged: Record<string, { root: string; meaning: string; pos: string; count: number; cefrLevel?: string }> = {};
     for (const [root, vocab] of Object.entries(globalVocabulary)) {
-      merged[root] = { root: vocab.root, meaning: vocab.meaning, pos: vocab.pos, count: 0 };
+      let displayMeaning = vocab.meaning;
+      if (dictMode === 'zh' && vocab.meaningZh) displayMeaning = vocab.meaningZh;
+      else if (dictMode === 'en' && vocab.meaningEn) displayMeaning = vocab.meaningEn;
+      else if (dictMode === 'en-simple' && vocab.meaningEnSimple) displayMeaning = vocab.meaningEnSimple;
+      const entry = { root: vocab.root, meaning: displayMeaning, pos: vocab.pos, count: 0 };
+      merged[root] = entry;
+      const rootLemma = lemmatize(root);
+      if (rootLemma !== root && !merged[rootLemma]) {
+        merged[rootLemma] = entry;
+      }
     }
     for (const [root, ann] of Object.entries(annotations)) {
       merged[root] = ann;
     }
     return merged;
-  }, [annotations, globalVocabulary]);
+  }, [annotations, globalVocabulary, dictMode]);
 
   // Show loading while initializing
   if (!isLoaded || !settingsLoaded) {
