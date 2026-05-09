@@ -64,9 +64,10 @@ export interface BookshelfHomeViewProps {
   removeFromGlobalVocabulary: (word: string) => void;
   clearGlobalVocabulary: () => void;
   clearMasteredWords: (threshold: number) => void;
-  mergeGlobalVocabulary: (vocab: Record<string, { root: string; meaning: string; pos: string }>) => void;
+  mergeGlobalVocabulary: (vocab: Record<string, { root: string; meaning: string; pos: string; meaningZh?: string; meaningEn?: string; meaningEnSimple?: string }>) => void;
   incrementCorrectCount: (word: string) => void;
   readingStats: ReadingStatsReturn;
+  dictMode?: 'zh' | 'en' | 'en-simple';
 }
 
 export function BookshelfHomeView({
@@ -109,6 +110,7 @@ export function BookshelfHomeView({
   handleSync,
   unbind,
   readingStats,
+  dictMode = 'zh',
 }: BookshelfHomeViewProps) {
   const [statsOpen, setStatsOpen] = React.useState(false);
 
@@ -159,6 +161,8 @@ export function BookshelfHomeView({
             onClearMastered={clearMasteredWords}
             onStartQuiz={() => setShowQuiz(true)}
             backgroundColor={backgroundColor}
+            dictMode={dictMode}
+            onMergeVocabulary={mergeGlobalVocabulary}
           />
         ) : (
           <DataBackupPanel

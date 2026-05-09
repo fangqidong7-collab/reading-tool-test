@@ -1,13 +1,20 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import { speakWord } from "@/lib/speak";
+import { getWordMeaning, getWordMeaningEn } from "@/lib/dictionary";
+import { lookupExternalDict, lookupExternalDictEn } from "@/lib/dictLoader";
+import { translateWord, translateWordEn, translateWordEnSimple } from "@/lib/translate";
+import { shortenTranslation } from "@/lib/annotationText";
 
 interface VocabItem {
   root: string;
   meaning: string;
   pos: string;
   correctCount: number;
+  meaningZh?: string;
+  meaningEn?: string;
+  meaningEnSimple?: string;
 }
 
 interface GlobalVocabularyPageProps {
@@ -17,6 +24,40 @@ interface GlobalVocabularyPageProps {
   onClearMastered: (threshold: number) => void;
   onStartQuiz: () => void;
   backgroundColor?: string;
+  dictMode?: 'zh' | 'en' | 'en-simple';
+  onMergeVocabulary?: (vocab: Record<string, { root: string; meaning: string; pos: string; meaningZh?: string; meaningEn?: string; meaningEnSimple?: string }>) => void;
+}
+
+function getDisplayMeaning(item: VocabItem, dictMode: string): string {
+  if (dictMode === 'zh' && item.meaningZh) return item.meaningZh;
+  if (dictMode === 'en' && item.meaningEn) return item.meaningEn;
+  if (dictMode === 'en-simple' && item.meaningEnSimple) return item.meaningEnSimple;
+  return item.meaning;
+}
+
+function lookupLocalAll(word: string): { zh?: string; en?: string; enSimple?: string } {
+  const langs: { zh?: string; en?: string; enSimple?: string } = {};
+  const zhEntry = getWordMeaning(word);
+  const zhRaw = zhEntry?.meaning || lookupExternalDict(word) || '';
+  if (zhRaw) langs.zh = shortenTranslation(zhRaw, 'zh');
+  const enRaw = getWordMeaningEn(word) || lookupExternalDictEn(word) || '';
+  if (enRaw) {
+    langs.en = shortenTranslation(enRaw, 'en');
+    langs.enSimple = shortenTranslation(enRaw, 'en-simple');
+  }
+  return langs;
+}
+
+async function aiTranslateWord(word: string, mode: string): Promise<string> {
+  try {
+    let raw: string;
+    if (mode === 'en-simple') raw = await translateWordEnSimple(word);
+    else if (mode === 'en') raw = await translateWordEn(word);
+    else raw = await translateWord(word);
+    return shortenTranslation(raw, mode);
+  } catch {
+    return '';
+  }
 }
 
 export function GlobalVocabularyPage({
@@ -26,20 +67,119 @@ export function GlobalVocabularyPage({
   onClearMastered,
   onStartQuiz,
   backgroundColor = "#FFF8F0",
+  dictMode = 'zh',
+  onMergeVocabulary,
 }: GlobalVocabularyPageProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [showConfirmClear, setShowConfirmClear] = useState(false);
   const [showClearMastered, setShowClearMastered] = useState(false);
   const [clearThreshold, setClearThreshold] = useState(3);
+  const [migrateProgress, setMigrateProgress] = useState<{ done: number; total: number; phase: string } | null>(null);
+  const migrateAbortRef = useRef(false);
 
   const vocabList = Object.values(vocabulary);
+
+  const missingCount = vocabList.filter(
+    (v) => !v.meaningZh || !v.meaningEn || !v.meaningEnSimple
+  ).length;
+
+  const handleMigrate = useCallback(async () => {
+    if (!onMergeVocabulary || migrateProgress) return;
+    migrateAbortRef.current = false;
+
+    const entries = Object.entries(vocabulary);
+    const needWork: { key: string; entry: VocabItem; missingModes: string[] }[] = [];
+
+    for (const [key, entry] of entries) {
+      const missing: string[] = [];
+      if (!entry.meaningZh) missing.push('zh');
+      if (!entry.meaningEn) missing.push('en');
+      if (!entry.meaningEnSimple) missing.push('en-simple');
+      if (missing.length > 0) needWork.push({ key, entry, missingModes: missing });
+    }
+
+    if (needWork.length === 0) return;
+
+    setMigrateProgress({ done: 0, total: needWork.length, phase: '本地词典查找...' });
+
+    const localPatch: Record<string, { root: string; meaning: string; pos: string; meaningZh?: string; meaningEn?: string; meaningEnSimple?: string }> = {};
+    const needAI: typeof needWork = [];
+
+    for (const item of needWork) {
+      if (migrateAbortRef.current) break;
+      const local = lookupLocalAll(item.key);
+      const existingMeaning = item.entry.meaning || '';
+      const hasChinese = /[\u4e00-\u9fff]/.test(existingMeaning);
+
+      const mZh = local.zh || (hasChinese ? existingMeaning : undefined) || item.entry.meaningZh;
+      const mEn = local.en || (!hasChinese && existingMeaning ? existingMeaning : undefined) || item.entry.meaningEn;
+      const mEnSimple = local.enSimple || (!hasChinese && existingMeaning ? existingMeaning : undefined) || item.entry.meaningEnSimple;
+
+      localPatch[item.key] = {
+        root: item.entry.root, meaning: item.entry.meaning, pos: item.entry.pos,
+        meaningZh: mZh, meaningEn: mEn, meaningEnSimple: mEnSimple,
+      };
+
+      const stillMissing: string[] = [];
+      if (!mZh) stillMissing.push('zh');
+      if (!mEn) stillMissing.push('en');
+      if (!mEnSimple) stillMissing.push('en-simple');
+      if (stillMissing.length > 0) {
+        needAI.push({ ...item, missingModes: stillMissing });
+      }
+    }
+
+    if (!migrateAbortRef.current && Object.keys(localPatch).length > 0) {
+      onMergeVocabulary(localPatch);
+    }
+
+    if (needAI.length === 0 || migrateAbortRef.current) {
+      setMigrateProgress(null);
+      return;
+    }
+
+    setMigrateProgress({ done: 0, total: needAI.length, phase: 'AI 翻译补全...' });
+
+    const CONCURRENCY = 3;
+    let doneCount = 0;
+    const queue = [...needAI];
+
+    const worker = async () => {
+      while (queue.length > 0 && !migrateAbortRef.current) {
+        const item = queue.shift()!;
+        const patch: Record<string, string | undefined> = {};
+        for (const mode of item.missingModes) {
+          if (migrateAbortRef.current) break;
+          const translated = await aiTranslateWord(item.key, mode);
+          if (translated) {
+            if (mode === 'zh') patch.meaningZh = translated;
+            else if (mode === 'en') patch.meaningEn = translated;
+            else patch.meaningEnSimple = translated;
+          }
+        }
+        if (!migrateAbortRef.current && Object.keys(patch).length > 0) {
+          onMergeVocabulary({
+            [item.key]: {
+              root: item.entry.root, meaning: item.entry.meaning, pos: item.entry.pos,
+              ...patch,
+            },
+          });
+        }
+        doneCount++;
+        setMigrateProgress({ done: doneCount, total: needAI.length, phase: 'AI 翻译补全...' });
+      }
+    };
+
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, needAI.length) }, () => worker()));
+    setMigrateProgress(null);
+  }, [vocabulary, onMergeVocabulary, migrateProgress]);
 
   // 搜索过滤
   const filteredList = searchQuery.trim()
     ? vocabList.filter(
         (item) =>
           item.root.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          item.meaning.toLowerCase().includes(searchQuery.toLowerCase())
+          getDisplayMeaning(item, dictMode).toLowerCase().includes(searchQuery.toLowerCase())
       )
     : vocabList;
 
@@ -76,6 +216,37 @@ export function GlobalVocabularyPage({
             </button>
           )}
         </div>
+
+        {/* 多语言补全 */}
+        {onMergeVocabulary && vocabList.length > 0 && (
+          <div className="global-vocab-migrate">
+            {migrateProgress ? (
+              <div className="migrate-progress">
+                <div className="migrate-progress-info">
+                  <span>{migrateProgress.phase} {migrateProgress.done}/{migrateProgress.total}</span>
+                  <button
+                    className="migrate-cancel-btn"
+                    onClick={() => { migrateAbortRef.current = true; setMigrateProgress(null); }}
+                  >
+                    取消
+                  </button>
+                </div>
+                <div className="migrate-progress-bar">
+                  <div
+                    className="migrate-progress-fill"
+                    style={{ width: `${migrateProgress.total > 0 ? (migrateProgress.done / migrateProgress.total * 100) : 0}%` }}
+                  />
+                </div>
+              </div>
+            ) : missingCount > 0 ? (
+              <button className="migrate-btn" onClick={handleMigrate}>
+                补全多语言释义（{missingCount} 词待补全）
+              </button>
+            ) : (
+              <div className="migrate-done">✓ 多语言释义已完整</div>
+            )}
+          </div>
+        )}
 
         {/* 搜索框 */}
         {vocabList.length > 0 && (
@@ -133,7 +304,7 @@ export function GlobalVocabularyPage({
                       </span>
                     )}
                   </div>
-                  <span className="global-vocab-meaning">{item.meaning}</span>
+                  <span className="global-vocab-meaning">{getDisplayMeaning(item, dictMode)}</span>
                 </div>
                 {/* 发音按钮 */}
                 <button
@@ -305,7 +476,75 @@ export function GlobalVocabularyPage({
           display: flex;
           align-items: center;
           justify-content: space-between;
-          margin-bottom: 20px;
+          margin-bottom: 12px;
+        }
+
+        .global-vocab-migrate {
+          margin-bottom: 12px;
+        }
+
+        .migrate-btn {
+          width: 100%;
+          padding: 8px 12px;
+          border: 1px dashed rgba(74, 144, 217, 0.5);
+          border-radius: 8px;
+          background: rgba(74, 144, 217, 0.08);
+          color: #4a90d9;
+          font-size: 13px;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+
+        .migrate-btn:hover {
+          background: rgba(74, 144, 217, 0.15);
+          border-color: #4a90d9;
+        }
+
+        .migrate-done {
+          text-align: center;
+          padding: 6px;
+          font-size: 12px;
+          color: #22c55e;
+          opacity: 0.7;
+        }
+
+        .migrate-progress {
+          padding: 8px 12px;
+          border: 1px solid rgba(74, 144, 217, 0.3);
+          border-radius: 8px;
+          background: rgba(74, 144, 217, 0.05);
+        }
+
+        .migrate-progress-info {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          font-size: 12px;
+          color: #4a90d9;
+          margin-bottom: 6px;
+        }
+
+        .migrate-cancel-btn {
+          background: none;
+          border: none;
+          color: #e74c3c;
+          font-size: 12px;
+          cursor: pointer;
+          padding: 2px 8px;
+        }
+
+        .migrate-progress-bar {
+          height: 4px;
+          border-radius: 2px;
+          background: rgba(74, 144, 217, 0.15);
+          overflow: hidden;
+        }
+
+        .migrate-progress-fill {
+          height: 100%;
+          background: #4a90d9;
+          border-radius: 2px;
+          transition: width 0.3s;
         }
 
         .global-vocab-header-left {

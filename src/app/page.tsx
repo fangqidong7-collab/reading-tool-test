@@ -1468,6 +1468,7 @@ export default function Home() {
         handleSync={handleSync}
         unbind={unbind}
         readingStats={readingStats}
+        dictMode={dictMode}
       />
     );
   }
