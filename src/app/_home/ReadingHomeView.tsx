@@ -6,7 +6,11 @@ import { WordTooltip } from "@/components/WordTooltip";
 import { VocabularySidebar } from "@/components/VocabularySidebar";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { SyncPanel } from "@/components/SyncPanel";
+import { BookVocabAnalysis } from "@/components/BookVocabAnalysis";
+import { ReadingStatsPanel } from "@/components/ReadingStatsPanel";
 import { useTTS, SPEED_OPTIONS } from "@/hooks/useTTS";
+import type { FontFamilySetting } from "@/hooks/useReadingSettings";
+import type { ReadingStatsReturn } from "@/hooks/useReadingStats";
 import type { Book, ProcessedContent, SentenceAnnotation } from "@/hooks/useBookshelf";
 interface AnnotatedWord {
   root: string;
@@ -72,6 +76,12 @@ export interface ReadingHomeViewProps {
   clickToTurnPage: boolean;
   vocabLevel: string;
   setVocabLevel: (level: string) => void;
+  fontFamily: FontFamilySetting;
+  fontFamilyCss: string;
+  setFontFamily: (family: FontFamilySetting) => void;
+  autoTheme: boolean;
+  setAutoTheme: (enabled: boolean) => void;
+  readingStats: ReadingStatsReturn;
   // Dict status
   dictLoadStatus: string;
   // Sync
@@ -202,6 +212,12 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
     clickToTurnPage,
     vocabLevel,
     setVocabLevel,
+    fontFamily,
+    fontFamilyCss,
+    setFontFamily,
+    autoTheme,
+    setAutoTheme,
+    readingStats,
     dictLoadStatus,
     syncPanelOpen,
     setSyncPanelOpen,
@@ -268,6 +284,9 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
   const [showNoteInput, setShowNoteInput] = React.useState(false);
   const [noteText, setNoteText] = React.useState("");
   const noteInputRef = React.useRef<HTMLTextAreaElement>(null);
+
+  const [vocabAnalysisOpen, setVocabAnalysisOpen] = React.useState(false);
+  const [readingStatsOpen, setReadingStatsOpen] = React.useState(false);
 
   // TTS state & sentence queue
   const [ttsOpen, setTtsOpen] = React.useState(false);
@@ -434,6 +453,30 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
 
   return (
     <div className="app-container" style={{ backgroundColor }}>
+      {/* Reading Stats Panel */}
+      <ReadingStatsPanel
+        isOpen={readingStatsOpen}
+        onClose={() => setReadingStatsOpen(false)}
+        stats={readingStats}
+        headerBg={headerBg}
+        headerTextColor={headerTextColor}
+        textColor={textColor}
+        isDarkMode={isDarkMode}
+        backgroundColor={backgroundColor}
+      />
+
+      {/* Vocab Analysis Modal */}
+      <BookVocabAnalysis
+        isOpen={vocabAnalysisOpen}
+        onClose={() => setVocabAnalysisOpen(false)}
+        processedContent={processedContent}
+        headerBg={headerBg}
+        headerTextColor={headerTextColor}
+        textColor={textColor}
+        isDarkMode={isDarkMode}
+        backgroundColor={backgroundColor}
+      />
+
       {/* Settings Panel */}
       <SettingsPanel
         isOpen={settingsPanelOpen}
@@ -457,6 +500,10 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
         onClickToTurnPageChange={setClickToTurnPage}
         vocabLevel={vocabLevel}
         onVocabLevelChange={setVocabLevel}
+        fontFamily={fontFamily}
+        onFontFamilyChange={setFontFamily}
+        autoTheme={autoTheme}
+        onAutoThemeChange={setAutoTheme}
       />
 
       {/* Cloud Sync Panel */}
@@ -1083,6 +1130,37 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
               <span>词汇表</span>
             </button>
 
+            {/* Vocab Analysis */}
+            <button
+              className="more-menu-item"
+              onClick={() => {
+                setVocabAnalysisOpen(true);
+                setMoreMenuOpen(false);
+              }}
+              style={{ color: isDarkMode ? "#ccc" : "#333" }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 20V10" /><path d="M12 20V4" /><path d="M6 20v-6" />
+              </svg>
+              <span>词汇分析</span>
+            </button>
+
+            {/* Reading Stats */}
+            <button
+              className="more-menu-item"
+              onClick={() => {
+                setReadingStatsOpen(true);
+                setMoreMenuOpen(false);
+              }}
+              style={{ color: isDarkMode ? "#ccc" : "#333" }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10" />
+                <polyline points="12 6 12 12 16 14" />
+              </svg>
+              <span>阅读统计</span>
+            </button>
+
             {/* Dictionary status */}
             {dictLoadStatus !== "idle" && (
               <div
@@ -1246,6 +1324,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
               clickToTurnPage={clickToTurnPage}
               ttsSentenceId={ttsCurrentSentenceId}
               ttsPlaying={ttsOpen}
+              fontFamilyCss={fontFamilyCss}
             />
           )}
         </div>

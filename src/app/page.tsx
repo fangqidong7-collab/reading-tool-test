@@ -10,6 +10,7 @@ import { useBookshelf, ProcessedContent, SentenceAnnotation, type Book } from "@
 import { useSync, type SyncData, type BookManifestEntry } from "@/hooks/useSync";
 import { sha256Utf8 } from "@/lib/syncSha256";
 import { useReadingSettings } from "@/hooks/useReadingSettings";
+import { useReadingStats } from "@/hooks/useReadingStats";
 import { useBookshelfTheme } from "@/hooks/useBookshelfTheme";
 import { lemmatize, getWordMeaning, getWordMeaningEn, findWordFamily, loadBuiltinDictionary, loadBuiltinDictionaryEn } from "@/lib/dictionary";
 import { translateWord, translateWordEn, translateWordEnSimple, translateSentence } from "@/lib/translate";
@@ -89,10 +90,18 @@ export default function Home() {
     setClickToTurnPage,
     vocabLevel,
     setVocabLevel,
+    fontFamily,
+    fontFamilyCss,
+    setFontFamily,
+    autoTheme,
+    setAutoTheme,
   } = useReadingSettings();
 
   // Bookshelf theme (independent from reading theme)
   const { theme: bookshelfTheme, themeId: bookshelfThemeId, setThemeId: setBookshelfThemeId } = useBookshelfTheme();
+
+  // Reading statistics (only ticks when a book is open)
+  const readingStats = useReadingStats(!!currentBook);
 
   // Reading state
   const [text, setText] = useState<string>("");
@@ -1451,6 +1460,12 @@ export default function Home() {
       setClickToTurnPage={setClickToTurnPage}
       vocabLevel={vocabLevel}
       setVocabLevel={setVocabLevel}
+      fontFamily={fontFamily}
+      fontFamilyCss={fontFamilyCss}
+      setFontFamily={setFontFamily}
+      autoTheme={autoTheme}
+      setAutoTheme={setAutoTheme}
+      readingStats={readingStats}
       setCurrentScrollPercent={setCurrentScrollPercent}
       setCurrentParagraphIndex={setCurrentParagraphIndex}
       setCurrentParagraphText={setCurrentParagraphText}

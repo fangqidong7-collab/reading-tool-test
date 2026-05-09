@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 export interface ReadingSettings {
   fontSize: number;
@@ -18,6 +18,14 @@ export interface ReadingSettings {
 
 export type VocabLevelSetting = 'off' | 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2';
 
+export type FontFamilySetting = 'serif' | 'sans-serif' | 'system';
+
+export const FONT_FAMILIES: { id: FontFamilySetting; label: string; css: string }[] = [
+  { id: 'serif', label: '衬线体', css: 'Georgia, "Times New Roman", "Noto Serif", serif' },
+  { id: 'sans-serif', label: '无衬线', css: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' },
+  { id: 'system', label: '系统默认', css: 'inherit' },
+];
+
 export interface ReadingSettingsStorage {
   fontSize: number;
   lineHeight: number;
@@ -27,6 +35,8 @@ export interface ReadingSettingsStorage {
   pageTurnRatio: number;
   clickToTurnPage: boolean;
   vocabLevel: VocabLevelSetting;
+  fontFamily: FontFamilySetting;
+  autoTheme: boolean;
 }
 
 const DEFAULT_SETTINGS: ReadingSettings = {
@@ -76,34 +86,7 @@ function getThemeColors(themeId: string): ReadingSettings {
 }
 
 function loadSettingsFromStorage(): ReadingSettingsStorage {
-  if (typeof window === "undefined") {
-    return {
-      fontSize: DEFAULT_SETTINGS.fontSize,
-      lineHeight: DEFAULT_SETTINGS.lineHeight,
-      backgroundTheme: "cream",
-      sidebarOpenByBook: {},
-      dictMode: "zh",
-      pageTurnRatio: 0.9,
-      clickToTurnPage: false,
-      vocabLevel: "off" as VocabLevelSetting,
-    };
-  }
-
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      return {
-        ...parsed,
-        clickToTurnPage: parsed.clickToTurnPage ?? false,
-        vocabLevel: parsed.vocabLevel ?? 'off',
-      };
-    }
-  } catch (e) {
-    console.warn("Failed to load reading settings:", e);
-  }
-
-  return {
+  const defaults: ReadingSettingsStorage = {
     fontSize: DEFAULT_SETTINGS.fontSize,
     lineHeight: DEFAULT_SETTINGS.lineHeight,
     backgroundTheme: "cream",
@@ -112,7 +95,29 @@ function loadSettingsFromStorage(): ReadingSettingsStorage {
     pageTurnRatio: 0.9,
     clickToTurnPage: false,
     vocabLevel: "off" as VocabLevelSetting,
+    fontFamily: "serif" as FontFamilySetting,
+    autoTheme: false,
   };
+  if (typeof window === "undefined") return defaults;
+
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return {
+        ...defaults,
+        ...parsed,
+        clickToTurnPage: parsed.clickToTurnPage ?? false,
+        vocabLevel: parsed.vocabLevel ?? 'off',
+        fontFamily: parsed.fontFamily ?? 'serif',
+        autoTheme: parsed.autoTheme ?? false,
+      };
+    }
+  } catch (e) {
+    console.warn("Failed to load reading settings:", e);
+  }
+
+  return defaults;
 }
 
 function saveSettingsToStorage(settings: ReadingSettingsStorage) {
@@ -136,12 +141,17 @@ export function useReadingSettings() {
     pageTurnRatio: 0.9,
     clickToTurnPage: false,
     vocabLevel: "off",
+    fontFamily: "serif",
+    autoTheme: false,
   });
   const [isLoaded, setIsLoaded] = useState(false);
   const [dictMode, setDictModeState] = useState<'zh' | 'en' | 'en-simple'>('zh');
   const [pageTurnRatio, setPageTurnRatioState] = useState(0.9);
   const [clickToTurnPage, setClickToTurnPageState] = useState(false);
   const [vocabLevel, setVocabLevelState] = useState<VocabLevelSetting>('off');
+  const [fontFamily, setFontFamilyState] = useState<FontFamilySetting>('serif');
+  const [autoTheme, setAutoThemeState] = useState(false);
+  const autoThemeRef = useRef(false);
 
   // Load settings on mount
   useEffect(() => {
@@ -151,13 +161,36 @@ export function useReadingSettings() {
     setPageTurnRatioState(loaded.pageTurnRatio ?? 0.9);
     setClickToTurnPageState(loaded.clickToTurnPage ?? false);
     setVocabLevelState(loaded.vocabLevel ?? 'off');
-    const colors = getThemeColors(loaded.backgroundTheme);
+    setFontFamilyState(loaded.fontFamily ?? 'serif');
+    setAutoThemeState(loaded.autoTheme ?? false);
+    autoThemeRef.current = loaded.autoTheme ?? false;
+
+    let themeId = loaded.backgroundTheme;
+    if (loaded.autoTheme && typeof window !== 'undefined') {
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      themeId = prefersDark ? 'dark' : (loaded.backgroundTheme === 'dark' ? 'cream' : loaded.backgroundTheme);
+    }
+    const colors = getThemeColors(themeId);
     setSettings({
       ...colors,
       fontSize: loaded.fontSize,
       lineHeight: loaded.lineHeight,
     });
     setIsLoaded(true);
+  }, []);
+
+  // Listen for system theme changes when autoTheme is enabled
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = (e: MediaQueryListEvent) => {
+      if (!autoThemeRef.current) return;
+      const themeId = e.matches ? 'dark' : 'cream';
+      const colors = getThemeColors(themeId);
+      setSettings((prev) => ({ ...prev, ...colors }));
+    };
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
   }, []);
 
   // Save settings when they change
@@ -172,6 +205,8 @@ export function useReadingSettings() {
         pageTurnRatio: storage.pageTurnRatio,
         clickToTurnPage: storage.clickToTurnPage,
         vocabLevel: storage.vocabLevel,
+        fontFamily: storage.fontFamily,
+        autoTheme: storage.autoTheme,
       });
     }
   }, [settings, storage, isLoaded]);
@@ -190,8 +225,10 @@ export function useReadingSettings() {
     setStorage((prev) => ({ ...prev, lineHeight: clampedHeight }));
   }, []);
 
-  // Set background theme
+  // Set background theme (also disables autoTheme when user manually picks)
   const setBackgroundTheme = useCallback((themeId: string) => {
+    autoThemeRef.current = false;
+    setAutoThemeState(false);
     const colors = getThemeColors(themeId);
     setSettings((prev) => ({
       ...prev,
@@ -199,7 +236,7 @@ export function useReadingSettings() {
       fontSize: storage.fontSize,
       lineHeight: storage.lineHeight,
     }));
-    setStorage((prev) => ({ ...prev, backgroundTheme: themeId }));
+    setStorage((prev) => ({ ...prev, backgroundTheme: themeId, autoTheme: false }));
   }, [storage.fontSize, storage.lineHeight]);
 
   // Get sidebar state for a specific book
@@ -221,6 +258,7 @@ export function useReadingSettings() {
   // Reset all settings to default
   const resetToDefault = useCallback(() => {
     const defaultTheme = "cream";
+    autoThemeRef.current = false;
     const colors = getThemeColors(defaultTheme);
     setSettings({
       ...colors,
@@ -234,11 +272,15 @@ export function useReadingSettings() {
       backgroundTheme: defaultTheme,
       sidebarOpenByBook: {},
       clickToTurnPage: false,
+      fontFamily: 'serif',
+      autoTheme: false,
     }));
     setDictModeState('zh');
     setPageTurnRatioState(0.9);
     setClickToTurnPageState(false);
     setVocabLevelState('off');
+    setFontFamilyState('serif');
+    setAutoThemeState(false);
   }, []);
 
   const setDictMode = useCallback((mode: 'zh' | 'en' | 'en-simple') => {
@@ -265,8 +307,27 @@ export function useReadingSettings() {
     setStorage((prev) => ({ ...prev, vocabLevel: val }));
   }, []);
 
-  // Calculate annotation font size (70% of body font size)
+  const setFontFamily = useCallback((family: FontFamilySetting) => {
+    setFontFamilyState(family);
+    setStorage((prev) => ({ ...prev, fontFamily: family }));
+  }, []);
+
+  const setAutoTheme = useCallback((enabled: boolean) => {
+    autoThemeRef.current = enabled;
+    setAutoThemeState(enabled);
+    setStorage((prev) => ({ ...prev, autoTheme: enabled }));
+    if (enabled && typeof window !== 'undefined') {
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const themeId = prefersDark ? 'dark' : 'cream';
+      const colors = getThemeColors(themeId);
+      setSettings((prev) => ({ ...prev, ...colors }));
+    }
+  }, []);
+
   const annotationFontSize = Math.round(settings.fontSize * 0.7);
+
+  const fontFamilyCss = FONT_FAMILIES.find(f => f.id === fontFamily)?.css
+    ?? FONT_FAMILIES[0].css;
 
   return {
     settings,
@@ -298,5 +359,10 @@ export function useReadingSettings() {
     setClickToTurnPage,
     vocabLevel,
     setVocabLevel,
+    fontFamily,
+    fontFamilyCss,
+    setFontFamily,
+    autoTheme,
+    setAutoTheme,
   };
 }

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useCallback } from "react";
 import { X } from "lucide-react";
-import { BACKGROUND_THEMES } from "@/hooks/useReadingSettings";
+import { BACKGROUND_THEMES, FONT_FAMILIES, type FontFamilySetting } from "@/hooks/useReadingSettings";
 
 interface SettingsPanelProps {
   isOpen: boolean;
@@ -26,6 +26,10 @@ interface SettingsPanelProps {
   onClickToTurnPageChange: (v: boolean) => void;
   vocabLevel: string;
   onVocabLevelChange: (level: string) => void;
+  fontFamily: FontFamilySetting;
+  onFontFamilyChange: (family: FontFamilySetting) => void;
+  autoTheme: boolean;
+  onAutoThemeChange: (enabled: boolean) => void;
 }
 
 export function SettingsPanel({
@@ -50,6 +54,10 @@ export function SettingsPanel({
   onClickToTurnPageChange,
   vocabLevel,
   onVocabLevelChange,
+  fontFamily,
+  onFontFamilyChange,
+  autoTheme,
+  onAutoThemeChange,
 }: SettingsPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -142,6 +150,25 @@ export function SettingsPanel({
               <span className="setting-value" style={{ color: textColor }}>
                 {lineHeight.toFixed(1)}
               </span>
+            </div>
+          </div>
+
+          {/* Font Family */}
+          <div className="setting-item">
+            <div className="setting-label">
+              <span className="label-text">字体</span>
+            </div>
+            <div className="mode-options">
+              {FONT_FAMILIES.map((f) => (
+                <button
+                  key={f.id}
+                  className={`mode-btn ${fontFamily === f.id ? 'active' : ''}`}
+                  onClick={() => onFontFamilyChange(f.id)}
+                  style={fontFamily === f.id ? undefined : { fontFamily: f.css }}
+                >
+                  {f.label}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -270,8 +297,17 @@ export function SettingsPanel({
           <div className="setting-item">
             <div className="setting-label">
               <span className="label-text">背景颜色</span>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, opacity: 0.7, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={autoTheme}
+                  onChange={(e) => onAutoThemeChange(e.target.checked)}
+                  style={{ width: 14, height: 14, cursor: 'pointer' }}
+                />
+                跟随系统
+              </label>
             </div>
-            <div className="theme-options">
+            <div className="theme-options" style={autoTheme ? { opacity: 0.4, pointerEvents: 'none' } : undefined}>
               {BACKGROUND_THEMES.map((theme) => (
                 <button
                   key={theme.id}

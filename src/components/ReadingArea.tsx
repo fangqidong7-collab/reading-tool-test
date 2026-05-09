@@ -565,6 +565,7 @@ interface ReadingAreaProps {
   ttsSentenceId?: string;
   /** TTS: true while any sentence is being spoken */
   ttsPlaying?: boolean;
+  fontFamilyCss?: string;
 }
 
 export const ReadingArea = forwardRef(function ReadingArea({
@@ -603,6 +604,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
   clickToTurnPage = false,
   ttsSentenceId,
   ttsPlaying = false,
+  fontFamilyCss,
 
 }: ReadingAreaProps, ref: React.Ref<ReadingAreaRef>) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1365,7 +1367,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
             font-size: ${fontSize}px;
             line-height: ${lineHeight};
             color: ${textColor};
-            font-family: Georgia, "Times New Roman", serif;
+            font-family: ${fontFamilyCss || 'Georgia, "Times New Roman", serif'};
             text-align: justify;
             -webkit-touch-callout: none;
             -webkit-user-select: text;
@@ -1439,7 +1441,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
             fontSize: `${fontSize}px`,
             lineHeight: lineHeight,
             color: textColor,
-            fontFamily: "Georgia, \"Times New Roman\", serif",
+            fontFamily: fontFamilyCss || "Georgia, \"Times New Roman\", serif",
           }}
         >
           {text}
@@ -1447,7 +1449,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
       </div>
       <style jsx>{`
         .text-content {
-          font-family: Georgia, "Times New Roman", serif;
+          font-family: ${fontFamilyCss || 'Georgia, "Times New Roman", serif'};
         }
       `}</style>
     </div>
