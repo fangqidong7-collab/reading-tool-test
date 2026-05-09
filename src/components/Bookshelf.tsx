@@ -217,12 +217,12 @@ export function Bookshelf({
           { value: monthVal, label: `${monthUnit}月`, icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={iconColor} strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg> },
         ];
         return (
-          <div className="sc-wrap" onClick={onStatsClick}>
+          <div onClick={onStatsClick} style={{ display: 'flex', gap: 8, marginBottom: 20, cursor: 'pointer' }}>
             {items.map((it, i) => (
-              <div key={i} className="sc-item" style={{ background: cardBg }}>
-                <div className="sc-num" style={{ color: numColor }}>{it.value}</div>
-                <div className="sc-icon">{it.icon}</div>
-                <div className="sc-label" style={{ color: labelColor }}>{it.label}</div>
+              <div key={i} style={{ flex: 1, minWidth: 0, padding: '10px 10px 8px', borderRadius: 12, background: cardBg, position: 'relative', overflow: 'hidden' }}>
+                <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1, letterSpacing: -0.5, color: numColor }}>{it.value}</div>
+                <div style={{ position: 'absolute', top: 8, right: 6, opacity: 0.7 }}>{it.icon}</div>
+                <div style={{ fontSize: 10, marginTop: 4, fontWeight: 500, lineHeight: 1.2, color: labelColor }}>{it.label}</div>
               </div>
             ))}
           </div>

@@ -400,46 +400,7 @@ rt {
   white-space: nowrap;
 }
 
-/* Reading Stats Card */
-.sc-wrap {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 20px;
-  cursor: pointer;
-}
-.sc-wrap:active { opacity: 0.85; }
-.sc-item {
-  flex: 1;
-  min-width: 0;
-  padding: 10px 10px 8px;
-  border-radius: 12px;
-  position: relative;
-  overflow: hidden;
-}
-.sc-num {
-  font-size: 22px;
-  font-weight: 800;
-  line-height: 1;
-  letter-spacing: -0.5px;
-}
-.sc-icon {
-  position: absolute;
-  top: 8px;
-  right: 6px;
-  opacity: 0.7;
-}
-.sc-label {
-  font-size: 10px;
-  margin-top: 4px;
-  font-weight: 500;
-  line-height: 1.2;
-}
-
-@media (max-width: 380px) {
-  .sc-wrap { gap: 6px; }
-  .sc-item { padding: 8px 8px 6px; }
-  .sc-num { font-size: 18px; }
-}
+/* Reading Stats Card - inline styles in Bookshelf.tsx */
 
 /* Book Grid - fixed column width on desktop */
 .book-grid {
