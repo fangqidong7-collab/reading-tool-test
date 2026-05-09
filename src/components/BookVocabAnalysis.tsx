@@ -32,7 +32,7 @@ interface WordStat {
 
 const ALL_LEVELS: CEFRLevel[] = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 
-function lookupMeaning(word: string, dictMode: string): string {
+function lookupMeaning(word: string, dictMode: 'zh' | 'en' | 'en-simple'): string {
   const isEn = dictMode === 'en' || dictMode === 'en-simple';
   if (isEn) {
     return getWordMeaningEn(word) || lookupExternalDictEn(word) || '';
@@ -54,7 +54,7 @@ function lookupAllLocal(word: string): { zh?: string; en?: string; enSimple?: st
   return langs;
 }
 
-async function aiTranslate(word: string, dictMode: string): Promise<string> {
+async function aiTranslate(word: string, dictMode: 'zh' | 'en' | 'en-simple'): Promise<string> {
   try {
     let raw: string;
     if (dictMode === 'en-simple') raw = await translateWordEnSimple(word);

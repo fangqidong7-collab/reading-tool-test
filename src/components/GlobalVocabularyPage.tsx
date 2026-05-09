@@ -48,7 +48,7 @@ function lookupLocalAll(word: string): { zh?: string; en?: string; enSimple?: st
   return langs;
 }
 
-async function aiTranslateWord(word: string, mode: string): Promise<string> {
+async function aiTranslateWord(word: string, mode: 'zh' | 'en' | 'en-simple'): Promise<string> {
   try {
     let raw: string;
     if (mode === 'en-simple') raw = await translateWordEnSimple(word);
