@@ -364,15 +364,25 @@ export function BookVocabAnalysis({
               </div>
 
               <div className="va-len-filter">
-                <span className="va-len-label">最短</span>
-                <button className="va-len-btn" onClick={() => handleMinLenChange(minLen - 1)} disabled={minLen <= 0}>−</button>
-                <span className="va-len-val">{minLen > 0 ? `≥${minLen}字母` : '不限'}</span>
-                <button className="va-len-btn" onClick={() => handleMinLenChange(minLen + 1)}>+</button>
+                <span className="va-len-label">≥字母</span>
+                <input
+                  className="va-len-input"
+                  type="number"
+                  min={0} max={20}
+                  value={minLen || ''}
+                  placeholder="不限"
+                  onChange={e => handleMinLenChange(parseInt(e.target.value, 10) || 0)}
+                />
                 <span className="va-len-sep" />
-                <span className="va-len-label">频率</span>
-                <button className="va-len-btn" onClick={() => handleMinFreqChange(minFreq - 1)} disabled={minFreq <= 0}>−</button>
-                <span className="va-len-val">{minFreq > 0 ? `≥${minFreq}次` : '不限'}</span>
-                <button className="va-len-btn" onClick={() => handleMinFreqChange(minFreq + 1)}>+</button>
+                <span className="va-len-label">≥频率</span>
+                <input
+                  className="va-len-input"
+                  type="number"
+                  min={0} max={999}
+                  value={minFreq || ''}
+                  placeholder="不限"
+                  onChange={e => handleMinFreqChange(parseInt(e.target.value, 10) || 0)}
+                />
               </div>
 
               {/* Batch actions bar */}
@@ -601,26 +611,27 @@ export function BookVocabAnalysis({
         .va-len-filter {
           display: flex;
           align-items: center;
-          gap: 6px;
+          gap: 8px;
           margin-bottom: 10px;
           font-size: 12px;
         }
-        .va-len-label { opacity: 0.5; }
-        .va-len-btn {
-          width: 24px; height: 24px;
+        .va-len-label { opacity: 0.5; white-space: nowrap; }
+        .va-len-input {
+          width: 52px;
+          padding: 4px 6px;
           border: 1px solid rgba(128,128,128,0.3);
           border-radius: 6px;
           background: transparent;
           color: inherit;
-          font-size: 14px;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
+          font-size: 13px;
+          text-align: center;
+          outline: none;
+          -moz-appearance: textfield;
         }
-        .va-len-btn:disabled { opacity: 0.25; cursor: default; }
-        .va-len-val { min-width: 44px; text-align: center; font-weight: 500; }
-        .va-len-sep { width: 1px; height: 16px; background: rgba(128,128,128,0.2); margin: 0 4px; }
+        .va-len-input::-webkit-inner-spin-button,
+        .va-len-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        .va-len-input:focus { border-color: #4a90d9; }
+        .va-len-sep { width: 1px; height: 16px; background: rgba(128,128,128,0.2); flex-shrink: 0; }
         .va-filter-btn.active {
           background: #4a90d9;
           color: white;
