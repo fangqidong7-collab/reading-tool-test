@@ -1,5 +1,12 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
 
 export const metadata: Metadata = {
   title: "Q Reading",
@@ -14,7 +21,6 @@ export default function RootLayout({
   return (
     <html lang="zh-CN">
       <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
         <link rel="manifest" href="/manifest.json" />
         <meta name="theme-color" content="#D8DEE6" />
         <link rel="apple-touch-icon" href="/icon-192.png" />
