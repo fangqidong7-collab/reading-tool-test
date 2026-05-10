@@ -10,6 +10,7 @@ const READING_PADDING_HORIZONTAL = 32;
 const MOBILE_READING_PADDING_HORIZONTAL = 12;
 const MOBILE_BREAKPOINT = 768;
 const MOBILE_BOTTOM_SAFE_ZONE = 60;
+const DESKTOP_BOTTOM_SAFE_ZONE = 40;
 const PAGE_TURN_EDGE_EPS = 3;
 
 /** 收集当前虚拟列表可见段落的文字行框（用于点击翻页对齐）。 */
@@ -44,6 +45,20 @@ function gatherVisibleParagraphLineRects(
 
 const OVERLAP_LINES = 1;
 
+/** Merge raw rects into unique visual lines (rects on the same line have similar top). */
+function deduplicateLines(rects: DOMRect[]): DOMRect[] {
+  const sorted = [...rects].sort((a, b) => a.top - b.top);
+  const lines: DOMRect[] = [];
+  for (const r of sorted) {
+    const last = lines[lines.length - 1];
+    if (last && Math.abs(r.top - last.top) < Math.min(r.height, last.height) * 0.5) {
+      continue;
+    }
+    lines.push(r);
+  }
+  return lines;
+}
+
 function computeSnappedPageScrollTop(
   scrollEl: HTMLElement,
   contentRoot: HTMLElement,
@@ -56,29 +71,45 @@ function computeSnappedPageScrollTop(
   const maxS = Math.max(0, scrollEl.scrollHeight - H);
   const cRect = scrollEl.getBoundingClientRect();
   const edge = PAGE_TURN_EDGE_EPS;
-  const rects = gatherVisibleParagraphLineRects(contentRoot, scrollEl, virtualIndices);
+  const rawRects = gatherVisibleParagraphLineRects(contentRoot, scrollEl, virtualIndices);
+  const allLines = deduplicateLines(rawRects);
 
-  const fullyVisible = rects
-    .filter(r => r.top >= cRect.top - edge && r.bottom <= cRect.bottom + edge)
-    .sort((a, b) => a.top - b.top);
+  const fullyVisible = allLines
+    .filter(r => r.top >= cRect.top - edge && r.bottom <= cRect.bottom + edge);
+
+  console.log('[pageTurn]', direction, {
+    rawRects: rawRects.length,
+    dedupedLines: allLines.length,
+    fullyVisibleLines: fullyVisible.length,
+    scrollTop: S,
+    containerH: H,
+    maxScroll: maxS,
+    viewTop: cRect.top,
+    viewBottom: cRect.bottom,
+    firstLineTop: fullyVisible[0] ? (fullyVisible[0].top - cRect.top).toFixed(1) : 'N/A',
+    lastLineBottom: fullyVisible.length ? (fullyVisible[fullyVisible.length - 1].bottom - cRect.top).toFixed(1) : 'N/A',
+  });
 
   if (direction === "next") {
     if (fullyVisible.length > OVERLAP_LINES) {
       const overlapLine = fullyVisible[fullyVisible.length - OVERLAP_LINES];
       const T = S + (overlapLine.top - cRect.top);
+      console.log('[pageTurn] next →', { overlapLineIdx: fullyVisible.length - OVERLAP_LINES, overlapLineTop: (overlapLine.top - cRect.top).toFixed(1), newScrollTop: T.toFixed(1), delta: (T - S).toFixed(1) });
       if (T > S + 0.5) return Math.min(T, maxS);
     }
     const fallback = Math.min(S + pageStepPx, maxS);
+    console.log('[pageTurn] next fallback →', fallback.toFixed(1));
     return fallback > S + 0.5 ? fallback : maxS;
   }
 
-  // prev: the top OVERLAP_LINES lines of current page should appear at the bottom of the previous page
   if (fullyVisible.length > OVERLAP_LINES) {
     const overlapLine = fullyVisible[Math.min(OVERLAP_LINES, fullyVisible.length - 1)];
     const T = S + (overlapLine.bottom - cRect.top) - H;
+    console.log('[pageTurn] prev →', { overlapLineIdx: Math.min(OVERLAP_LINES, fullyVisible.length - 1), overlapLineBottom: (overlapLine.bottom - cRect.top).toFixed(1), newScrollTop: T.toFixed(1), delta: (T - S).toFixed(1) });
     if (T < S - 0.5) return Math.max(0, T);
   }
   const fallback = Math.max(0, S - pageStepPx);
+  console.log('[pageTurn] prev fallback →', fallback.toFixed(1));
   return fallback < S - 0.5 ? fallback : 0;
 }
 
@@ -646,8 +677,24 @@ export const ReadingArea = forwardRef(function ReadingArea({
       const el = wrapperRef.current;
       if (!el) return;
       const available = el.clientHeight;
+      const wrapperRect = el.getBoundingClientRect();
       const mobile = window.innerWidth <= MOBILE_BREAKPOINT;
-      const h = mobile ? available - MOBILE_BOTTOM_SAFE_ZONE : available - 30;
+      const safeZone = mobile ? MOBILE_BOTTOM_SAFE_ZONE : DESKTOP_BOTTOM_SAFE_ZONE;
+      const h = available - safeZone;
+      const containerBottom = wrapperRect.top + Math.max(h, 200);
+      const badgeTop = window.innerHeight - 12 - 24;
+      console.log('[layout]', {
+        wrapperHeight: available,
+        wrapperTop: wrapperRect.top,
+        wrapperBottom: wrapperRect.bottom,
+        safeZone,
+        containerHeight: Math.max(h, 200),
+        containerBottomFromTop: containerBottom,
+        badgeTopFromTop: badgeTop,
+        overlap: containerBottom - badgeTop,
+        viewportHeight: window.innerHeight,
+        mobile,
+      });
       setContainerHeight(Math.max(h, 200));
     };
     calcHeight();
@@ -1220,16 +1267,27 @@ export const ReadingArea = forwardRef(function ReadingArea({
             e.preventDefault();
           }}
           onClick={(e) => {
-            // ===== 如果有文字被选中，不翻页 =====
             const selection = window.getSelection();
             if (selection && !selection.isCollapsed && selection.toString().trim().length > 0) {
               return;
             }
-
-            // 滑动翻页后的防误触
             if (Date.now() - lastSwipeTimeRef.current < 400) return;
 
-            // 点击单词/标注/翻译标注 不处理
+            // 分页模式：点击直接翻页，使用对齐算法
+            if (clickToTurnPage) {
+              const rect = containerRef.current?.getBoundingClientRect();
+              if (!rect) return;
+              const clickX = e.clientX - rect.left;
+              const halfWidth = rect.width / 2;
+              if (clickX < halfWidth) {
+                scrollReadingPage("prev");
+              } else {
+                scrollReadingPage("next");
+              }
+              return;
+            }
+
+            // 滑动模式：点击单词/标注不处理（留给 onWordClick）
             const target = e.target as HTMLElement;
             if (
               target.classList.contains('word') ||
@@ -1241,31 +1299,17 @@ export const ReadingArea = forwardRef(function ReadingArea({
             ) {
               return;
             }
-
-            // 只在开启点击翻页时才处理
-            if (!clickToTurnPage) return;
-
-            const rect = containerRef.current?.getBoundingClientRect();
-            if (!rect) return;
-            const clickX = e.clientX - rect.left;
-            const halfWidth = rect.width / 2;
-            const el = containerRef.current;
-            if (!el) return;
-            if (clickX < halfWidth) {
-              el.scrollBy({ top: -(containerHeight * pageTurnRatio), behavior: "smooth" });
-            } else {
-              el.scrollBy({ top: containerHeight * pageTurnRatio, behavior: "smooth" });
-            }
           }}
           style={{
             height: containerHeight,
-            overflowY: "auto",
+            flex: "none",
+            overflowY: clickToTurnPage ? "hidden" : "auto",
             overflowX: "hidden",
             position: "relative",
             padding: "0px",
             boxSizing: "border-box",
             WebkitOverflowScrolling: "touch",
-            touchAction: "pan-y",
+            touchAction: clickToTurnPage ? "none" : "pan-y",
           }}
         >
           <div
