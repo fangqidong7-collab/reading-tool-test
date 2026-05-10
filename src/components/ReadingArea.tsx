@@ -6,12 +6,9 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { LEVEL_COLORS, type CEFRLevel } from "@/lib/vocabLevel";
 
 // Layout constants
-const HEADER_HEIGHT = 56;
-const MOBILE_HEADER_HEIGHT = 48;
 const READING_PADDING_HORIZONTAL = 32;
 const MOBILE_READING_PADDING_HORIZONTAL = 12;
 const MOBILE_BREAKPOINT = 768;
-const MOBILE_TOP_GAP = 5;
 const MOBILE_BOTTOM_SAFE_ZONE = 60;
 const PAGE_TURN_EDGE_EPS = 3;
 
@@ -617,6 +614,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
   fontFamilyCss,
 
 }: ReadingAreaProps, ref: React.Ref<ReadingAreaRef>) {
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const selectionStartRef = useRef<{ paragraphIndex: number; charIndex: number } | null>(null);
@@ -669,18 +667,24 @@ export const ReadingArea = forwardRef(function ReadingArea({
 
   useEffect(() => {
     const calcHeight = () => {
+      const el = wrapperRef.current;
+      if (!el) return;
+      const available = el.clientHeight;
       const mobile = window.innerWidth <= MOBILE_BREAKPOINT;
-      const headerH = mobile ? MOBILE_HEADER_HEIGHT : HEADER_HEIGHT;
-      const PAGER_HEIGHT = 0;
       const h = mobile
-        ? window.innerHeight - headerH - MOBILE_TOP_GAP - MOBILE_BOTTOM_SAFE_ZONE - PAGER_HEIGHT
-        : window.innerHeight - headerH - PAGER_HEIGHT;
+        ? available - MOBILE_BOTTOM_SAFE_ZONE
+        : available - 30;
       setContainerHeight(Math.max(h, 200));
     };
 
     calcHeight();
     window.addEventListener('resize', calcHeight);
-    return () => window.removeEventListener('resize', calcHeight);
+    const ro = new ResizeObserver(calcHeight);
+    if (wrapperRef.current) ro.observe(wrapperRef.current);
+    return () => {
+      window.removeEventListener('resize', calcHeight);
+      ro.disconnect();
+    };
   }, []);
 
   // 音量键翻页
@@ -1227,10 +1231,11 @@ export const ReadingArea = forwardRef(function ReadingArea({
 
     return (
       <div 
+        ref={wrapperRef}
         className="reading-wrapper" 
         style={{ 
           backgroundColor,
-          height: "100vh",
+          height: "100%",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
@@ -1287,7 +1292,6 @@ export const ReadingArea = forwardRef(function ReadingArea({
             overflowX: "hidden",
             position: "relative",
             padding: "0px",
-            paddingBottom: "36px",
             boxSizing: "border-box",
             WebkitOverflowScrolling: "touch",
             touchAction: "pan-y",
