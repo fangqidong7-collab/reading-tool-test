@@ -58,18 +58,28 @@ function computeSnappedPageScrollTop(
   const edge = PAGE_TURN_EDGE_EPS;
   const rects = gatherVisibleParagraphLineRects(contentRoot, scrollEl, virtualIndices);
 
+  const OVERLAP_LINES = 3;
+
   if (direction === "next") {
-    let crossingBottom: DOMRect | null = null;
+    // Find the last line whose bottom is fully within the viewport
+    let lastFullyVisibleLine: DOMRect | null = null;
     for (const r of rects) {
-      if (r.top < cRect.bottom - edge && r.bottom > cRect.bottom - edge) {
-        if (!crossingBottom || r.top > crossingBottom.top) crossingBottom = r;
+      if (r.bottom <= cRect.bottom + edge && r.top >= cRect.top - edge) {
+        if (!lastFullyVisibleLine || r.top > lastFullyVisibleLine.top) {
+          lastFullyVisibleLine = r;
+        }
       }
     }
 
     let T: number;
-    if (crossingBottom) {
-      const snapped = S + (crossingBottom.top - cRect.top);
-      T = snapped > S + 0.5 ? snapped : Math.min(S + pageStepPx, maxS);
+    if (lastFullyVisibleLine && rects.length > 0) {
+      // Count back OVERLAP_LINES from the last fully visible line
+      const sortedByTop = rects
+        .filter(r => r.bottom <= cRect.bottom + edge && r.top >= cRect.top - edge)
+        .sort((a, b) => a.top - b.top);
+      const overlapIdx = Math.max(0, sortedByTop.length - OVERLAP_LINES);
+      const overlapLine = sortedByTop[overlapIdx];
+      T = S + (overlapLine.top - cRect.top);
     } else {
       T = Math.min(S + pageStepPx, maxS);
     }
@@ -79,16 +89,16 @@ function computeSnappedPageScrollTop(
     return Math.min(Math.max(0, T), maxS);
   }
 
-  let crossingTop: DOMRect | null = null;
-  for (const r of rects) {
-    if (r.top < cRect.top + edge && r.bottom > cRect.top + edge) {
-      if (!crossingTop || r.top < crossingTop.top) crossingTop = r;
-    }
-  }
+  // prev direction: scroll up so the current top lines become the bottom
+  const sortedFullyVisible = rects
+    .filter(r => r.bottom <= cRect.bottom + edge && r.top >= cRect.top - edge)
+    .sort((a, b) => a.top - b.top);
 
   let T: number;
-  if (crossingTop) {
-    T = S - pageStepPx + (crossingTop.top - cRect.top);
+  if (sortedFullyVisible.length > OVERLAP_LINES) {
+    const overlapLine = sortedFullyVisible[Math.min(OVERLAP_LINES - 1, sortedFullyVisible.length - 1)];
+    const viewportH = cRect.height;
+    T = S - viewportH + (overlapLine.bottom - cRect.top);
   } else {
     T = S - pageStepPx;
   }
@@ -1266,9 +1276,9 @@ export const ReadingArea = forwardRef(function ReadingArea({
             const el = containerRef.current;
             if (!el) return;
             if (clickX < halfWidth) {
-              el.scrollBy({ top: -(containerHeight * pageTurnRatio), behavior: "smooth" });
+              scrollReadingPage("prev");
             } else {
-              el.scrollBy({ top: containerHeight * pageTurnRatio, behavior: "smooth" });
+              scrollReadingPage("next");
             }
           }}
           style={{
