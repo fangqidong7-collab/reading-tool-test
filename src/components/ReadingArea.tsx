@@ -1287,6 +1287,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
             overflowX: "hidden",
             position: "relative",
             padding: "0px",
+            paddingBottom: "36px",
             boxSizing: "border-box",
             WebkitOverflowScrolling: "touch",
             touchAction: "pan-y",
