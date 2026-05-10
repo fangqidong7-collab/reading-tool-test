@@ -13,11 +13,15 @@ const MOBILE_BOTTOM_SAFE_ZONE = 60;
 const DESKTOP_BOTTOM_SAFE_ZONE = 40;
 const PAGE_TURN_EDGE_EPS = 3;
 
-/** 收集当前虚拟列表可见段落的文字行框（用于点击翻页对齐）。 */
-function gatherVisibleParagraphLineRects(
+/**
+ * Collect paragraph line rects from virtual items.
+ * @param extendAbove  extra px above the viewport to include (for "prev" page calculation)
+ */
+function gatherParagraphLineRects(
   contentRoot: HTMLElement,
   scrollEl: HTMLElement,
-  virtualIndices: readonly { index: number }[]
+  virtualIndices: readonly { index: number }[],
+  extendAbove = 0
 ): DOMRect[] {
   const cRect = scrollEl.getBoundingClientRect();
   const minLineHeight = 6;
@@ -36,22 +40,21 @@ function gatherVisibleParagraphLineRects(
     for (let i = 0; i < list.length; i++) {
       const r = list[i];
       if (r.height < minLineHeight || r.width < minWidth) continue;
-      if (r.bottom < cRect.top || r.top > cRect.bottom) continue;
+      if (r.bottom < cRect.top - extendAbove || r.top > cRect.bottom) continue;
       out.push(r);
     }
   }
   return out;
 }
 
-const OVERLAP_LINES = 1;
-
-/** Merge raw rects into unique visual lines (rects on the same line have similar top). */
+/** Merge raw rects into unique visual lines (same-line fragments share similar top). */
 function deduplicateLines(rects: DOMRect[]): DOMRect[] {
   const sorted = [...rects].sort((a, b) => a.top - b.top);
   const lines: DOMRect[] = [];
   for (const r of sorted) {
     const last = lines[lines.length - 1];
     if (last && Math.abs(r.top - last.top) < Math.min(r.height, last.height) * 0.5) {
+      if (r.bottom > last.bottom) lines[lines.length - 1] = r;
       continue;
     }
     lines.push(r);
@@ -59,6 +62,14 @@ function deduplicateLines(rects: DOMRect[]): DOMRect[] {
   return lines;
 }
 
+/**
+ * Page-turn algorithm: returns the target scrollTop for next/prev page.
+ *
+ * Principles (like a traditional e-reader):
+ *  - Top of the page always aligns to a line boundary (no half-line at top)
+ *  - No repeated lines between pages
+ *  - Bottom partial line will be hidden by a mask overlay
+ */
 function computeSnappedPageScrollTop(
   scrollEl: HTMLElement,
   contentRoot: HTMLElement,
@@ -71,46 +82,40 @@ function computeSnappedPageScrollTop(
   const maxS = Math.max(0, scrollEl.scrollHeight - H);
   const cRect = scrollEl.getBoundingClientRect();
   const edge = PAGE_TURN_EDGE_EPS;
-  const rawRects = gatherVisibleParagraphLineRects(contentRoot, scrollEl, virtualIndices);
+
+  const extendAbove = direction === "prev" ? H : 0;
+  const rawRects = gatherParagraphLineRects(contentRoot, scrollEl, virtualIndices, extendAbove);
   const allLines = deduplicateLines(rawRects);
 
   const fullyVisible = allLines
     .filter(r => r.top >= cRect.top - edge && r.bottom <= cRect.bottom + edge);
 
-  console.log('[pageTurn]', direction, {
-    rawRects: rawRects.length,
-    dedupedLines: allLines.length,
-    fullyVisibleLines: fullyVisible.length,
-    scrollTop: S,
-    containerH: H,
-    maxScroll: maxS,
-    viewTop: cRect.top,
-    viewBottom: cRect.bottom,
-    firstLineTop: fullyVisible[0] ? (fullyVisible[0].top - cRect.top).toFixed(1) : 'N/A',
-    lastLineBottom: fullyVisible.length ? (fullyVisible[fullyVisible.length - 1].bottom - cRect.top).toFixed(1) : 'N/A',
-  });
-
   if (direction === "next") {
-    if (fullyVisible.length > OVERLAP_LINES) {
-      const overlapLine = fullyVisible[fullyVisible.length - OVERLAP_LINES];
-      const T = S + (overlapLine.top - cRect.top);
-      console.log('[pageTurn] next →', { overlapLineIdx: fullyVisible.length - OVERLAP_LINES, overlapLineTop: (overlapLine.top - cRect.top).toFixed(1), newScrollTop: T.toFixed(1), delta: (T - S).toFixed(1) });
-      if (T > S + 0.5) return Math.min(T, maxS);
+    if (fullyVisible.length === 0) {
+      return Math.min(S + pageStepPx, maxS);
     }
-    const fallback = Math.min(S + pageStepPx, maxS);
-    console.log('[pageTurn] next fallback →', fallback.toFixed(1));
-    return fallback > S + 0.5 ? fallback : maxS;
+    const lastFV = fullyVisible[fullyVisible.length - 1];
+    const T = S + (lastFV.bottom - cRect.top);
+    if (T > S + 0.5) return Math.min(T, maxS);
+    return Math.min(S + pageStepPx, maxS);
   }
 
-  if (fullyVisible.length > OVERLAP_LINES) {
-    const overlapLine = fullyVisible[Math.min(OVERLAP_LINES, fullyVisible.length - 1)];
-    const T = S + (overlapLine.bottom - cRect.top) - H;
-    console.log('[pageTurn] prev →', { overlapLineIdx: Math.min(OVERLAP_LINES, fullyVisible.length - 1), overlapLineBottom: (overlapLine.bottom - cRect.top).toFixed(1), newScrollTop: T.toFixed(1), delta: (T - S).toFixed(1) });
-    if (T < S - 0.5) return Math.max(0, T);
+  // direction === "prev"
+  const currentStartIdx = allLines.findIndex(r => r.top >= cRect.top - edge);
+  if (currentStartIdx <= 0) {
+    return 0;
   }
-  const fallback = Math.max(0, S - pageStepPx);
-  console.log('[pageTurn] prev fallback →', fallback.toFixed(1));
-  return fallback < S - 0.5 ? fallback : 0;
+
+  let prevStartIdx = currentStartIdx - 1;
+  for (let i = currentStartIdx - 2; i >= 0; i--) {
+    const span = allLines[currentStartIdx - 1].bottom - allLines[i].top;
+    if (span > H) break;
+    prevStartIdx = i;
+  }
+
+  const T = S + (allLines[prevStartIdx].top - cRect.top);
+  if (T < S - 0.5) return Math.max(0, T);
+  return Math.max(0, S - pageStepPx);
 }
 
 // Ref type
@@ -624,6 +629,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
   const wrapperRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const bottomMaskRef = useRef<HTMLDivElement>(null);
   const selectionStartRef = useRef<{ paragraphIndex: number; charIndex: number } | null>(null);
   
   const [readProgress, setReadProgress] = useState(0);
@@ -638,6 +644,41 @@ export const ReadingArea = forwardRef(function ReadingArea({
     overscan: 24,
   });
 
+  const updatePageMask = useCallback(() => {
+    const mask = bottomMaskRef.current;
+    if (!mask) return;
+    if (!clickToTurnPage || !containerRef.current || !contentRef.current) {
+      mask.style.display = "none";
+      return;
+    }
+    const scrollEl = containerRef.current;
+    const cRect = scrollEl.getBoundingClientRect();
+    const H = scrollEl.clientHeight;
+    const items = virtualizer.getVirtualItems();
+    if (items.length === 0) { mask.style.display = "none"; return; }
+
+    const rawRects = gatherParagraphLineRects(contentRef.current, scrollEl, items);
+    const allLines = deduplicateLines(rawRects);
+    const fullyVisible = allLines
+      .filter(r => r.top >= cRect.top - PAGE_TURN_EDGE_EPS && r.bottom <= cRect.bottom + PAGE_TURN_EDGE_EPS);
+
+    if (fullyVisible.length > 0) {
+      const lastFV = fullyVisible[fullyVisible.length - 1];
+      const maskTop = lastFV.bottom - cRect.top;
+      const maskH = H - maskTop;
+      if (maskH > 2) {
+        mask.style.top = `${maskTop}px`;
+        mask.style.height = `${maskH}px`;
+        mask.style.backgroundColor = backgroundColor;
+        mask.style.display = "block";
+      } else {
+        mask.style.display = "none";
+      }
+    } else {
+      mask.style.display = "none";
+    }
+  }, [clickToTurnPage, virtualizer, backgroundColor]);
+
   const scrollReadingPage = useCallback(
     (direction: "next" | "prev") => {
       const el = containerRef.current;
@@ -649,27 +690,24 @@ export const ReadingArea = forwardRef(function ReadingArea({
 
       if (!processedContent?.length || !content) {
         const delta = direction === "next" ? pageStepPx : -pageStepPx;
-        el.scrollTo({
-          top: Math.min(maxS, Math.max(0, el.scrollTop + delta)),
-          behavior: "smooth",
-        });
+        el.scrollTop = Math.min(maxS, Math.max(0, el.scrollTop + delta));
+        requestAnimationFrame(() => requestAnimationFrame(() => updatePageMask()));
         return;
       }
 
       const items = virtualizer.getVirtualItems();
       if (items.length === 0) {
         const delta = direction === "next" ? pageStepPx : -pageStepPx;
-        el.scrollTo({
-          top: Math.min(maxS, Math.max(0, el.scrollTop + delta)),
-          behavior: "smooth",
-        });
+        el.scrollTop = Math.min(maxS, Math.max(0, el.scrollTop + delta));
+        requestAnimationFrame(() => requestAnimationFrame(() => updatePageMask()));
         return;
       }
 
       const target = computeSnappedPageScrollTop(el, content, items, direction, pageStepPx);
-      el.scrollTo({ top: target, behavior: "smooth" });
+      el.scrollTop = target;
+      requestAnimationFrame(() => requestAnimationFrame(() => updatePageMask()));
     },
-    [pageTurnRatio, processedContent, virtualizer]
+    [pageTurnRatio, processedContent, virtualizer, updatePageMask]
   );
 
   useEffect(() => {
@@ -677,24 +715,9 @@ export const ReadingArea = forwardRef(function ReadingArea({
       const el = wrapperRef.current;
       if (!el) return;
       const available = el.clientHeight;
-      const wrapperRect = el.getBoundingClientRect();
       const mobile = window.innerWidth <= MOBILE_BREAKPOINT;
       const safeZone = mobile ? MOBILE_BOTTOM_SAFE_ZONE : DESKTOP_BOTTOM_SAFE_ZONE;
       const h = available - safeZone;
-      const containerBottom = wrapperRect.top + Math.max(h, 200);
-      const badgeTop = window.innerHeight - 12 - 24;
-      console.log('[layout]', {
-        wrapperHeight: available,
-        wrapperTop: wrapperRect.top,
-        wrapperBottom: wrapperRect.bottom,
-        safeZone,
-        containerHeight: Math.max(h, 200),
-        containerBottomFromTop: containerBottom,
-        badgeTopFromTop: badgeTop,
-        overlap: containerBottom - badgeTop,
-        viewportHeight: window.innerHeight,
-        mobile,
-      });
       setContainerHeight(Math.max(h, 200));
     };
     calcHeight();
@@ -722,6 +745,14 @@ export const ReadingArea = forwardRef(function ReadingArea({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [scrollReadingPage, clickToTurnPage]);
+
+  useEffect(() => {
+    if (clickToTurnPage) {
+      requestAnimationFrame(() => requestAnimationFrame(() => updatePageMask()));
+    } else if (bottomMaskRef.current) {
+      bottomMaskRef.current.style.display = "none";
+    }
+  }, [clickToTurnPage, updatePageMask]);
 
   // 文本选择功能 - 句子翻译
   const handleTextSelection = useCallback(() => {
@@ -1257,6 +1288,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
+          position: "relative",
         }}
       >
         {/* 阅读容器 - 滚动模式 */}
@@ -1365,6 +1397,19 @@ export const ReadingArea = forwardRef(function ReadingArea({
           </div>
 
         </div>
+
+        {/* 底部遮罩：隐藏分页模式下的半行文字 */}
+        <div
+          ref={bottomMaskRef}
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            zIndex: 5,
+            pointerEvents: "none",
+            display: "none",
+          }}
+        />
 
         {/* 左下角阅读进度 */}
         <div style={{
