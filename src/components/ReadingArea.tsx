@@ -6,12 +6,9 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { LEVEL_COLORS, type CEFRLevel } from "@/lib/vocabLevel";
 
 // Layout constants
-const HEADER_HEIGHT = 56;
-const MOBILE_HEADER_HEIGHT = 48;
 const READING_PADDING_HORIZONTAL = 32;
 const MOBILE_READING_PADDING_HORIZONTAL = 12;
 const MOBILE_BREAKPOINT = 768;
-const MOBILE_TOP_GAP = 5;
 const MOBILE_BOTTOM_SAFE_ZONE = 60;
 const PAGE_TURN_EDGE_EPS = 3;
 
@@ -45,6 +42,8 @@ function gatherVisibleParagraphLineRects(
   return out;
 }
 
+const OVERLAP_LINES = 1;
+
 function computeSnappedPageScrollTop(
   scrollEl: HTMLElement,
   contentRoot: HTMLElement,
@@ -53,50 +52,34 @@ function computeSnappedPageScrollTop(
   pageStepPx: number
 ): number {
   const S = scrollEl.scrollTop;
-  const maxS = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight);
+  const H = scrollEl.clientHeight;
+  const maxS = Math.max(0, scrollEl.scrollHeight - H);
   const cRect = scrollEl.getBoundingClientRect();
   const edge = PAGE_TURN_EDGE_EPS;
   const rects = gatherVisibleParagraphLineRects(contentRoot, scrollEl, virtualIndices);
 
+  const fullyVisible = rects
+    .filter(r => r.top >= cRect.top - edge && r.bottom <= cRect.bottom + edge)
+    .sort((a, b) => a.top - b.top);
+
   if (direction === "next") {
-    let crossingBottom: DOMRect | null = null;
-    for (const r of rects) {
-      if (r.top < cRect.bottom - edge && r.bottom > cRect.bottom - edge) {
-        if (!crossingBottom || r.top > crossingBottom.top) crossingBottom = r;
-      }
+    if (fullyVisible.length > OVERLAP_LINES) {
+      const overlapLine = fullyVisible[fullyVisible.length - OVERLAP_LINES];
+      const T = S + (overlapLine.top - cRect.top);
+      if (T > S + 0.5) return Math.min(T, maxS);
     }
-
-    let T: number;
-    if (crossingBottom) {
-      const snapped = S + (crossingBottom.top - cRect.top);
-      T = snapped > S + 0.5 ? snapped : Math.min(S + pageStepPx, maxS);
-    } else {
-      T = Math.min(S + pageStepPx, maxS);
-    }
-    if (T <= S && maxS > S) {
-      T = Math.min(S + pageStepPx, maxS);
-    }
-    return Math.min(Math.max(0, T), maxS);
+    const fallback = Math.min(S + pageStepPx, maxS);
+    return fallback > S + 0.5 ? fallback : maxS;
   }
 
-  let crossingTop: DOMRect | null = null;
-  for (const r of rects) {
-    if (r.top < cRect.top + edge && r.bottom > cRect.top + edge) {
-      if (!crossingTop || r.top < crossingTop.top) crossingTop = r;
-    }
+  // prev: the top OVERLAP_LINES lines of current page should appear at the bottom of the previous page
+  if (fullyVisible.length > OVERLAP_LINES) {
+    const overlapLine = fullyVisible[Math.min(OVERLAP_LINES, fullyVisible.length - 1)];
+    const T = S + (overlapLine.bottom - cRect.top) - H;
+    if (T < S - 0.5) return Math.max(0, T);
   }
-
-  let T: number;
-  if (crossingTop) {
-    T = S - pageStepPx + (crossingTop.top - cRect.top);
-  } else {
-    T = S - pageStepPx;
-  }
-  T = Math.max(0, Math.min(T, maxS));
-  if (S > 0 && T >= S) {
-    T = Math.max(0, S - pageStepPx);
-  }
-  return T;
+  const fallback = Math.max(0, S - pageStepPx);
+  return fallback < S - 0.5 ? fallback : 0;
 }
 
 // Ref type
@@ -607,6 +590,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
   fontFamilyCss,
 
 }: ReadingAreaProps, ref: React.Ref<ReadingAreaRef>) {
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const selectionStartRef = useRef<{ paragraphIndex: number; charIndex: number } | null>(null);
@@ -659,26 +643,27 @@ export const ReadingArea = forwardRef(function ReadingArea({
 
   useEffect(() => {
     const calcHeight = () => {
+      const el = wrapperRef.current;
+      if (!el) return;
+      const available = el.clientHeight;
       const mobile = window.innerWidth <= MOBILE_BREAKPOINT;
-      const headerH = mobile ? MOBILE_HEADER_HEIGHT : HEADER_HEIGHT;
-      const PAGER_HEIGHT = 0;
-      const h = mobile
-        ? window.innerHeight - headerH - MOBILE_TOP_GAP - MOBILE_BOTTOM_SAFE_ZONE - PAGER_HEIGHT
-        : window.innerHeight - headerH - PAGER_HEIGHT;
+      const h = mobile ? available - MOBILE_BOTTOM_SAFE_ZONE : available - 30;
       setContainerHeight(Math.max(h, 200));
     };
-
     calcHeight();
     window.addEventListener('resize', calcHeight);
-    return () => window.removeEventListener('resize', calcHeight);
+    const ro = new ResizeObserver(calcHeight);
+    if (wrapperRef.current) ro.observe(wrapperRef.current);
+    return () => {
+      window.removeEventListener('resize', calcHeight);
+      ro.disconnect();
+    };
   }, []);
 
-  // 音量键翻页
+  // 音量键翻页（仅分页模式）
   useEffect(() => {
-    // 方法1：监听 keydown（部分安卓浏览器会把音量键映射为 keydown 事件）
+    if (!clickToTurnPage) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      // AudioVolumeUp / AudioVolumeDown 是标准键名
-      // VolumeUp / VolumeDown 是某些浏览器的旧键名
       if (e.key === 'AudioVolumeUp' || e.key === 'VolumeUp') {
         e.preventDefault();
         scrollReadingPage("prev");
@@ -687,10 +672,9 @@ export const ReadingArea = forwardRef(function ReadingArea({
         scrollReadingPage("next");
       }
     };
-
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [scrollReadingPage]);
+  }, [scrollReadingPage, clickToTurnPage]);
 
   // 文本选择功能 - 句子翻译
   const handleTextSelection = useCallback(() => {
@@ -1015,6 +999,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
       }
     };
 
+    if (!clickToTurnPage) return;
     el.addEventListener('touchstart', handleTouchStart, { passive: true });
     el.addEventListener('touchmove', handleTouchMove, { passive: false });
     el.addEventListener('touchend', handleTouchEnd, { passive: true });
@@ -1023,7 +1008,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
       el.removeEventListener('touchmove', handleTouchMove);
       el.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [scrollReadingPage]);
+  }, [scrollReadingPage, clickToTurnPage]);
 
   // 跳转到段落（滚动方式）
   const jumpToParagraph = useCallback((paragraphIndex: number) => {
@@ -1217,10 +1202,11 @@ export const ReadingArea = forwardRef(function ReadingArea({
 
     return (
       <div 
+        ref={wrapperRef}
         className="reading-wrapper" 
         style={{ 
           backgroundColor,
-          height: "100vh",
+          height: "100%",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",

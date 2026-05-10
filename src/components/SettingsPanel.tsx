@@ -215,32 +215,18 @@ export function SettingsPanel({
             </div>
           )}
 
-          {/* Page Turn Ratio */}
-          <div className="setting-row" onClick={() => toggle('pageTurn')}>
-            <span className="row-title">翻页幅度</span>
-            <span className="row-value">{Math.round(pageTurnRatio * 100)}%</span>
-          </div>
-          {expanded === 'pageTurn' && (
-            <div className="setting-expand">
-              <div className="setting-control">
-                <input type="range" min="0.5" max="1.0" step="0.05" value={pageTurnRatio}
-                  onChange={(e) => onPageTurnRatioChange(Number(e.target.value))} className="slider" />
-              </div>
-            </div>
-          )}
-
-          {/* Click to Turn Page */}
+          {/* Page Turn Mode */}
           <div className="setting-row" onClick={() => toggle('clickPage')}>
-            <span className="row-title">点击翻页</span>
-            <span className="row-value">{clickToTurnPage ? '开启' : '关闭'}</span>
+            <span className="row-title">翻页模式</span>
+            <span className="row-value">{clickToTurnPage ? '点击/手势' : '滑动'}</span>
           </div>
           {expanded === 'clickPage' && (
             <div className="setting-expand">
               <div className="mode-options">
                 <button className={`mode-btn ${!clickToTurnPage ? 'active' : ''}`}
-                  onClick={() => onClickToTurnPageChange(false)}>滑动模式</button>
+                  onClick={() => onClickToTurnPageChange(false)}>滑动翻页</button>
                 <button className={`mode-btn ${clickToTurnPage ? 'active' : ''}`}
-                  onClick={() => onClickToTurnPageChange(true)}>点击翻页</button>
+                  onClick={() => onClickToTurnPageChange(true)}>点击/手势翻页</button>
               </div>
             </div>
           )}
