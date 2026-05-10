@@ -6,9 +6,12 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { LEVEL_COLORS, type CEFRLevel } from "@/lib/vocabLevel";
 
 // Layout constants
+const HEADER_HEIGHT = 56;
+const MOBILE_HEADER_HEIGHT = 48;
 const READING_PADDING_HORIZONTAL = 32;
 const MOBILE_READING_PADDING_HORIZONTAL = 12;
 const MOBILE_BREAKPOINT = 768;
+const MOBILE_TOP_GAP = 5;
 const MOBILE_BOTTOM_SAFE_ZONE = 60;
 const PAGE_TURN_EDGE_EPS = 3;
 
@@ -55,28 +58,18 @@ function computeSnappedPageScrollTop(
   const edge = PAGE_TURN_EDGE_EPS;
   const rects = gatherVisibleParagraphLineRects(contentRoot, scrollEl, virtualIndices);
 
-  const OVERLAP_LINES = 3;
-
   if (direction === "next") {
-    // Find the last line whose bottom is fully within the viewport
-    let lastFullyVisibleLine: DOMRect | null = null;
+    let crossingBottom: DOMRect | null = null;
     for (const r of rects) {
-      if (r.bottom <= cRect.bottom + edge && r.top >= cRect.top - edge) {
-        if (!lastFullyVisibleLine || r.top > lastFullyVisibleLine.top) {
-          lastFullyVisibleLine = r;
-        }
+      if (r.top < cRect.bottom - edge && r.bottom > cRect.bottom - edge) {
+        if (!crossingBottom || r.top > crossingBottom.top) crossingBottom = r;
       }
     }
 
     let T: number;
-    if (lastFullyVisibleLine && rects.length > 0) {
-      // Count back OVERLAP_LINES from the last fully visible line
-      const sortedByTop = rects
-        .filter(r => r.bottom <= cRect.bottom + edge && r.top >= cRect.top - edge)
-        .sort((a, b) => a.top - b.top);
-      const overlapIdx = Math.max(0, sortedByTop.length - OVERLAP_LINES);
-      const overlapLine = sortedByTop[overlapIdx];
-      T = S + (overlapLine.top - cRect.top);
+    if (crossingBottom) {
+      const snapped = S + (crossingBottom.top - cRect.top);
+      T = snapped > S + 0.5 ? snapped : Math.min(S + pageStepPx, maxS);
     } else {
       T = Math.min(S + pageStepPx, maxS);
     }
@@ -86,16 +79,16 @@ function computeSnappedPageScrollTop(
     return Math.min(Math.max(0, T), maxS);
   }
 
-  // prev direction: scroll up so the current top lines become the bottom
-  const sortedFullyVisible = rects
-    .filter(r => r.bottom <= cRect.bottom + edge && r.top >= cRect.top - edge)
-    .sort((a, b) => a.top - b.top);
+  let crossingTop: DOMRect | null = null;
+  for (const r of rects) {
+    if (r.top < cRect.top + edge && r.bottom > cRect.top + edge) {
+      if (!crossingTop || r.top < crossingTop.top) crossingTop = r;
+    }
+  }
 
   let T: number;
-  if (sortedFullyVisible.length > OVERLAP_LINES) {
-    const overlapLine = sortedFullyVisible[Math.min(OVERLAP_LINES - 1, sortedFullyVisible.length - 1)];
-    const viewportH = cRect.height;
-    T = S - viewportH + (overlapLine.bottom - cRect.top);
+  if (crossingTop) {
+    T = S - pageStepPx + (crossingTop.top - cRect.top);
   } else {
     T = S - pageStepPx;
   }
@@ -614,7 +607,6 @@ export const ReadingArea = forwardRef(function ReadingArea({
   fontFamilyCss,
 
 }: ReadingAreaProps, ref: React.Ref<ReadingAreaRef>) {
-  const wrapperRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const selectionStartRef = useRef<{ paragraphIndex: number; charIndex: number } | null>(null);
@@ -667,24 +659,18 @@ export const ReadingArea = forwardRef(function ReadingArea({
 
   useEffect(() => {
     const calcHeight = () => {
-      const el = wrapperRef.current;
-      if (!el) return;
-      const available = el.clientHeight;
       const mobile = window.innerWidth <= MOBILE_BREAKPOINT;
+      const headerH = mobile ? MOBILE_HEADER_HEIGHT : HEADER_HEIGHT;
+      const PAGER_HEIGHT = 0;
       const h = mobile
-        ? available - MOBILE_BOTTOM_SAFE_ZONE
-        : available - 30;
+        ? window.innerHeight - headerH - MOBILE_TOP_GAP - MOBILE_BOTTOM_SAFE_ZONE - PAGER_HEIGHT
+        : window.innerHeight - headerH - PAGER_HEIGHT;
       setContainerHeight(Math.max(h, 200));
     };
 
     calcHeight();
     window.addEventListener('resize', calcHeight);
-    const ro = new ResizeObserver(calcHeight);
-    if (wrapperRef.current) ro.observe(wrapperRef.current);
-    return () => {
-      window.removeEventListener('resize', calcHeight);
-      ro.disconnect();
-    };
+    return () => window.removeEventListener('resize', calcHeight);
   }, []);
 
   // 音量键翻页
@@ -1231,11 +1217,10 @@ export const ReadingArea = forwardRef(function ReadingArea({
 
     return (
       <div 
-        ref={wrapperRef}
         className="reading-wrapper" 
         style={{ 
           backgroundColor,
-          height: "100%",
+          height: "100vh",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
@@ -1281,9 +1266,9 @@ export const ReadingArea = forwardRef(function ReadingArea({
             const el = containerRef.current;
             if (!el) return;
             if (clickX < halfWidth) {
-              scrollReadingPage("prev");
+              el.scrollBy({ top: -(containerHeight * pageTurnRatio), behavior: "smooth" });
             } else {
-              scrollReadingPage("next");
+              el.scrollBy({ top: containerHeight * pageTurnRatio, behavior: "smooth" });
             }
           }}
           style={{
