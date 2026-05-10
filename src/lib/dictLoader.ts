@@ -130,293 +130,75 @@ export function getDictLoadError(): string | null {
 }
 
 /**
- * 智能去后缀 - 尝试多种可能的还原形式（外部词典用）
+ * 保守的屈折变体生成 - 只处理英语动词/名词的"变形"形式，
+ * 不再做派生形态学（er/est/ly/ness/ment/...）和前缀剥离，
+ * 避免出现 pier→pie、unaging→age、indiscernibly→discern 之类错误匹配。
  */
 function getStemVariantsExternal(word: string): string[] {
 	const variants: string[] = [];
 	const lower = word.toLowerCase();
-	
-	const doubleConsonants = ['b', 'd', 'g', 'm', 'n', 'p', 'r', 's', 't'];
-	const vowelEnding = /[aeiou]$/;
-	const consonantYEnding = /[bcdfghjklmnpqrstvwxyz]y$/i;
-	
-	// ================== 后缀处理 ==================
-	
-	// 去-ness时
-	if (lower.endsWith('ness')) {
-		const base = lower.slice(0, -4);
-		variants.push(base);
-		// happiness -> happy, laziness -> lazy
-		if (lower.endsWith('iness')) {
-			variants.push(base + 'y');
-		}
-		// kindness -> kind
+	const doubleConsonants = ['b', 'd', 'g', 'l', 'm', 'n', 'p', 'r', 's', 't'];
+
+	if (lower.endsWith('ies') && lower.length > 4) {
+		variants.push(lower.slice(0, -3) + 'y');
 	}
-	
-	// 去-ment时
-	if (lower.endsWith('ment')) {
-		const base = lower.slice(0, -4);
-		variants.push(base);
-		// excitement -> excite
-		if (base.endsWith('e')) {
-			variants.push(base);
-		} else {
-			variants.push(base + 'e');
-		}
-	}
-	
-	// 去-tion时
-	if (lower.endsWith('tion')) {
-		const base = lower.slice(0, -4);
-		variants.push(base);
-		variants.push(base + 'e');
-		// education -> educate
-		if (!base.endsWith('e')) {
-			variants.push(base + 'e');
-		}
-	}
-	
-	// 去-able时
-	if (lower.endsWith('able')) {
-		const base = lower.slice(0, -4);
-		variants.push(base);
-		// comfortable -> comfort
-		if (!base.endsWith('e')) {
-			variants.push(base + 'e');
-		}
-	}
-	
-	// 去-ible时
-	if (lower.endsWith('ible')) {
-		const base = lower.slice(0, -4);
-		variants.push(base);
-	}
-	
-	// 去-ful时
-	if (lower.endsWith('ful')) {
-		const base = lower.slice(0, -3);
-		variants.push(base);
-		// careful -> care
-		if (base.endsWith(' ')) {
-			// shouldn't happen
-		}
-		// beautiful -> beauty (特殊处理)
-		if (lower.endsWith('iful') || lower.endsWith('tiful')) {
-			const base2 = base.slice(0, -1); // beauti
-			variants.push(base2 + 'y'); // beauty
-		}
-	}
-	
-	// 去-ous时
-	if (lower.endsWith('ous')) {
-		const base = lower.slice(0, -3);
-		variants.push(base);
-		// dangerous -> danger
-	}
-	
-	// 去-ive时
-	if (lower.endsWith('ive')) {
-		const base = lower.slice(0, -3);
-		variants.push(base);
-		// active -> act
-		variants.push(base + 'e');
-		// creative -> create
-		if (!base.endsWith('e')) {
-			variants.push(base + 'e');
-		}
-	}
-	
-	// 去-al时
-	if (lower.endsWith('al')) {
-		const base = lower.slice(0, -2);
-		variants.push(base);
-		// national -> nation
-		variants.push(base + 'ity');
-		// personal -> person
-		if (base.endsWith('al')) {
-			variants.push(base.slice(0, -2));
-		}
-	}
-	
-	// 去-en时
-	if (lower.endsWith('en')) {
-		const base = lower.slice(0, -2);
-		variants.push(base);
-		// wooden -> wood
-	}
-	
-	// 去-ed时
-	if (lower.endsWith('ed')) {
-		const base = lower.slice(0, -2);
-		variants.push(base);
-		variants.push(base + 'e');
+	if (lower.endsWith('es') && lower.length > 3) {
+		variants.push(lower.slice(0, -2));
 		variants.push(lower.slice(0, -1));
-		if (base.length >= 2) {
-			const lastTwo = base.slice(-2);
-			if (lastTwo[0] === lastTwo[1] && doubleConsonants.includes(lastTwo[0])) {
-				variants.push(base.slice(0, -1));
-			}
-		}
-		if (consonantYEnding.test(base)) {
-			variants.push(base.slice(0, -1) + 'ied');
-		}
 	}
-	
-	// 去-ing时
-	if (lower.endsWith('ing')) {
-		const base = lower.slice(0, -3);
-		variants.push(base);
-		if (vowelEnding.test(base.slice(-2, -1))) {
-			variants.push(base + 'e');
-		}
-		if (base.length >= 2) {
-			const lastTwo = base.slice(-2);
-			if (lastTwo[0] === lastTwo[1] && doubleConsonants.includes(lastTwo[0])) {
-				variants.push(base.slice(0, -1));
+	if (lower.endsWith('s') && !lower.endsWith('ss') && lower.length > 2) {
+		variants.push(lower.slice(0, -1));
+	}
+	if (lower.endsWith('ied') && lower.length > 4) {
+		variants.push(lower.slice(0, -3) + 'y');
+	}
+	if (lower.endsWith('ed') && lower.length > 3) {
+		variants.push(lower.slice(0, -2));
+		variants.push(lower.slice(0, -1));
+		const tail = lower.slice(0, -2);
+		if (tail.length >= 2) {
+			const a = tail[tail.length - 1];
+			const b = tail[tail.length - 2];
+			if (a === b && doubleConsonants.includes(a)) {
+				variants.push(tail.slice(0, -1));
 			}
 		}
 	}
-	
-	// 去-s时
-	if (lower.endsWith('s') && lower.length > 2) {
-		const base = lower.slice(0, -1);
-		if (lower.endsWith('es')) {
-			const baseEs = lower.slice(0, -2);
-			variants.push(baseEs);
-			if (/[shxz]/.test(baseEs.slice(-1)) || baseEs.endsWith('ch') || baseEs.endsWith('o')) {
-				variants.push(baseEs);
-			}
-			if (consonantYEnding.test(baseEs)) {
-				variants.push(baseEs.slice(0, -1) + 'ied');
-			}
-		}
-		variants.push(base);
-		if (consonantYEnding.test(base)) {
-			variants.push(base.slice(0, -1) + 'ies');
-		}
-	}
-	
-	// 去-er时
-	if (lower.endsWith('er')) {
-		const base = lower.slice(0, -2);
-		variants.push(base);
-		variants.push(base + 'e');
-		if (base.length >= 2) {
-			const lastTwo = base.slice(-2);
-			if (lastTwo[0] === lastTwo[1] && doubleConsonants.includes(lastTwo[0])) {
-				variants.push(base.slice(0, -1));
-			}
-		}
-	}
-	
-	// 去-est时
-	if (lower.endsWith('est')) {
+	if (lower.endsWith('ing') && lower.length > 4) {
 		const base = lower.slice(0, -3);
 		variants.push(base);
 		variants.push(base + 'e');
 		if (base.length >= 2) {
-			const lastTwo = base.slice(-2);
-			if (lastTwo[0] === lastTwo[1] && doubleConsonants.includes(lastTwo[0])) {
+			const a = base[base.length - 1];
+			const b = base[base.length - 2];
+			if (a === b && doubleConsonants.includes(a)) {
 				variants.push(base.slice(0, -1));
 			}
 		}
 	}
-	
-	// 去-ly时
-	if (lower.endsWith('ly')) {
-		const base = lower.slice(0, -2);
-		variants.push(base);
-		variants.push(base + 'le');
-		variants.push(base + 'y');
-		if (lower.endsWith('ally')) {
-			variants.push(lower.slice(0, -4));
-		}
-	}
-	
-	// ================== 前缀处理 ==================
-	
-	// 去常见前缀
-	const prefixes = ['un', 're', 'dis', 'mis', 'pre', 'over', 'im', 'in', 'ir', 'il'];
-	
-	for (const prefix of prefixes) {
-		if (lower.startsWith(prefix) && lower.length > prefix.length + 2) {
-			const withoutPrefix = lower.slice(prefix.length);
-			variants.push(withoutPrefix);
-			
-			// 对去前缀后的词也尝试后缀处理
-			const subVariants = getStemVariantsExternal(withoutPrefix);
-			for (const sv of subVariants) {
-				variants.push(sv);
-			}
-		}
-	}
-	
-	// 递归尝试更短的词根
-	if (variants.length > 0) {
-		const uniqueVariants = [...new Set(variants)];
-		for (const v of uniqueVariants) {
-			if (v !== lower && v.length > 2) {
-				const recursive = getStemVariantsExternal(v);
-				for (const r of recursive) {
-					if (!variants.includes(r)) {
-						variants.push(r);
-					}
-				}
-			}
-		}
-	}
-	
+
 	const unique = [...new Set(variants)];
 	return unique.filter(v => v.length >= 2 && v !== lower);
 }
 
 /**
- * 智能词典查找 - 支持后缀智能去除
+ * 外部词典查找 - 仅做安全的屈折还原，不再做前缀剥离
  */
 export function smartLookupExternal(word: string): string | null {
 	const lower = word.toLowerCase().trim();
-	
+
 	if (externalDict[lower]) {
 		return externalDict[lower];
 	}
-	
-	// 2. 获取所有可能的词根变体并尝试
+
 	const variants = getStemVariantsExternal(lower);
 	for (const variant of variants) {
 		if (externalDict[variant]) {
 			return externalDict[variant];
 		}
 	}
-	
-	// 3. 去前缀处理
-	const prefixVariants = getPrefixVariants(lower);
-	for (const variant of prefixVariants) {
-		if (externalDict[variant]) {
-			return externalDict[variant];
-		}
-	}
-	
-	return null;
-}
 
-/**
- * 获取去掉前缀后的变体
- */
-function getPrefixVariants(word: string): string[] {
-	const variants: string[] = [];
-	const lower = word.toLowerCase();
-	
-	// 常见前缀
-	const prefixes = ['un', 're', 'dis', 'mis', 'pre', 'over', 'im', 'in', 'ir', 'il'];
-	
-	for (const prefix of prefixes) {
-		if (lower.startsWith(prefix) && lower.length > prefix.length + 2) {
-			const withoutPrefix = lower.slice(prefix.length);
-			variants.push(withoutPrefix);
-		}
-	}
-	
-	return [...new Set(variants)];
+	return null;
 }
 
 /**
@@ -580,22 +362,13 @@ export function lookupExternalDictEn(word: string): string | null {
     return externalDictEn[lower];
   }
   
-  // Try common suffix variants
   const variants = getStemVariantsExternal(lower);
   for (const variant of variants) {
     if (externalDictEn[variant]) {
       return externalDictEn[variant];
     }
   }
-  
-  // Try prefix variants
-  const prefixVariants = getPrefixVariants(lower);
-  for (const variant of prefixVariants) {
-    if (externalDictEn[variant]) {
-      return externalDictEn[variant];
-    }
-  }
-  
+
   return null;
 }
 
