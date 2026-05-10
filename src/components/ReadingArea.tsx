@@ -749,10 +749,25 @@ export const ReadingArea = forwardRef(function ReadingArea({
   useEffect(() => {
     if (clickToTurnPage) {
       requestAnimationFrame(() => requestAnimationFrame(() => updatePageMask()));
-    } else if (bottomMaskRef.current) {
+      return;
+    }
+    if (bottomMaskRef.current) {
       bottomMaskRef.current.style.display = "none";
     }
-  }, [clickToTurnPage, updatePageMask]);
+    // 切回滑动模式时强制 virtualizer 重新测量、并触发一次 scroll 事件，
+    // 让浏览器重新计算 overflow / touch-action 后的可滚动区域，避免短时滑不动。
+    const el = containerRef.current;
+    if (!el) return;
+    requestAnimationFrame(() => {
+      try {
+        virtualizer.measure();
+      } catch { /* ignore */ }
+      const prev = el.scrollTop;
+      el.scrollTop = prev + 1;
+      el.scrollTop = prev;
+      el.dispatchEvent(new Event('scroll'));
+    });
+  }, [clickToTurnPage, updatePageMask, virtualizer]);
 
   // 文本选择功能 - 句子翻译
   const handleTextSelection = useCallback(() => {
@@ -1305,7 +1320,19 @@ export const ReadingArea = forwardRef(function ReadingArea({
             }
             if (Date.now() - lastSwipeTimeRef.current < 400) return;
 
-            // 分页模式：点击直接翻页，使用对齐算法
+            // 任何模式下，点击单词/标注都不触发翻页（让 onWordClick 接管）
+            const target = e.target as HTMLElement;
+            const isWordOrAnnotation = !!(
+              target.classList.contains('word') ||
+              target.classList.contains('annotation') ||
+              target.classList.contains('sentence-annotation') ||
+              target.closest('.word') ||
+              target.closest('.annotation') ||
+              target.closest('.sentence-annotation')
+            );
+            if (isWordOrAnnotation) return;
+
+            // 分页模式：点击空白区域才翻页
             if (clickToTurnPage) {
               const rect = containerRef.current?.getBoundingClientRect();
               if (!rect) return;
@@ -1316,20 +1343,6 @@ export const ReadingArea = forwardRef(function ReadingArea({
               } else {
                 scrollReadingPage("next");
               }
-              return;
-            }
-
-            // 滑动模式：点击单词/标注不处理（留给 onWordClick）
-            const target = e.target as HTMLElement;
-            if (
-              target.classList.contains('word') ||
-              target.classList.contains('annotation') ||
-              target.classList.contains('sentence-annotation') ||
-              target.closest('.word') ||
-              target.closest('.annotation') ||
-              target.closest('.sentence-annotation')
-            ) {
-              return;
             }
           }}
           style={{

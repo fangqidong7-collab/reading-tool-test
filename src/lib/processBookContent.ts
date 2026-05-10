@@ -29,6 +29,19 @@ export async function processTextToSegmentsAsync(
         if (/^\s+$/.test(token)) {
           segs.push({ text: token, lemma: "", type: "space" });
         } else if (/^[a-zA-Z]/.test(token)) {
+          // 所有格 's / ’s 单独切出，让前面的词依然可点击（Cloister's → Cloister + 's）
+          const possessive = token.match(/^([a-zA-Z]+)(['\u2019]s)$/);
+          if (possessive) {
+            const baseWord = possessive[1];
+            segs.push({
+              text: baseWord,
+              lemma: lemmatize(baseWord.toLowerCase()),
+              type: "word",
+            });
+            segs.push({ text: possessive[2], lemma: "", type: "punctuation" });
+            continue;
+          }
+          // 真·缩写（haven't / I'm / you're / it's …）保留为整体不可点击 punctuation
           const isContraction = /['\u2019]/.test(token);
           segs.push({
             text: token,
