@@ -1682,8 +1682,11 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
 
         .main-content {
           flex: 1;
+          min-height: 0;
           overflow: hidden;
           position: relative;
+          display: flex;
+          flex-direction: column;
         }
 
         /* 仅外层包裹，滚动只发生在 ReadingArea 内部，避免双滚动条 */
