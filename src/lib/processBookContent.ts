@@ -20,45 +20,36 @@ export async function processTextToSegmentsAsync(
 
     const headingMatch = trimmed.match(/^\[H(\d)\]([\s\S]*?)\[\/H\d\]$/);
 
+    const tokenize = (input: string): ProcessedSegment[] => {
+      const segs: ProcessedSegment[] = [];
+      const regex = /([a-zA-Z]+(?:['\u2019][a-zA-Z]+)*|[^a-zA-Z\s]+|\s+)/g;
+      let m;
+      while ((m = regex.exec(input)) !== null) {
+        const token = m[0];
+        if (/^\s+$/.test(token)) {
+          segs.push({ text: token, lemma: "", type: "space" });
+        } else if (/^[a-zA-Z]/.test(token)) {
+          const isContraction = /['\u2019]/.test(token);
+          segs.push({
+            text: token,
+            lemma: isContraction ? "" : lemmatize(token.toLowerCase()),
+            type: isContraction ? "punctuation" : "word",
+          });
+        } else {
+          segs.push({ text: token, lemma: "", type: "punctuation" });
+        }
+      }
+      return segs;
+    };
+
     if (headingMatch) {
       const level = parseInt(headingMatch[1], 10);
       const headingText = headingMatch[2].trim();
-
       if (headingText) {
-        const segments: ProcessedSegment[] = [];
-        const regex = /([a-zA-Z]+|[^a-zA-Z\s]+|\s+)/g;
-        let segMatch;
-
-        while ((segMatch = regex.exec(headingText)) !== null) {
-          const token = segMatch[0];
-          if (/^\s+$/.test(token)) {
-            segments.push({ text: token, lemma: "", type: "space" });
-          } else if (/^[a-zA-Z]+$/.test(token)) {
-            segments.push({ text: token, lemma: lemmatize(token.toLowerCase()), type: "word" });
-          } else {
-            segments.push({ text: token, lemma: "", type: "punctuation" });
-          }
-        }
-
-        result.push({ segments, headingLevel: level });
+        result.push({ segments: tokenize(headingText), headingLevel: level });
       }
     } else {
-      const segments: ProcessedSegment[] = [];
-      const regex = /([a-zA-Z]+|[^a-zA-Z\s]+|\s+)/g;
-      let segMatch;
-
-      while ((segMatch = regex.exec(trimmed)) !== null) {
-        const token = segMatch[0];
-        if (/^\s+$/.test(token)) {
-          segments.push({ text: token, lemma: "", type: "space" });
-        } else if (/^[a-zA-Z]+$/.test(token)) {
-          segments.push({ text: token, lemma: lemmatize(token.toLowerCase()), type: "word" });
-        } else {
-          segments.push({ text: token, lemma: "", type: "punctuation" });
-        }
-      }
-
-      result.push({ segments });
+      result.push({ segments: tokenize(trimmed) });
     }
 
     if (i > 0 && i % CHUNK_SIZE === 0) {

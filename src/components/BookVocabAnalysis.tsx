@@ -33,6 +33,17 @@ interface WordStat {
 
 const ALL_LEVELS: CEFRLevel[] = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 
+const STOPWORDS = new Set([
+  'i', 'a', 'an', 'the', 'is', 'am', 'are', 'was', 'were', 'be', 'been', 'being',
+  'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'shall', 'should',
+  'may', 'might', 'must', 'can', 'could', 'to', 'of', 'in', 'for', 'on', 'with',
+  'at', 'by', 'from', 'as', 'into', 'about', 'up', 'out', 'if', 'or', 'and', 'but',
+  'not', 'no', 'so', 'we', 'he', 'she', 'it', 'they', 'me', 'him', 'her', 'us',
+  'them', 'my', 'his', 'its', 'our', 'your', 'their', 'this', 'that', 'these',
+  'those', 'what', 'which', 'who', 'whom', 'how', 'when', 'where', 'why',
+  'all', 'each', 'both', 'than', 'too', 'very', 'just', 'also',
+]);
+
 function lookupMeaning(word: string, dictMode: 'zh' | 'en' | 'en-simple'): string {
   const isEn = dictMode === 'en' || dictMode === 'en-simple';
   if (isEn) {
@@ -85,8 +96,8 @@ export function BookVocabAnalysis({
   const [tab, setTab] = useState<'overview' | 'words'>('overview');
   const [filterLevels, setFilterLevels] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [hideInVocab, setHideInVocab] = useState(false);
-  const [hideMastered, setHideMastered] = useState(false);
+  const [vocabFilter, setVocabFilter] = useState<'all' | 'hide' | 'only'>('all');
+  const [masteredFilter, setMasteredFilter] = useState<'all' | 'hide' | 'only'>('all');
   const [addedWords, setAddedWords] = useState<Set<string>>(new Set());
   const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
   const [loadingWord, setLoadingWord] = useState<string | null>(null);
@@ -128,6 +139,7 @@ export function BookVocabAnalysis({
         if (seg.type !== 'word') continue;
         totalWords++;
         const root = seg.lemma || lemmatize(seg.text.toLowerCase());
+        if (STOPWORDS.has(root) || root.length <= 1) continue;
         const existing = wordCounts.get(root);
         if (existing) {
           existing.count++;
@@ -178,7 +190,7 @@ export function BookVocabAnalysis({
     return !!(masteredWords && masteredWords.has(word));
   }, [masteredWords]);
 
-  useEffect(() => { setVisibleCount(100); }, [filterLevels, minLen, minFreq, hideInVocab, hideMastered]);
+  useEffect(() => { setVisibleCount(100); }, [filterLevels, minLen, minFreq, vocabFilter, masteredFilter]);
 
   const handleBodyScroll = useCallback(() => {
     const el = bodyRef.current;
@@ -222,7 +234,7 @@ export function BookVocabAnalysis({
 
     const wordsToAdd: string[] = [];
     for (const word of selected) {
-      if (!isInVocab(word)) wordsToAdd.push(word);
+      if (!isInVocab(word) && !isMastered(word)) wordsToAdd.push(word);
     }
     if (wordsToAdd.length === 0) return;
 
@@ -290,13 +302,17 @@ export function BookVocabAnalysis({
     }
     if (minLen > 0 && w.word.length < minLen) return false;
     if (minFreq > 0 && w.count < minFreq) return false;
-    if (hideInVocab && isInVocab(w.word)) return false;
-    if (hideMastered && isMastered(w.word)) return false;
+    const inV = isInVocab(w.word);
+    if (vocabFilter === 'hide' && inV) return false;
+    if (vocabFilter === 'only' && !inV) return false;
+    const inM = isMastered(w.word);
+    if (masteredFilter === 'hide' && inM) return false;
+    if (masteredFilter === 'only' && !inM) return false;
     return true;
   });
 
-  const addableFiltered = filteredWords.filter(w => !isInVocab(w.word));
-  const selectedInView = filteredWords.filter(w => selected.has(w.word) && !isInVocab(w.word));
+  const addableFiltered = filteredWords.filter(w => !isInVocab(w.word) && !isMastered(w.word));
+  const selectedInView = filteredWords.filter(w => selected.has(w.word) && !isInVocab(w.word) && !isMastered(w.word));
   const allAddableSelected = addableFiltered.length > 0 && addableFiltered.every(w => selected.has(w.word));
 
   const maxLevelCount = Math.max(...ALL_LEVELS.map(l => analysis.levelUniqueWords[l] || 0), analysis.unknownUniqueCount || 1);
@@ -444,15 +460,16 @@ export function BookVocabAnalysis({
                   placeholder="不限"
                   onChange={e => handleMinFreqChange(parseInt(e.target.value, 10) || 0)}
                 />
-                <span className="va-len-sep" />
-                <label className="va-hide-vocab">
-                  <input type="checkbox" checked={hideInVocab} onChange={e => setHideInVocab(e.target.checked)} />
-                  <span>隐藏已加入</span>
-                </label>
-                <label className="va-hide-vocab">
-                  <input type="checkbox" checked={hideMastered} onChange={e => setHideMastered(e.target.checked)} />
-                  <span>隐藏已掌握</span>
-                </label>
+              </div>
+              <div className="va-status-filters">
+                <button
+                  className={`va-status-btn ${vocabFilter === 'all' ? '' : 'active'}`}
+                  onClick={() => setVocabFilter(prev => prev === 'all' ? 'hide' : prev === 'hide' ? 'only' : 'all')}
+                >已加入{vocabFilter === 'hide' ? '▪隐藏' : vocabFilter === 'only' ? '▪仅看' : ''}</button>
+                <button
+                  className={`va-status-btn ${masteredFilter === 'all' ? '' : 'active'}`}
+                  onClick={() => setMasteredFilter(prev => prev === 'all' ? 'hide' : prev === 'hide' ? 'only' : 'all')}
+                >已掌握{masteredFilter === 'hide' ? '▪隐藏' : masteredFilter === 'only' ? '▪仅看' : ''}</button>
               </div>
 
               {/* Batch actions bar */}
@@ -710,16 +727,29 @@ export function BookVocabAnalysis({
         .va-len-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
         .va-len-input:focus { border-color: #4a90d9; }
         .va-len-sep { width: 1px; height: 16px; background: rgba(128,128,128,0.2); flex-shrink: 0; }
-        .va-hide-vocab {
+        .va-status-filters {
           display: flex;
-          align-items: center;
-          gap: 4px;
-          cursor: pointer;
-          white-space: nowrap;
-          opacity: 0.6;
-          font-size: 12px;
+          gap: 6px;
+          margin-top: 8px;
+          flex-wrap: wrap;
         }
-        .va-hide-vocab input { width: 14px; height: 14px; cursor: pointer; margin: 0; }
+        .va-status-btn {
+          padding: 3px 10px;
+          border: 1px solid rgba(128,128,128,0.3);
+          border-radius: 12px;
+          background: transparent;
+          color: inherit;
+          font-size: 12px;
+          cursor: pointer;
+          opacity: 0.6;
+          transition: all 0.15s;
+          white-space: nowrap;
+        }
+        .va-status-btn.active {
+          opacity: 1;
+          border-color: #4a90d9;
+          color: #4a90d9;
+        }
         .va-filter-btn.active {
           background: #4a90d9;
           color: white;
