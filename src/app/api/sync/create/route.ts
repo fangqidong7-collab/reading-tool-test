@@ -15,6 +15,8 @@ function generateSyncCode(): string {
 
 interface SyncDataPayload {
   vocabulary?: Record<string, unknown>;
+  masteredWords?: string[];
+  masteredVocabulary?: Record<string, unknown>;
   bookProgress?: Record<string, unknown>;
   books?: Array<Record<string, unknown>>;
 }
