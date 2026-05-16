@@ -45,6 +45,11 @@ export type SyncMergedPayload = {
     string,
     { root: string; meaning: string; pos: string; correctCount?: number; meaningZh?: string; meaningEn?: string; meaningEnSimple?: string }
   >;
+  masteredWords?: string[];
+  masteredVocabulary?: Record<
+    string,
+    { root: string; meaning: string; pos: string; correctCount?: number; meaningZh?: string; meaningEn?: string; meaningEnSimple?: string }
+  >;
   bookProgress?: Record<string, unknown>;
   books?: Book[];
   updatedAt?: number;
@@ -180,7 +185,12 @@ export function useSync() {
    * 2. POST /api/sync/push-books — 只传缺失书籍正文
    */
   const syncBoth = useCallback(async (options: {
-    data: { vocabulary: Record<string, unknown>; bookProgress: Record<string, unknown> };
+    data: {
+      vocabulary: Record<string, unknown>;
+      masteredWords?: string[];
+      masteredVocabulary?: Record<string, unknown>;
+      bookProgress: Record<string, unknown>;
+    };
     bookManifest: BookManifestEntry[];
     getBooksForIds: (ids: string[]) => Book[];
     onConfirmOverwrite?: (info: { localCount: number; cloudCount: number }) => Promise<boolean>;

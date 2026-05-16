@@ -15,9 +15,12 @@ interface Book {
 
 interface SyncData {
   vocabulary?: Record<string, unknown>;
+  masteredWords?: string[];
+  masteredVocabulary?: Record<string, unknown>;
   bookProgress?: Record<string, unknown>;
   books?: Book[];
   updatedAt?: number;
+  createdAt?: number;
 }
 
 function normalizeBookForKv(book: Book): Book {

@@ -12,6 +12,8 @@ interface BookManifestEntry {
 
 interface SyncData {
   vocabulary?: Record<string, unknown>;
+  masteredWords?: string[];
+  masteredVocabulary?: Record<string, unknown>;
   bookProgress?: Record<string, unknown>;
   books?: Array<Record<string, unknown>>;
   updatedAt?: number;
@@ -94,6 +96,8 @@ export async function POST(request: Request) {
         action: 'pull',
         data: {
           vocabulary: cloudData.vocabulary,
+          masteredVocabulary: cloudData.masteredVocabulary,
+          masteredWords: cloudData.masteredWords,
           bookProgress: cloudData.bookProgress,
           updatedAt: cloudData.updatedAt,
         },
@@ -130,8 +134,11 @@ export async function POST(request: Request) {
 
     const payload: SyncData = {
       vocabulary: data.vocabulary,
+      masteredVocabulary: data.masteredVocabulary ?? cloudData.masteredVocabulary,
+      masteredWords: data.masteredWords ?? cloudData.masteredWords,
       bookProgress: data.bookProgress,
       books: filteredBooks,
+      createdAt: cloudData.createdAt,
       updatedAt,
     };
 

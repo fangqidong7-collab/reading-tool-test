@@ -15,6 +15,9 @@ import {
 } from "lucide-react";
 import { idbGet, idbSet } from "@/lib/storage";
 
+const MASTERED_VOCAB_KEY = "english-reader-mastered-vocabulary";
+const MASTERED_WORDS_KEY = "english-reader-mastered-words";
+
 interface VocabItem {
   root: string;
   meaning: string;
@@ -111,6 +114,12 @@ export function DataBackupPanel({
       } catch (e) {
         console.warn("从 IndexedDB 读取全局词汇表失败:", e);
       }
+      try {
+        const masteredStr = await idbGet(MASTERED_VOCAB_KEY);
+        if (masteredStr) data.masteredVocabulary = JSON.parse(masteredStr);
+      } catch (e) {
+        console.warn("从 IndexedDB 读取已掌握词汇失败:", e);
+      }
       data.exportedAt = new Date().toISOString();
       data.version = 1;
 
@@ -119,9 +128,12 @@ export function DataBackupPanel({
       downloadJSON(jsonStr, `reading-assistant-backup-${dateStr}.json`);
 
       const bookCount = Array.isArray(data.books) ? data.books.length : 0;
-      const vocabCount = data.globalVocabulary ? Object.keys(data.globalVocabulary).length : 0;
+      const vocabCount = data.globalVocabulary ? Object.keys(data.globalVocabulary as object).length : 0;
+      const masteredCount = data.masteredVocabulary ? Object.keys(data.masteredVocabulary as object).length : 0;
       setStatus("success");
-      setMessage(`导出成功！文件已下载（共 ${bookCount} 本书，${vocabCount} 个词汇）`);
+      setMessage(
+        `导出成功！文件已下载（共 ${bookCount} 本书，${vocabCount} 个词汇${masteredCount > 0 ? `，${masteredCount} 个已掌握` : ""}）`
+      );
     } catch (err) {
       setStatus("error");
       setMessage("导出失败: " + (err instanceof Error ? err.message : "未知错误"));
@@ -141,7 +153,10 @@ export function DataBackupPanel({
       if (!Array.isArray(data.books)) throw new Error("文件格式无效：缺少 books 数组");
       const bookCount = data.books.length;
       const vocabCount = data.globalVocabulary ? Object.keys(data.globalVocabulary).length : 0;
-      if (!window.confirm(`导入将覆盖当前设备上的所有数据，确定要继续吗？\n\n文件包含 ${bookCount} 本书，${vocabCount} 个词汇。`)) {
+      const masteredCount = data.masteredVocabulary ? Object.keys(data.masteredVocabulary).length : 0;
+      if (!window.confirm(
+        `导入将覆盖当前设备上的所有数据，确定要继续吗？\n\n文件包含 ${bookCount} 本书，${vocabCount} 个词汇${masteredCount > 0 ? `，${masteredCount} 个已掌握` : ""}。`
+      )) {
         setStatus("idle");
         setMessage("");
         return;
@@ -149,6 +164,10 @@ export function DataBackupPanel({
       setMessage("正在导入数据...");
       if (data.books) await idbSet("english-reader-books", JSON.stringify(data.books));
       if (data.globalVocabulary) await idbSet("english-reader-global-vocabulary", JSON.stringify(data.globalVocabulary));
+      if (data.masteredVocabulary) {
+        await idbSet(MASTERED_VOCAB_KEY, JSON.stringify(data.masteredVocabulary));
+        await idbSet(MASTERED_WORDS_KEY, JSON.stringify(Object.keys(data.masteredVocabulary)));
+      }
       if (data.settings) localStorage.setItem("english-reader-settings", JSON.stringify(data.settings));
       if (data.sidebarStates) localStorage.setItem("reading-sidebar-states", JSON.stringify(data.sidebarStates));
       setStatus("success");
@@ -554,7 +573,7 @@ export function DataBackupPanel({
             {activeTab === "export" ? (
               <div className="export-section">
                 <div className="section-icon"><FolderDown size={48} /></div>
-                <p className="section-desc">导出所有书籍、标注、书签和阅读设置到本地文件。</p>
+                <p className="section-desc">导出所有书籍、标注、书签、词汇表、已掌握词汇和阅读设置到本地文件。</p>
                 <p className="section-note">导出的文件可以在其他设备上导入使用。</p>
                 {status === "exporting" ? (
                   <div className="status-loading"><Spinner /><span>{message}</span></div>
