@@ -26,6 +26,11 @@ interface GlobalVocabularyPageProps {
   backgroundColor?: string;
   dictMode?: 'zh' | 'en' | 'en-simple';
   onMergeVocabulary?: (vocab: Record<string, { root: string; meaning: string; pos: string; meaningZh?: string; meaningEn?: string; meaningEnSimple?: string }>) => void;
+  // 已掌握词汇相关
+  masteredVocabulary?: Record<string, VocabItem>;
+  onRestoreMastered?: (root: string) => void;
+  onRemoveMastered?: (root: string) => void;
+  onClearMasteredVocabulary?: () => void;
 }
 
 function getDisplayMeaning(item: VocabItem, dictMode: string): string {
@@ -71,15 +76,22 @@ export function GlobalVocabularyPage({
   backgroundColor = "#FFF8F0",
   dictMode = 'zh',
   onMergeVocabulary,
+  masteredVocabulary = {},
+  onRestoreMastered,
+  onRemoveMastered,
+  onClearMasteredVocabulary,
 }: GlobalVocabularyPageProps) {
+  const [mode, setMode] = useState<'vocab' | 'mastered'>('vocab');
   const [searchQuery, setSearchQuery] = useState("");
   const [showConfirmClear, setShowConfirmClear] = useState(false);
+  const [showConfirmClearMV, setShowConfirmClearMV] = useState(false);
   const [showClearMastered, setShowClearMastered] = useState(false);
   const [clearThreshold, setClearThreshold] = useState(3);
   const [migrateProgress, setMigrateProgress] = useState<{ done: number; total: number; phase: string } | null>(null);
   const migrateAbortRef = useRef(false);
 
   const vocabList = Object.values(vocabulary);
+  const masteredList = Object.values(masteredVocabulary);
 
   const missingCount = vocabList.filter(
     (v) => !v.meaningZh || !v.meaningEn || !v.meaningEnSimple
@@ -185,8 +197,19 @@ export function GlobalVocabularyPage({
       )
     : vocabList;
 
+  const filteredMastered = searchQuery.trim()
+    ? masteredList.filter(
+        (item) =>
+          item.root.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          getDisplayMeaning(item, dictMode).toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : masteredList;
+
   // 按字母排序
   const sortedList = [...filteredList].sort((a, b) =>
+    a.root.localeCompare(b.root)
+  );
+  const sortedMastered = [...filteredMastered].sort((a, b) =>
     a.root.localeCompare(b.root)
   );
 
@@ -196,10 +219,12 @@ export function GlobalVocabularyPage({
         {/* 顶部标题栏 */}
         <div className="global-vocab-header">
           <div className="global-vocab-header-left">
-            <h1 className="global-vocab-title">全局词汇表</h1>
-            <span className="global-vocab-count">{vocabList.length} 词</span>
+            <h1 className="global-vocab-title">{mode === 'vocab' ? '全局词汇表' : '已掌握词汇'}</h1>
+            <span className="global-vocab-count">
+              {mode === 'vocab' ? `${vocabList.length} 词` : `${masteredList.length} 词`}
+            </span>
           </div>
-          {vocabList.length > 0 && (
+          {mode === 'vocab' && vocabList.length > 0 && (
             <button
               className="global-vocab-clear-btn"
               onClick={() => setShowConfirmClear(true)}
@@ -207,20 +232,44 @@ export function GlobalVocabularyPage({
               清空全部
             </button>
           )}
-          {vocabList.length >= 4 && (
+          {mode === 'vocab' && vocabList.length >= 4 && (
             <button className="global-vocab-quiz-btn" onClick={onStartQuiz}>
               Quiz
             </button>
           )}
-          {vocabList.length > 0 && (
+          {mode === 'vocab' && vocabList.length > 0 && (
             <button className="global-vocab-mastered-btn" onClick={() => setShowClearMastered(true)}>
               清除已掌握
             </button>
           )}
+          {mode === 'mastered' && masteredList.length > 0 && onClearMasteredVocabulary && (
+            <button
+              className="global-vocab-clear-btn"
+              onClick={() => setShowConfirmClearMV(true)}
+            >
+              清空已掌握
+            </button>
+          )}
         </div>
 
-        {/* 多语言补全 */}
-        {onMergeVocabulary && vocabList.length > 0 && (
+        {/* Tab 切换 */}
+        <div className="global-vocab-tabs">
+          <button
+            className={`global-vocab-tab ${mode === 'vocab' ? 'active' : ''}`}
+            onClick={() => { setMode('vocab'); setSearchQuery(''); }}
+          >
+            词汇表（{vocabList.length}）
+          </button>
+          <button
+            className={`global-vocab-tab ${mode === 'mastered' ? 'active' : ''}`}
+            onClick={() => { setMode('mastered'); setSearchQuery(''); }}
+          >
+            已掌握（{masteredList.length}）
+          </button>
+        </div>
+
+        {/* 多语言补全（仅词汇表模式） */}
+        {mode === 'vocab' && onMergeVocabulary && vocabList.length > 0 && (
           <div className="global-vocab-migrate">
             {migrateProgress ? (
               <div className="migrate-progress">
@@ -251,7 +300,7 @@ export function GlobalVocabularyPage({
         )}
 
         {/* 搜索框 */}
-        {vocabList.length > 0 && (
+        {(mode === 'vocab' ? vocabList.length > 0 : masteredList.length > 0) && (
           <div className="global-vocab-search">
             <svg
               width="18"
@@ -293,7 +342,7 @@ export function GlobalVocabularyPage({
         )}
 
         {/* 词汇列表 */}
-        {sortedList.length > 0 ? (
+        {mode === 'vocab' && (sortedList.length > 0 ? (
           <div className="global-vocab-list">
             {sortedList.map((item) => (
               <div key={item.root} className="global-vocab-item">
@@ -322,7 +371,7 @@ export function GlobalVocabularyPage({
                 <button
                   className="global-vocab-delete-btn"
                   onClick={() => onRemoveWord(item.root)}
-                  title="删除此词"
+                  title="删除此词（标记已掌握）"
                 >
                   <svg
                     width="16"
@@ -353,10 +402,82 @@ export function GlobalVocabularyPage({
               </>
             )}
           </div>
-        )}
+        ))}
+
+        {/* 已掌握列表 */}
+        {mode === 'mastered' && (sortedMastered.length > 0 ? (
+          <div className="global-vocab-list">
+            {sortedMastered.map((item) => {
+              const meaning = getDisplayMeaning(item, dictMode);
+              return (
+                <div key={item.root} className="global-vocab-item">
+                  <div className="global-vocab-item-left">
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <span className="global-vocab-word">{item.root}</span>
+                      <span className="global-vocab-mastered-badge">★ 已掌握</span>
+                    </div>
+                    {meaning ? (
+                      <span className="global-vocab-meaning">{meaning}</span>
+                    ) : (
+                      <span className="global-vocab-meaning" style={{ fontStyle: 'italic', color: '#bbb' }}>无释义</span>
+                    )}
+                  </div>
+                  <button
+                    className="global-vocab-speak-btn"
+                    onClick={() => speakWord(item.root)}
+                    title="播放发音"
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                    </svg>
+                  </button>
+                  {onRestoreMastered && (
+                    <button
+                      className="global-vocab-restore-btn"
+                      onClick={() => onRestoreMastered(item.root)}
+                      title="恢复到词汇表"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M3 12a9 9 0 1 0 3-6.7" />
+                        <polyline points="3 4 3 10 9 10" />
+                      </svg>
+                    </button>
+                  )}
+                  {onRemoveMastered && (
+                    <button
+                      className="global-vocab-delete-btn"
+                      onClick={() => onRemoveMastered(item.root)}
+                      title="永久删除"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <polyline points="3 6 5 6 21 6" />
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="global-vocab-empty">
+            <div className="global-vocab-empty-icon">★</div>
+            {searchQuery ? (
+              <p>没有找到匹配的单词</p>
+            ) : (
+              <>
+                <p>暂无已掌握的词汇</p>
+                <p className="global-vocab-empty-hint">
+                  从词汇表中删除的词会保留到这里，方便回顾
+                </p>
+              </>
+            )}
+          </div>
+        ))}
       </div>
 
-      {/* 确认清空弹窗 */}
+      {/* 确认清空（词汇表）弹窗 */}
       {showConfirmClear && (
         <div
           className="global-vocab-confirm-overlay"
@@ -381,6 +502,40 @@ export function GlobalVocabularyPage({
                 onClick={() => {
                   onClearAll();
                   setShowConfirmClear(false);
+                }}
+              >
+                确定清空
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 确认清空（已掌握）弹窗 */}
+      {showConfirmClearMV && (
+        <div
+          className="global-vocab-confirm-overlay"
+          onClick={() => setShowConfirmClearMV(false)}
+        >
+          <div
+            className="global-vocab-confirm-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="global-vocab-confirm-text">
+              确定要清空全部 {masteredList.length} 个已掌握的单词吗？此操作不可撤销。
+            </p>
+            <div className="global-vocab-confirm-buttons">
+              <button
+                className="global-vocab-confirm-cancel"
+                onClick={() => setShowConfirmClearMV(false)}
+              >
+                取消
+              </button>
+              <button
+                className="global-vocab-confirm-ok"
+                onClick={() => {
+                  onClearMasteredVocabulary?.();
+                  setShowConfirmClearMV(false);
                 }}
               >
                 确定清空
@@ -479,6 +634,56 @@ export function GlobalVocabularyPage({
           align-items: center;
           justify-content: space-between;
           margin-bottom: 12px;
+        }
+
+        .global-vocab-tabs {
+          display: flex;
+          gap: 4px;
+          margin-bottom: 12px;
+          border-bottom: 1px solid #e5e5e5;
+        }
+
+        .global-vocab-tab {
+          background: none;
+          border: none;
+          padding: 8px 14px;
+          font-size: 14px;
+          cursor: pointer;
+          color: #888;
+          border-bottom: 2px solid transparent;
+          transition: color 0.15s, border-color 0.15s;
+        }
+
+        .global-vocab-tab.active {
+          color: #4a90d9;
+          border-bottom-color: #4a90d9;
+          font-weight: 600;
+        }
+
+        .global-vocab-mastered-badge {
+          font-size: 11px;
+          color: #f59e0b;
+          background: rgba(245, 158, 11, 0.1);
+          padding: 2px 7px;
+          border-radius: 10px;
+          font-weight: 500;
+        }
+
+        .global-vocab-restore-btn {
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 6px;
+          color: #4a90d9;
+          border-radius: 6px;
+          transition: all 0.15s ease;
+          flex-shrink: 0;
+          opacity: 0.6;
+        }
+
+        .global-vocab-restore-btn:hover {
+          opacity: 1;
+          background: rgba(74, 144, 217, 0.08);
         }
 
         .global-vocab-migrate {

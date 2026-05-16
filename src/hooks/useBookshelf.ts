@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { idbGet, idbSet } from "@/lib/storage";
 import { isTranslationError } from "@/lib/translate";
 
@@ -158,6 +158,7 @@ function dedupeBooksByNormalizedTitle(books: Book[], preferExistingIds: Set<stri
 const STORAGE_KEY = "english-reader-books";
 const GLOBAL_VOCAB_KEY = "english-reader-global-vocabulary";
 const MASTERED_WORDS_KEY = "english-reader-mastered-words";
+const MASTERED_VOCAB_KEY = "english-reader-mastered-vocabulary";
 const SAMPLE_BOOK: Book = {
   id: "sample-book-1",
   title: "The Art of Learning",
@@ -209,7 +210,11 @@ export function useBookshelf() {
 const [globalVocabulary, setGlobalVocabulary] = useState<
   Record<string, { root: string; meaning: string; pos: string; correctCount: number; meaningZh?: string; meaningEn?: string; meaningEnSimple?: string }>
 >({});
-const [masteredWords, setMasteredWords] = useState<Set<string>>(new Set());
+const [masteredVocabulary, setMasteredVocabulary] = useState<
+  Record<string, { root: string; meaning: string; pos: string; correctCount: number; meaningZh?: string; meaningEn?: string; meaningEnSimple?: string }>
+>({});
+// 兼容旧代码：作为派生 Set 暴露
+const masteredWords = useMemo(() => new Set(Object.keys(masteredVocabulary)), [masteredVocabulary]);
 
   const booksRef = useRef(books);
   useEffect(() => { booksRef.current = books; }, [books]);
@@ -305,10 +310,28 @@ const [masteredWords, setMasteredWords] = useState<Set<string>>(new Set());
       }
 
       try {
-        const masteredStr = await idbGet(MASTERED_WORDS_KEY);
-        if (masteredStr) {
-          const arr = JSON.parse(masteredStr);
-          if (Array.isArray(arr)) setMasteredWords(new Set(arr));
+        // 优先读新结构（保留释义）
+        const mvStr = await idbGet(MASTERED_VOCAB_KEY);
+        if (mvStr) {
+          const parsed = JSON.parse(mvStr);
+          if (parsed && typeof parsed === 'object') {
+            setMasteredVocabulary(parsed);
+          }
+        } else {
+          // 旧用户：从字符串数组迁移
+          const masteredStr = await idbGet(MASTERED_WORDS_KEY);
+          if (masteredStr) {
+            const arr = JSON.parse(masteredStr);
+            if (Array.isArray(arr)) {
+              const migrated: Record<string, { root: string; meaning: string; pos: string; correctCount: number }> = {};
+              for (const w of arr) {
+                if (typeof w === 'string' && w.trim()) {
+                  migrated[w] = { root: w, meaning: '', pos: '', correctCount: 0 };
+                }
+              }
+              setMasteredVocabulary(migrated);
+            }
+          }
         }
       } catch {
         console.warn("加载已掌握词汇失败");
@@ -375,14 +398,16 @@ const [masteredWords, setMasteredWords] = useState<Set<string>>(new Set());
     const timeoutId = setTimeout(() => {
       (async () => {
         try {
-          await idbSet(MASTERED_WORDS_KEY, JSON.stringify([...masteredWords]));
+          await idbSet(MASTERED_VOCAB_KEY, JSON.stringify(masteredVocabulary));
+          // 同步写入旧 key，便于旧客户端/同步链路继续可用
+          await idbSet(MASTERED_WORDS_KEY, JSON.stringify(Object.keys(masteredVocabulary)));
         } catch (error) {
           console.warn("保存已掌握词汇失败:", error);
         }
       })();
     }, 500);
     return () => clearTimeout(timeoutId);
-  }, [masteredWords, isLoaded]);
+  }, [masteredVocabulary, isLoaded]);
 
   // Get current book
   const currentBook = books.find((b) => b.id === currentBookId) || null;
@@ -582,10 +607,11 @@ const [masteredWords, setMasteredWords] = useState<Set<string>>(new Set());
           },
         };
       });
-      setMasteredWords((prev) => {
-        if (!prev.has(root)) return prev;
-        const next = new Set(prev);
-        next.delete(root);
+      // 该词从已掌握列表移除（如果有）
+      setMasteredVocabulary((prev) => {
+        if (!prev[root]) return prev;
+        const next = { ...prev };
+        delete next[root];
         return next;
       });
     },
@@ -605,41 +631,84 @@ const [masteredWords, setMasteredWords] = useState<Set<string>>(new Set());
 
   // 批量清除答对 N 次以上的已掌握单词
   const clearMasteredWords = useCallback((threshold: number) => {
+    let removed: Array<[string, typeof globalVocabulary[string]]> = [];
     setGlobalVocabulary((prev) => {
       const next: typeof prev = {};
-      const removed: string[] = [];
+      removed = [];
       for (const [key, value] of Object.entries(prev)) {
         if ((value.correctCount || 0) < threshold) {
           next[key] = value;
         } else {
-          removed.push(key);
+          removed.push([key, value]);
         }
-      }
-      if (removed.length > 0) {
-        setMasteredWords((ms) => {
-          const n = new Set(ms);
-          for (const r of removed) n.add(r);
-          return n;
-        });
       }
       return next;
     });
+    if (removed.length > 0) {
+      setMasteredVocabulary((prev) => {
+        const next = { ...prev };
+        for (const [k, v] of removed) {
+          if (!next[k]) next[k] = v;
+        }
+        return next;
+      });
+    }
   }, []);
 
-  // 从全局词汇表删除词（标记为已掌握）
+  // 从全局词汇表删除词（标记为已掌握，保留释义到 masteredVocabulary）
   const removeFromGlobalVocabulary = useCallback((root: string) => {
+    let preservedEntry: { root: string; meaning: string; pos: string; correctCount: number; meaningZh?: string; meaningEn?: string; meaningEnSimple?: string } | null = null;
     setGlobalVocabulary((prev) => {
+      const entry = prev[root];
+      if (!entry) return prev;
+      preservedEntry = entry;
+      const next = { ...prev };
+      delete next[root];
+      return next;
+    });
+    setMasteredVocabulary((prev) => {
+      if (prev[root]) return prev;
+      return {
+        ...prev,
+        [root]: preservedEntry ?? { root, meaning: '', pos: '', correctCount: 0 },
+      };
+    });
+  }, []);
+
+  // 把已掌握的词恢复回全局词汇表
+  const restoreFromMastered = useCallback((root: string) => {
+    let entry: { root: string; meaning: string; pos: string; correctCount: number; meaningZh?: string; meaningEn?: string; meaningEnSimple?: string } | null = null;
+    setMasteredVocabulary((prev) => {
+      const found = prev[root];
+      if (!found) return prev;
+      entry = found;
+      const next = { ...prev };
+      delete next[root];
+      return next;
+    });
+    setGlobalVocabulary((prev) => {
+      if (!entry) return prev;
+      return {
+        ...prev,
+        [root]: prev[root]
+          ? { ...prev[root], ...entry, correctCount: prev[root].correctCount ?? entry.correctCount ?? 0 }
+          : { ...entry, correctCount: 0 },
+      };
+    });
+  }, []);
+
+  // 永久从已掌握列表移除（不会再次记入 masteredWords）
+  const removeFromMastered = useCallback((root: string) => {
+    setMasteredVocabulary((prev) => {
       if (!prev[root]) return prev;
       const next = { ...prev };
       delete next[root];
       return next;
     });
-    setMasteredWords((prev) => {
-      if (prev.has(root)) return prev;
-      const next = new Set(prev);
-      next.add(root);
-      return next;
-    });
+  }, []);
+
+  const clearMasteredVocabulary = useCallback(() => {
+    setMasteredVocabulary({});
   }, []);
 
   // 清空全局词汇表
@@ -921,6 +990,7 @@ const [masteredWords, setMasteredWords] = useState<Set<string>>(new Set());
   const replaceAllFromRemote = useCallback((remote: {
     vocabulary?: Record<string, { root: string; meaning: string; pos: string; correctCount?: number; meaningZh?: string; meaningEn?: string; meaningEnSimple?: string }>;
     masteredWords?: string[];
+    masteredVocabulary?: Record<string, { root: string; meaning: string; pos: string; correctCount?: number; meaningZh?: string; meaningEn?: string; meaningEnSimple?: string }>;
     books?: Book[];
     bookProgress?: Record<string, unknown>;
   }) => {
@@ -931,8 +1001,19 @@ const [masteredWords, setMasteredWords] = useState<Set<string>>(new Set());
       }
       setGlobalVocabulary(normalized);
     }
-    if (remote.masteredWords && Array.isArray(remote.masteredWords)) {
-      setMasteredWords(new Set(remote.masteredWords));
+    if (remote.masteredVocabulary && typeof remote.masteredVocabulary === 'object') {
+      const normalized: typeof masteredVocabulary = {};
+      for (const [k, v] of Object.entries(remote.masteredVocabulary)) {
+        normalized[k] = { ...v, correctCount: v.correctCount ?? 0 };
+      }
+      setMasteredVocabulary(normalized);
+    } else if (remote.masteredWords && Array.isArray(remote.masteredWords)) {
+      // 旧客户端只发了字符串数组：补成空释义记录
+      const migrated: typeof masteredVocabulary = {};
+      for (const w of remote.masteredWords) {
+        if (typeof w === 'string') migrated[w] = { root: w, meaning: '', pos: '', correctCount: 0 };
+      }
+      setMasteredVocabulary(migrated);
     }
 
     if (remote.books) {
@@ -1034,8 +1115,12 @@ const [masteredWords, setMasteredWords] = useState<Set<string>>(new Set());
     removeBookmark,
     globalVocabulary,
     masteredWords,
+    masteredVocabulary,
     addToGlobalVocabulary,
     removeFromGlobalVocabulary,
+    restoreFromMastered,
+    removeFromMastered,
+    clearMasteredVocabulary,
     clearGlobalVocabulary,
     mergeGlobalVocabulary,
     incrementCorrectCount,

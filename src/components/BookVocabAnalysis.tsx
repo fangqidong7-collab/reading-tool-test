@@ -98,6 +98,7 @@ export function BookVocabAnalysis({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [vocabFilter, setVocabFilter] = useState<'all' | 'hide' | 'only'>('all');
   const [masteredFilter, setMasteredFilter] = useState<'all' | 'hide' | 'only'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [addedWords, setAddedWords] = useState<Set<string>>(new Set());
   const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
   const [loadingWord, setLoadingWord] = useState<string | null>(null);
@@ -190,7 +191,7 @@ export function BookVocabAnalysis({
     return !!(masteredWords && masteredWords.has(word));
   }, [masteredWords]);
 
-  useEffect(() => { setVisibleCount(100); }, [filterLevels, minLen, minFreq, vocabFilter, masteredFilter]);
+  useEffect(() => { setVisibleCount(100); }, [filterLevels, minLen, minFreq, vocabFilter, masteredFilter, searchQuery]);
 
   const handleBodyScroll = useCallback(() => {
     const el = bodyRef.current;
@@ -295,6 +296,7 @@ export function BookVocabAnalysis({
 
   if (!isOpen || !analysis) return null;
 
+  const q = searchQuery.trim().toLowerCase();
   const filteredWords = analysis.words.filter(w => {
     if (filterLevels.size > 0) {
       const wLevel = w.level || 'unknown';
@@ -308,6 +310,7 @@ export function BookVocabAnalysis({
     const inM = isMastered(w.word);
     if (masteredFilter === 'hide' && inM) return false;
     if (masteredFilter === 'only' && !inM) return false;
+    if (q && !w.word.toLowerCase().includes(q)) return false;
     return true;
   });
 
@@ -413,6 +416,29 @@ export function BookVocabAnalysis({
 
           {tab === 'words' && (
             <div className="va-words">
+              <div className="va-search-row">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input
+                  type="text"
+                  className="va-search-input"
+                  placeholder="搜索单词..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{ color: textColor }}
+                />
+                {searchQuery && (
+                  <button className="va-search-clear" onClick={() => setSearchQuery('')} title="清除">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+
               <div className="va-filter">
                 <button
                   className={`va-filter-btn ${filterLevels.size === 0 ? 'active' : ''}`}
@@ -522,6 +548,10 @@ export function BookVocabAnalysis({
                   const inVocab = isInVocab(w.word);
                   const mastered = isMastered(w.word);
                   const isSelected = selected.has(w.word);
+                  // 已加入/已掌握 时仍按 CEFR 级别上色：分级词用对应颜色，超纲用红
+                  const tintColor = (inVocab || mastered)
+                    ? (w.level ? LEVEL_COLORS[w.level] : '#e74c3c')
+                    : undefined;
                   return (
                     <div key={w.word} className={`va-word-item ${inVocab ? 'in-vocab' : ''} ${mastered && !inVocab ? 'mastered' : ''}`}>
                       {onAddToVocabulary && !inVocab && !mastered && (
@@ -532,9 +562,13 @@ export function BookVocabAnalysis({
                           className="va-word-check"
                         />
                       )}
-                      {inVocab && <span className="va-word-done">✓</span>}
-                      {mastered && !inVocab && <span className="va-word-mastered">★</span>}
-                      <span className="va-word-text">{w.word}</span>
+                      {inVocab && (
+                        <span className="va-word-done" style={tintColor ? { color: tintColor } : undefined}>✓</span>
+                      )}
+                      {mastered && !inVocab && (
+                        <span className="va-word-mastered" style={tintColor ? { color: tintColor } : undefined}>★</span>
+                      )}
+                      <span className="va-word-text" style={tintColor ? { color: tintColor, fontWeight: 600 } : undefined}>{w.word}</span>
                       <span className="va-word-level" style={{ color: w.level ? LEVEL_COLORS[w.level] : (isDarkMode ? '#888' : '#999') }}>
                         {w.level ? LEVEL_LABELS[w.level] : '超纲'}
                       </span>
@@ -686,6 +720,32 @@ export function BookVocabAnalysis({
         }
         .va-freq-pct { min-width: 48px; text-align: right; font-weight: 600; }
         .va-freq-count { font-size: 12px; }
+        .va-search-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 10px;
+          margin-bottom: 10px;
+          border: 1px solid rgba(128,128,128,0.25);
+          border-radius: 8px;
+        }
+        .va-search-input {
+          flex: 1;
+          border: none;
+          outline: none;
+          background: transparent;
+          font-size: 14px;
+        }
+        .va-search-input::placeholder { color: #bbb; }
+        .va-search-clear {
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 2px;
+          display: flex;
+          align-items: center;
+        }
+
         .va-filter {
           display: flex;
           gap: 4px;
@@ -829,8 +889,8 @@ export function BookVocabAnalysis({
           font-size: 14px;
           gap: 6px;
         }
-        .va-word-item.in-vocab { opacity: 0.45; }
-        .va-word-item.mastered { opacity: 0.4; }
+        .va-word-item.in-vocab { opacity: 0.85; }
+        .va-word-item.mastered { opacity: 0.8; }
         .va-word-check { width: 15px; height: 15px; margin: 0; cursor: pointer; flex-shrink: 0; }
         .va-word-done { width: 15px; font-size: 11px; color: #22c55e; flex-shrink: 0; text-align: center; }
         .va-word-mastered { width: 15px; font-size: 11px; color: #f59e0b; flex-shrink: 0; text-align: center; }

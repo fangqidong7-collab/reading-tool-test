@@ -161,6 +161,9 @@ export interface ReadingHomeViewProps {
   // Vocabulary
   globalVocabulary?: Record<string, { root: string; meaning: string; pos: string }>;
   masteredWords?: Set<string>;
+  masteredVocabulary?: Record<string, { root: string; meaning: string; pos: string; meaningZh?: string; meaningEn?: string; meaningEnSimple?: string }>;
+  restoreFromMastered?: (root: string) => void;
+  removeFromMastered?: (root: string) => void;
   addToGlobalVocabulary?: (word: string, meaning: string, pos: string, langs?: { zh?: string; en?: string; enSimple?: string }) => void;
   mergeGlobalVocabulary?: (entries: Record<string, { root: string; meaning: string; pos: string; meaningZh?: string; meaningEn?: string; meaningEnSimple?: string }>) => void;
 }
@@ -288,6 +291,9 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
     closeSearch,
     globalVocabulary,
     masteredWords,
+    masteredVocabulary,
+    restoreFromMastered,
+    removeFromMastered,
     addToGlobalVocabulary,
     mergeGlobalVocabulary,
   } = props;
@@ -1356,6 +1362,10 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
           sentenceAnnotations={currentBook?.sentenceAnnotations ?? []}
           onSentenceClick={scrollToSentence}
           onRemoveSentence={handleRemoveSentenceAnnotation}
+          masteredVocabulary={masteredVocabulary}
+          onRestoreMastered={restoreFromMastered}
+          onRemoveMastered={removeFromMastered}
+          dictMode={dictMode}
           isDarkMode={isDarkMode}
           sidebarBg={sidebarBg}
           headerBg={headerBg}
