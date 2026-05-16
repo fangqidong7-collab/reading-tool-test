@@ -66,6 +66,10 @@ export interface BookshelfHomeViewProps {
   clearMasteredWords: (threshold: number) => void;
   mergeGlobalVocabulary: (vocab: Record<string, { root: string; meaning: string; pos: string; meaningZh?: string; meaningEn?: string; meaningEnSimple?: string }>) => void;
   incrementCorrectCount: (word: string) => void;
+  masteredVocabulary?: Record<string, { root: string; meaning: string; pos: string; correctCount: number; meaningZh?: string; meaningEn?: string; meaningEnSimple?: string }>;
+  restoreFromMastered?: (root: string) => void;
+  removeFromMastered?: (root: string) => void;
+  clearMasteredVocabulary?: () => void;
   readingStats: ReadingStatsReturn;
   dictMode?: 'zh' | 'en' | 'en-simple';
 }
@@ -105,6 +109,10 @@ export function BookshelfHomeView({
   clearMasteredWords,
   mergeGlobalVocabulary,
   incrementCorrectCount,
+  masteredVocabulary,
+  restoreFromMastered,
+  removeFromMastered,
+  clearMasteredVocabulary,
   handleCreateSync,
   handleBindSync,
   handleSync,
@@ -163,6 +171,10 @@ export function BookshelfHomeView({
             backgroundColor={backgroundColor}
             dictMode={dictMode}
             onMergeVocabulary={mergeGlobalVocabulary}
+            masteredVocabulary={masteredVocabulary}
+            onRestoreMastered={restoreFromMastered}
+            onRemoveMastered={removeFromMastered}
+            onClearMasteredVocabulary={clearMasteredVocabulary}
           />
         ) : (
           <DataBackupPanel

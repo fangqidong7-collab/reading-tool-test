@@ -48,8 +48,12 @@ export default function Home() {
     removeBookmark,
     globalVocabulary,
     masteredWords,
+    masteredVocabulary,
     addToGlobalVocabulary,
     removeFromGlobalVocabulary,
+    restoreFromMastered,
+    removeFromMastered,
+    clearMasteredVocabulary,
     clearGlobalVocabulary,
     mergeGlobalVocabulary,
     updateBooksSyncHashes,
@@ -192,7 +196,7 @@ export default function Home() {
 
   // 轻量同步数据：vocab + progress + bookManifest，不含书籍正文
   const buildLightSyncData = useCallback(async (): Promise<{
-    data: { vocabulary: Record<string, unknown>; masteredWords?: string[]; bookProgress: Record<string, unknown> };
+    data: { vocabulary: Record<string, unknown>; masteredWords?: string[]; masteredVocabulary?: Record<string, unknown>; bookProgress: Record<string, unknown> };
     bookManifest: BookManifestEntry[];
     contentHashes: Record<string, string>;
   }> => {
@@ -212,6 +216,7 @@ export default function Home() {
       data: {
         vocabulary: globalVocabulary,
         masteredWords: [...masteredWords],
+        masteredVocabulary,
         bookProgress: books.reduce((acc: Record<string, {
           title: string;
           lastScrollPosition: number;
@@ -240,7 +245,7 @@ export default function Home() {
       bookManifest,
       contentHashes,
     };
-  }, [globalVocabulary, masteredWords, books]);
+  }, [globalVocabulary, masteredWords, masteredVocabulary, books]);
 
   // 按 ID 列表构建完整书籍数据（仅在 needBooks 时调用）
   const buildBooksPayload = useCallback((bookIds: string[]): Book[] => {
@@ -279,6 +284,7 @@ export default function Home() {
       data: {
         vocabulary: globalVocabulary,
         masteredWords: [...masteredWords],
+        masteredVocabulary,
         bookProgress: books.reduce((acc: Record<string, {
           title: string;
           lastScrollPosition: number;
@@ -307,7 +313,7 @@ export default function Home() {
       },
       contentHashes,
     };
-  }, [globalVocabulary, masteredWords, books]);
+  }, [globalVocabulary, masteredWords, masteredVocabulary, books]);
 
   // Handle create sync - push current local data to cloud (full payload with books)
   const handleCreateSync = useCallback(async () => {
@@ -1429,10 +1435,12 @@ export default function Home() {
       if (dictMode === 'zh' && vocab.meaningZh) displayMeaning = vocab.meaningZh;
       else if (dictMode === 'en' && vocab.meaningEn) displayMeaning = vocab.meaningEn;
       else if (dictMode === 'en-simple' && vocab.meaningEnSimple) displayMeaning = vocab.meaningEnSimple;
-      merged[root] = { root, meaning: displayMeaning, pos: vocab.pos, count: 0 };
+      // 查 CEFR 级别：让词汇表里的分级词保留其分级颜色，超纲词使用默认 annotationColor（红）
       const rootLemma = lemmatize(root);
+      const cefrLevel = getWordLevel(root) || (rootLemma !== root ? getWordLevel(rootLemma) : null) || undefined;
+      merged[root] = { root, meaning: displayMeaning, pos: vocab.pos, count: 0, cefrLevel: cefrLevel || undefined };
       if (rootLemma !== root && !merged[rootLemma]) {
-        merged[rootLemma] = { root: rootLemma, meaning: displayMeaning, pos: vocab.pos, count: 0 };
+        merged[rootLemma] = { root: rootLemma, meaning: displayMeaning, pos: vocab.pos, count: 0, cefrLevel: cefrLevel || undefined };
       }
     }
     for (const [root, ann] of Object.entries(annotations)) {
@@ -1503,6 +1511,10 @@ export default function Home() {
         clearMasteredWords={clearMasteredWords}
         mergeGlobalVocabulary={mergeGlobalVocabulary}
         incrementCorrectCount={incrementCorrectCount}
+        masteredVocabulary={masteredVocabulary}
+        restoreFromMastered={restoreFromMastered}
+        removeFromMastered={removeFromMastered}
+        clearMasteredVocabulary={clearMasteredVocabulary}
         handleCreateSync={handleCreateSync}
         handleBindSync={handleBindSync}
         handleSync={handleSync}
@@ -1632,6 +1644,9 @@ export default function Home() {
       closeSearch={closeSearch}
       globalVocabulary={globalVocabulary}
       masteredWords={masteredWords}
+      masteredVocabulary={masteredVocabulary}
+      restoreFromMastered={restoreFromMastered}
+      removeFromMastered={removeFromMastered}
       addToGlobalVocabulary={addToGlobalVocabulary}
       mergeGlobalVocabulary={mergeGlobalVocabulary}
     />
