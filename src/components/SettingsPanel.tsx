@@ -2,7 +2,10 @@
 
 import React, { useEffect, useRef, useCallback, useState } from "react";
 import { X } from "lucide-react";
-import { BACKGROUND_THEMES, FONT_FAMILIES, type FontFamilySetting } from "@/hooks/useReadingSettings";
+import { BACKGROUND_THEMES, FONT_FAMILIES, type FontFamilySetting, type CefrColorPaletteId } from "@/hooks/useReadingSettings";
+import { CEFR_COLOR_PALETTE_OPTIONS, getLevelColors, LEVEL_LABELS, type CEFRLevel } from "@/lib/vocabLevel";
+
+const CEFR_LEVELS: CEFRLevel[] = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 
 interface SettingsPanelProps {
   isOpen: boolean;
@@ -30,6 +33,8 @@ interface SettingsPanelProps {
   onFontFamilyChange: (family: FontFamilySetting) => void;
   autoTheme: boolean;
   onAutoThemeChange: (enabled: boolean) => void;
+  cefrColorPalette: CefrColorPaletteId;
+  onCefrColorPaletteChange: (paletteId: CefrColorPaletteId) => void;
 }
 
 export function SettingsPanel({
@@ -58,6 +63,8 @@ export function SettingsPanel({
   onFontFamilyChange,
   autoTheme,
   onAutoThemeChange,
+  cefrColorPalette,
+  onCefrColorPaletteChange,
 }: SettingsPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -203,15 +210,55 @@ export function SettingsPanel({
               </div>
               {vocabLevel !== 'off' && (
                 <div style={{ marginTop: 6, display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: '0.75rem' }}>
-                  {(['A1', 'A2', 'B1', 'B2', 'C1', 'C2'] as const)
-                    .filter((l) => ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'].indexOf(l) >= ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'].indexOf(vocabLevel))
+                  {CEFR_LEVELS
+                    .filter((l) => CEFR_LEVELS.indexOf(l) >= CEFR_LEVELS.indexOf(vocabLevel as CEFRLevel))
                     .map((l) => {
-                      const colors: Record<string, string> = { A1: '#22c55e', A2: '#15803d', B1: '#3b82f6', B2: '#f59e0b', C1: '#a855f7', C2: '#6d28d9' };
-                      const labels: Record<string, string> = { A1: 'A1 基础', A2: 'A2 初级', B1: 'B1 中级', B2: 'B2 中高级', C1: 'C1 高级', C2: 'C2 精通' };
-                      return <span key={l} style={{ color: colors[l] }}>● {labels[l]}</span>;
+                      const preview = getLevelColors(cefrColorPalette, isDarkMode);
+                      return <span key={l} style={{ color: preview[l] }}>● {LEVEL_LABELS[l]}</span>;
                     })}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* CEFR color palette */}
+          <div className="setting-row" onClick={() => toggle('cefrPalette')}>
+            <span className="row-title">分级配色</span>
+            <span className="row-value">
+              {CEFR_COLOR_PALETTE_OPTIONS.find((p) => p.id === cefrColorPalette)?.name ?? '标准'}
+            </span>
+          </div>
+          {expanded === 'cefrPalette' && (
+            <div className="setting-expand">
+              <p style={{ margin: '0 0 10px', fontSize: 12, color: isDarkMode ? '#aaa' : '#888', lineHeight: 1.5 }}>
+                阅读标注与词汇分析中的 A1–C2 颜色；随当前背景主题自动使用日间/夜间色。
+              </p>
+              <div className="cefr-palette-options">
+                {CEFR_COLOR_PALETTE_OPTIONS.map((option) => {
+                  const preview = getLevelColors(option.id, isDarkMode);
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      className={`cefr-palette-btn ${cefrColorPalette === option.id ? 'active' : ''}`}
+                      onClick={() => onCefrColorPaletteChange(option.id)}
+                    >
+                      <span className="cefr-palette-name">{option.name}</span>
+                      <span className="cefr-palette-swatches">
+                        {CEFR_LEVELS.map((level) => (
+                          <span
+                            key={level}
+                            className="cefr-palette-swatch"
+                            style={{ backgroundColor: preview[level] }}
+                            title={LEVEL_LABELS[level]}
+                          />
+                        ))}
+                      </span>
+                      <span className="cefr-palette-desc">{option.description}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
 
@@ -538,6 +585,69 @@ export function SettingsPanel({
         :global(.dark) .mode-btn.active {
           background: #6ba3e0;
           border-color: #6ba3e0;
+        }
+
+        .cefr-palette-options {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .cefr-palette-btn {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 6px;
+          width: 100%;
+          padding: 10px 12px;
+          border: 1px solid rgba(128, 128, 128, 0.3);
+          border-radius: 10px;
+          background: transparent;
+          color: inherit;
+          cursor: pointer;
+          text-align: left;
+          transition: border-color 0.15s, background 0.15s;
+        }
+
+        .cefr-palette-btn:hover {
+          background: rgba(128, 128, 128, 0.08);
+        }
+
+        .cefr-palette-btn.active {
+          border-color: #4a90d9;
+          background: rgba(74, 144, 217, 0.08);
+        }
+
+        :global(.dark) .cefr-palette-btn.active {
+          border-color: #6ba3e0;
+          background: rgba(107, 163, 224, 0.12);
+        }
+
+        .cefr-palette-name {
+          font-size: 14px;
+          font-weight: 600;
+        }
+
+        .cefr-palette-swatches {
+          display: flex;
+          gap: 6px;
+        }
+
+        .cefr-palette-swatch {
+          width: 22px;
+          height: 14px;
+          border-radius: 3px;
+          border: 1px solid rgba(0, 0, 0, 0.12);
+        }
+
+        :global(.dark) .cefr-palette-swatch {
+          border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .cefr-palette-desc {
+          font-size: 11px;
+          opacity: 0.75;
+          line-height: 1.4;
         }
       `}</style>
     </div>

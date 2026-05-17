@@ -9,7 +9,7 @@ import { SyncPanel } from "@/components/SyncPanel";
 import { BookVocabAnalysis } from "@/components/BookVocabAnalysis";
 import { ReadingStatsPanel } from "@/components/ReadingStatsPanel";
 import { useTTS, SPEED_OPTIONS } from "@/hooks/useTTS";
-import type { FontFamilySetting } from "@/hooks/useReadingSettings";
+import type { FontFamilySetting, CefrColorPaletteId } from "@/hooks/useReadingSettings";
 import type { ReadingStatsReturn } from "@/hooks/useReadingStats";
 import type { Book, ProcessedContent, SentenceAnnotation } from "@/hooks/useBookshelf";
 interface AnnotatedWord {
@@ -82,6 +82,8 @@ export interface ReadingHomeViewProps {
   setFontFamily: (family: FontFamilySetting) => void;
   autoTheme: boolean;
   setAutoTheme: (enabled: boolean) => void;
+  cefrColorPalette: CefrColorPaletteId;
+  setCefrColorPalette: (paletteId: CefrColorPaletteId) => void;
   readingStats: ReadingStatsReturn;
   // Dict status
   dictLoadStatus: string;
@@ -227,6 +229,8 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
     setFontFamily,
     autoTheme,
     setAutoTheme,
+    cefrColorPalette,
+    setCefrColorPalette,
     readingStats,
     dictLoadStatus,
     syncPanelOpen,
@@ -497,6 +501,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
         onAddToVocabulary={addToGlobalVocabulary}
         onBatchAddToVocabulary={mergeGlobalVocabulary}
         dictMode={dictMode}
+        cefrColorPalette={cefrColorPalette}
       />
 
       {/* Settings Panel */}
@@ -526,6 +531,8 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
         onFontFamilyChange={setFontFamily}
         autoTheme={autoTheme}
         onAutoThemeChange={setAutoTheme}
+        cefrColorPalette={cefrColorPalette}
+        onCefrColorPaletteChange={setCefrColorPalette}
       />
 
       {/* Cloud Sync Panel */}
@@ -1307,6 +1314,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
               highlightBg={highlightBg}
               highlightBgHover={highlightBgHover}
               isDarkMode={isDarkMode}
+              cefrColorPalette={cefrColorPalette}
               headerVisible={true}
               searchQuery={searchQuery}
               searchResults={searchResults}

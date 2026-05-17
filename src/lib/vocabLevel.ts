@@ -1,15 +1,18 @@
-export type CEFRLevel = 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2';
+import type { CEFRLevel } from '@/lib/cefrColorPalettes';
+
+export type { CEFRLevel };
+
+export {
+  LEVEL_COLORS,
+  getLevelColor,
+  getLevelColors,
+  CEFR_COLOR_PALETTE_OPTIONS,
+  parseCefrColorPaletteId,
+  type CefrColorPaletteId,
+  type CefrLevelColors,
+} from '@/lib/cefrColorPalettes';
 
 const LEVEL_ORDER: CEFRLevel[] = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
-
-export const LEVEL_COLORS: Record<CEFRLevel, string> = {
-  A1: '#22c55e',
-  A2: '#15803d',
-  B1: '#3b82f6',
-  B2: '#f59e0b',
-  C1: '#a855f7',
-  C2: '#6d28d9',
-};
 
 export const LEVEL_LABELS: Record<CEFRLevel, string> = {
   A1: 'A1 基础',
@@ -56,8 +59,4 @@ export function levelIndex(level: CEFRLevel): number {
 
 export function isAtOrAbove(wordLevel: CEFRLevel, threshold: CEFRLevel): boolean {
   return levelIndex(wordLevel) >= levelIndex(threshold);
-}
-
-export function getLevelColor(level: CEFRLevel): string {
-  return LEVEL_COLORS[level];
 }

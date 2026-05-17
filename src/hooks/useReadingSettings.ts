@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { parseCefrColorPaletteId, type CefrColorPaletteId } from "@/lib/cefrColorPalettes";
 
 export interface ReadingSettings {
   fontSize: number;
@@ -43,7 +44,10 @@ export interface ReadingSettingsStorage {
   vocabLevel: VocabLevelSetting;
   fontFamily: FontFamilySetting;
   autoTheme: boolean;
+  cefrColorPalette: CefrColorPaletteId;
 }
+
+export type { CefrColorPaletteId };
 
 const DEFAULT_SETTINGS: ReadingSettings = {
   fontSize: 16,
@@ -109,6 +113,7 @@ function loadSettingsFromStorage(): ReadingSettingsStorage {
     vocabLevel: "off" as VocabLevelSetting,
     fontFamily: "georgia" as FontFamilySetting,
     autoTheme: false,
+    cefrColorPalette: "standard" as CefrColorPaletteId,
   };
   if (typeof window === "undefined") return defaults;
 
@@ -123,6 +128,7 @@ function loadSettingsFromStorage(): ReadingSettingsStorage {
         vocabLevel: parsed.vocabLevel ?? 'off',
         fontFamily: migrateFontFamily(parsed.fontFamily ?? 'georgia'),
         autoTheme: parsed.autoTheme ?? false,
+        cefrColorPalette: parseCefrColorPaletteId(parsed.cefrColorPalette),
       };
     }
   } catch (e) {
@@ -155,6 +161,7 @@ export function useReadingSettings() {
     vocabLevel: "off",
     fontFamily: "georgia",
     autoTheme: false,
+    cefrColorPalette: "standard",
   });
   const [isLoaded, setIsLoaded] = useState(false);
   const [dictMode, setDictModeState] = useState<'zh' | 'en' | 'en-simple'>('zh');
@@ -163,6 +170,7 @@ export function useReadingSettings() {
   const [vocabLevel, setVocabLevelState] = useState<VocabLevelSetting>('off');
   const [fontFamily, setFontFamilyState] = useState<FontFamilySetting>('georgia');
   const [autoTheme, setAutoThemeState] = useState(false);
+  const [cefrColorPalette, setCefrColorPaletteState] = useState<CefrColorPaletteId>('standard');
   const autoThemeRef = useRef(false);
 
   // Load settings on mount
@@ -176,6 +184,7 @@ export function useReadingSettings() {
     setFontFamilyState(migrateFontFamily(loaded.fontFamily ?? 'georgia'));
     setAutoThemeState(loaded.autoTheme ?? false);
     autoThemeRef.current = loaded.autoTheme ?? false;
+    setCefrColorPaletteState(parseCefrColorPaletteId(loaded.cefrColorPalette));
 
     let themeId = loaded.backgroundTheme;
     if (loaded.autoTheme && typeof window !== 'undefined') {
@@ -219,6 +228,7 @@ export function useReadingSettings() {
         vocabLevel: storage.vocabLevel,
         fontFamily: storage.fontFamily,
         autoTheme: storage.autoTheme,
+        cefrColorPalette: storage.cefrColorPalette,
       });
     }
   }, [settings, storage, isLoaded]);
@@ -286,7 +296,9 @@ export function useReadingSettings() {
       clickToTurnPage: false,
       fontFamily: 'georgia',
       autoTheme: false,
+      cefrColorPalette: 'standard',
     }));
+    setCefrColorPaletteState('standard');
     setDictModeState('zh');
     setPageTurnRatioState(0.9);
     setClickToTurnPageState(false);
@@ -336,6 +348,11 @@ export function useReadingSettings() {
     }
   }, []);
 
+  const setCefrColorPalette = useCallback((paletteId: CefrColorPaletteId) => {
+    setCefrColorPaletteState(paletteId);
+    setStorage((prev) => ({ ...prev, cefrColorPalette: paletteId }));
+  }, []);
+
   const annotationFontSize = Math.round(settings.fontSize * 0.7);
 
   const fontFamilyCss = FONT_FAMILIES.find(f => f.id === fontFamily)?.css
@@ -376,5 +393,7 @@ export function useReadingSettings() {
     setFontFamily,
     autoTheme,
     setAutoTheme,
+    cefrColorPalette,
+    setCefrColorPalette,
   };
 }
