@@ -3,7 +3,8 @@
 import React, { useMemo, useState, useCallback, useRef, useEffect } from "react";
 import { X } from "lucide-react";
 import type { ProcessedContent } from "@/hooks/useBookshelf";
-import { getWordLevel, LEVEL_COLORS, LEVEL_LABELS, type CEFRLevel } from "@/lib/vocabLevel";
+import { getWordLevel, getLevelColors, LEVEL_LABELS, type CEFRLevel } from "@/lib/vocabLevel";
+import type { CefrColorPaletteId } from "@/lib/cefrColorPalettes";
 import { lemmatize, getWordMeaning, getWordMeaningEn } from "@/lib/dictionary";
 import { lookupExternalDict, lookupExternalDictEn } from "@/lib/dictLoader";
 import { translateWord, translateWordEn, translateWordEnSimple, isTranslationError } from "@/lib/translate";
@@ -23,6 +24,7 @@ interface BookVocabAnalysisProps {
   onAddToVocabulary?: (word: string, meaning: string, pos: string, langs?: { zh?: string; en?: string; enSimple?: string }) => void;
   onBatchAddToVocabulary?: (entries: Record<string, { root: string; meaning: string; pos: string; meaningZh?: string; meaningEn?: string; meaningEnSimple?: string }>) => void;
   dictMode?: 'zh' | 'en' | 'en-simple';
+  cefrColorPalette?: CefrColorPaletteId;
 }
 
 interface WordStat {
@@ -92,7 +94,12 @@ export function BookVocabAnalysis({
   onAddToVocabulary,
   onBatchAddToVocabulary,
   dictMode = 'zh',
+  cefrColorPalette = 'standard',
 }: BookVocabAnalysisProps) {
+  const levelColors = useMemo(
+    () => getLevelColors(cefrColorPalette, isDarkMode),
+    [cefrColorPalette, isDarkMode],
+  );
   const [tab, setTab] = useState<'overview' | 'words'>('overview');
   const [filterLevels, setFilterLevels] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -359,13 +366,13 @@ export function BookVocabAnalysis({
                   const barWidth = maxLevelCount > 0 ? (count / maxLevelCount * 100) : 0;
                   return (
                     <div key={level} className="va-bar-row">
-                      <div className="va-bar-label" style={{ color: LEVEL_COLORS[level] }}>
+                      <div className="va-bar-label" style={{ color: levelColors[level] }}>
                         {level}
                       </div>
                       <div className="va-bar-track">
                         <div
                           className="va-bar-fill"
-                          style={{ width: `${barWidth}%`, backgroundColor: LEVEL_COLORS[level] }}
+                          style={{ width: `${barWidth}%`, backgroundColor: levelColors[level] }}
                         />
                       </div>
                       <div className="va-bar-count">{count} <span className="va-bar-pct">({pct.toFixed(1)}%)</span></div>
@@ -397,7 +404,7 @@ export function BookVocabAnalysis({
                   const pct = analysis.totalWords > 0 ? (count / analysis.totalWords * 100) : 0;
                   return (
                     <div key={level} className="va-freq-row">
-                      <span style={{ color: LEVEL_COLORS[level], fontWeight: 600, width: 28 }}>{level}</span>
+                      <span style={{ color: levelColors[level], fontWeight: 600, width: 28 }}>{level}</span>
                       <span className="va-freq-pct">{pct.toFixed(1)}%</span>
                       <span className="va-freq-count" style={{ opacity: 0.6 }}>({count.toLocaleString()}次)</span>
                     </div>
@@ -453,7 +460,7 @@ export function BookVocabAnalysis({
                       if (next.has(l)) next.delete(l); else next.add(l);
                       return next;
                     })}
-                    style={filterLevels.has(l) ? { backgroundColor: LEVEL_COLORS[l], borderColor: LEVEL_COLORS[l] } : undefined}
+                    style={filterLevels.has(l) ? { backgroundColor: levelColors[l], borderColor: levelColors[l] } : undefined}
                   >{l}</button>
                 ))}
                 <button
@@ -550,7 +557,7 @@ export function BookVocabAnalysis({
                   const isSelected = selected.has(w.word);
                   // 已加入/已掌握 时仍按 CEFR 级别上色：分级词用对应颜色，超纲用红
                   const tintColor = (inVocab || mastered)
-                    ? (w.level ? LEVEL_COLORS[w.level] : '#e74c3c')
+                    ? (w.level ? levelColors[w.level] : '#e74c3c')
                     : undefined;
                   return (
                     <div key={w.word} className={`va-word-item ${inVocab ? 'in-vocab' : ''} ${mastered && !inVocab ? 'mastered' : ''}`}>
@@ -569,7 +576,7 @@ export function BookVocabAnalysis({
                         <span className="va-word-mastered" style={tintColor ? { color: tintColor } : undefined}>★</span>
                       )}
                       <span className="va-word-text" style={tintColor ? { color: tintColor, fontWeight: 600 } : undefined}>{w.word}</span>
-                      <span className="va-word-level" style={{ color: w.level ? LEVEL_COLORS[w.level] : (isDarkMode ? '#888' : '#999') }}>
+                      <span className="va-word-level" style={{ color: w.level ? levelColors[w.level] : (isDarkMode ? '#888' : '#999') }}>
                         {w.level ? LEVEL_LABELS[w.level] : '超纲'}
                       </span>
                       <span className="va-word-freq">×{w.count}</span>

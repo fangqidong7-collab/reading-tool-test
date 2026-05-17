@@ -3,7 +3,8 @@
 import React, { useCallback, useRef, useEffect, useState, forwardRef, useImperativeHandle } from "react";
 import { ProcessedContent, SentenceAnnotation } from "@/hooks/useBookshelf";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { LEVEL_COLORS, type CEFRLevel } from "@/lib/vocabLevel";
+import { getLevelColor, type CEFRLevel } from "@/lib/vocabLevel";
+import type { CefrColorPaletteId } from "@/lib/cefrColorPalettes";
 
 // Layout constants
 const READING_PADDING_HORIZONTAL = 32;
@@ -154,6 +155,7 @@ interface ParagraphProps {
   isCurrentSearchResult?: boolean;
   highlightBg?: string;
   isDarkMode?: boolean;
+  cefrColorPalette?: CefrColorPaletteId;
   sentenceAnnotations?: SentenceAnnotation[];
   onRemoveSentenceAnnotation?: (id: string) => void;
   onRemoveAnnotation?: (word: string, lemma: string) => void;
@@ -174,6 +176,7 @@ const Paragraph = React.memo(({
   isCurrentSearchResult = false,
   highlightBg = "#FFEB3B",
   isDarkMode = false,
+  cefrColorPalette = 'standard',
   sentenceAnnotations = [],
   onRemoveSentenceAnnotation,
   onRemoveAnnotation,
@@ -440,7 +443,7 @@ const Paragraph = React.memo(({
                 }}
                 style={{ 
                   color: annotation.cefrLevel
-                    ? LEVEL_COLORS[annotation.cefrLevel as CEFRLevel] || annotationColor
+                    ? getLevelColor(annotation.cefrLevel as CEFRLevel, cefrColorPalette, isDarkMode) || annotationColor
                     : annotationColor,
                   fontSize: '0.7em',
                   fontFamily: '"Microsoft YaHei", "微软雅黑", sans-serif',
@@ -494,6 +497,7 @@ function paragraphPropsAreEqual(
     isCurrentSearchResult?: boolean;
     highlightBg?: string;
     isDarkMode?: boolean;
+    cefrColorPalette?: CefrColorPaletteId;
     sentenceAnnotations?: SentenceAnnotation[];
     onRemoveSentenceAnnotation?: (id: string) => void;
     onRemoveAnnotation?: (word: string, lemma: string) => void;
@@ -511,6 +515,7 @@ function paragraphPropsAreEqual(
     isCurrentSearchResult?: boolean;
     highlightBg?: string;
     isDarkMode?: boolean;
+    cefrColorPalette?: CefrColorPaletteId;
     sentenceAnnotations?: SentenceAnnotation[];
     onRemoveSentenceAnnotation?: (id: string) => void;
     onRemoveAnnotation?: (word: string, lemma: string) => void;
@@ -525,6 +530,7 @@ function paragraphPropsAreEqual(
   if (prev.isCurrentSearchResult !== next.isCurrentSearchResult) return false;
   if (prev.highlightBg !== next.highlightBg) return false;
   if (prev.isDarkMode !== next.isDarkMode) return false;
+  if (prev.cefrColorPalette !== next.cefrColorPalette) return false;
   if (prev.onWordDoubleClick !== next.onWordDoubleClick) return false;
   if (prev.sentenceAnnotations !== next.sentenceAnnotations) return false;
   if (prev.onRemoveSentenceAnnotation !== next.onRemoveSentenceAnnotation) return false;
@@ -561,6 +567,7 @@ interface ReadingAreaProps {
   highlightBg?: string;
   highlightBgHover?: string;
   isDarkMode?: boolean;
+  cefrColorPalette?: CefrColorPaletteId;
   headerVisible?: boolean;
   searchQuery?: string;
   searchResults?: Array<{ paragraphIndex: number; charIndex: number }>;
@@ -602,6 +609,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
   highlightBg = "#FFEB3B",
   highlightBgHover = "#FFD700",
   isDarkMode = false,
+  cefrColorPalette = 'standard',
   headerVisible = true,
   searchQuery = "",
   searchResults = [],
@@ -1398,6 +1406,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
                     }
                     highlightBg={highlightBg}
                     isDarkMode={isDarkMode}
+                    cefrColorPalette={cefrColorPalette}
                     sentenceAnnotations={sentenceAnnotations}
                     onRemoveSentenceAnnotation={onRemoveSentenceAnnotation}
                     onRemoveAnnotation={onRemoveAnnotation}

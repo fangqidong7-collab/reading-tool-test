@@ -17,7 +17,7 @@ import { translateWord, translateWordEn, translateWordEnSimple, translateSentenc
 import { forceReloadDictionary, lookupExternalDict, lookupExternalDictEn, loadExternalDictionaryEn, type DictLoadStatus } from "@/lib/dictLoader";
 import { cleanTranslation, shortenTranslation } from "@/lib/annotationText";
 import { processTextToSegmentsAsync } from "@/lib/processBookContent";
-import { loadVocabLevels, getWordLevel, isAtOrAbove, getLevelColor, type CEFRLevel } from "@/lib/vocabLevel";
+import { loadVocabLevels, getWordLevel, isAtOrAbove, type CEFRLevel } from "@/lib/vocabLevel";
 
 async function hashesFromMergedBooks(bookList: Book[]): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
@@ -100,6 +100,8 @@ export default function Home() {
     setFontFamily,
     autoTheme,
     setAutoTheme,
+    cefrColorPalette,
+    setCefrColorPalette,
   } = useReadingSettings();
 
   // Bookshelf theme (independent from reading theme)
@@ -1622,6 +1624,8 @@ export default function Home() {
       setFontFamily={setFontFamily}
       autoTheme={autoTheme}
       setAutoTheme={setAutoTheme}
+      cefrColorPalette={cefrColorPalette}
+      setCefrColorPalette={setCefrColorPalette}
       readingStats={readingStats}
       setCurrentScrollPercent={setCurrentScrollPercent}
       setCurrentParagraphIndex={setCurrentParagraphIndex}
