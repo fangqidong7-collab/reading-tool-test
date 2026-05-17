@@ -19,6 +19,9 @@ interface BookshelfProps {
   onSyncClick: () => void;
   onAddSuccess?: () => void;
   lastSyncAt?: number | null;
+  autoPeriodicSync?: boolean;
+  onAutoPeriodicSyncChange?: (enabled: boolean) => void;
+  hasSyncCode?: boolean;
   bookshelfTheme: BookshelfTheme;
   bookshelfThemeId: string;
   setBookshelfThemeId: (id: string) => void;
@@ -48,6 +51,9 @@ export function Bookshelf({
   onSyncClick,
   onAddSuccess,
   lastSyncAt,
+  autoPeriodicSync = true,
+  onAutoPeriodicSyncChange,
+  hasSyncCode = false,
   bookshelfTheme,
   bookshelfThemeId,
   setBookshelfThemeId,
@@ -148,7 +154,37 @@ export function Bookshelf({
             )}
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          {hasSyncCode && onAutoPeriodicSyncChange && (
+            <button
+              type="button"
+              className={`auto-sync-toggle${autoPeriodicSync ? " on" : " off"}`}
+              onClick={() => onAutoPeriodicSyncChange(!autoPeriodicSync)}
+              title={
+                autoPeriodicSync
+                  ? "阅读时每 10 分钟自动云同步（已开启，点击暂停）"
+                  : "已暂停阅读时自动云同步（点击恢复）"
+              }
+              style={{
+                color: t.isDark ? "rgba(255,255,255,0.75)" : "rgba(0,0,0,0.65)",
+                borderColor: t.isDark ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.12)",
+                background: autoPeriodicSync
+                  ? (t.isDark ? "rgba(255,255,255,0.08)" : `${t.accent}14`)
+                  : (t.isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)"),
+              }}
+            >
+              <span
+                className="auto-sync-toggle-track"
+                aria-hidden
+                style={{ background: autoPeriodicSync ? t.accent : (t.isDark ? "rgba(255,255,255,0.25)" : "rgba(0,0,0,0.2)") }}
+              >
+                <span className={`auto-sync-toggle-thumb${autoPeriodicSync ? " on" : ""}`} />
+              </span>
+              <span className="auto-sync-toggle-label">
+                {autoPeriodicSync ? "自动同步" : "已暂停同步"}
+              </span>
+            </button>
+          )}
           {lastSyncAt && (
             <span className="sync-time-label" style={{ color: t.isDark ? "rgba(255,255,255,0.5)" : undefined }}>
               {formatSyncTime(lastSyncAt)}

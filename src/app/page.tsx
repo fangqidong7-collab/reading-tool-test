@@ -102,6 +102,8 @@ export default function Home() {
     setAutoTheme,
     cefrColorPalette,
     setCefrColorPalette,
+    autoPeriodicSync,
+    setAutoPeriodicSync,
   } = useReadingSettings();
 
   // Bookshelf theme (independent from reading theme)
@@ -461,7 +463,7 @@ export default function Home() {
     syncCode,
     syncing,
     performSync: performSyncForReading,
-    enabled: !!currentBook,
+    enabled: !!currentBook && autoPeriodicSync,
   });
 
   // Sentence translation state
@@ -1523,6 +1525,8 @@ export default function Home() {
         unbind={unbind}
         readingStats={readingStats}
         dictMode={dictMode}
+        autoPeriodicSync={autoPeriodicSync}
+        setAutoPeriodicSync={setAutoPeriodicSync}
       />
     );
   }

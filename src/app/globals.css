@@ -400,6 +400,53 @@ rt {
   white-space: nowrap;
 }
 
+.auto-sync-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  white-space: nowrap;
+}
+
+.auto-sync-toggle:hover {
+  filter: brightness(0.98);
+}
+
+.auto-sync-toggle-track {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  border-radius: 9px;
+  flex-shrink: 0;
+  transition: background 0.15s ease;
+}
+
+.auto-sync-toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s ease;
+}
+
+.auto-sync-toggle-thumb.on {
+  transform: translateX(14px);
+}
+
+.auto-sync-toggle-label {
+  line-height: 1;
+}
+
 /* Reading Stats Card - inline styles in Bookshelf.tsx */
 
 /* Book Grid - fixed column width on desktop */
@@ -436,6 +483,14 @@ rt {
 
   .sync-time-label {
     font-size: 11px;
+  }
+
+  .auto-sync-toggle-label {
+    display: none;
+  }
+
+  .auto-sync-toggle {
+    padding: 6px 8px;
   }
 
   .cloud-sync-btn svg {

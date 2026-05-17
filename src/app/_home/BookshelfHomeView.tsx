@@ -72,6 +72,8 @@ export interface BookshelfHomeViewProps {
   clearMasteredVocabulary?: () => void;
   readingStats: ReadingStatsReturn;
   dictMode?: 'zh' | 'en' | 'en-simple';
+  autoPeriodicSync: boolean;
+  setAutoPeriodicSync: (enabled: boolean) => void;
 }
 
 export function BookshelfHomeView({
@@ -119,6 +121,8 @@ export function BookshelfHomeView({
   unbind,
   readingStats,
   dictMode = 'zh',
+  autoPeriodicSync,
+  setAutoPeriodicSync,
 }: BookshelfHomeViewProps) {
   const [statsOpen, setStatsOpen] = React.useState(false);
 
@@ -155,6 +159,9 @@ export function BookshelfHomeView({
               }
             }}
             lastSyncAt={lastSyncAt}
+            autoPeriodicSync={autoPeriodicSync}
+            onAutoPeriodicSyncChange={setAutoPeriodicSync}
+            hasSyncCode={!!syncCode}
             bookshelfTheme={bookshelfTheme}
             bookshelfThemeId={bookshelfThemeId}
             setBookshelfThemeId={setBookshelfThemeId}
@@ -356,6 +363,8 @@ export function BookshelfHomeView({
         onUnbind={unbind}
         isDarkMode={isDarkMode}
         justCreated={syncJustCreated}
+        autoPeriodicSync={autoPeriodicSync}
+        onAutoPeriodicSyncChange={setAutoPeriodicSync}
       />
     </>
   );

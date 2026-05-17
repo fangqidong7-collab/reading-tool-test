@@ -15,6 +15,8 @@ interface SyncPanelProps {
   onUnbind: () => void;
   isDarkMode?: boolean;
   justCreated?: boolean;
+  autoPeriodicSync?: boolean;
+  onAutoPeriodicSyncChange?: (enabled: boolean) => void;
 }
 
 export function SyncPanel({
@@ -30,6 +32,8 @@ export function SyncPanel({
   onUnbind,
   isDarkMode = false,
   justCreated = false,
+  autoPeriodicSync = true,
+  onAutoPeriodicSyncChange,
 }: SyncPanelProps) {
   const [inputCode, setInputCode] = useState("");
   const [copied, setCopied] = useState(false);
@@ -147,6 +151,36 @@ export function SyncPanel({
                   <div style={{ marginTop: 4 }}>上次同步: {formatTime(lastSyncAt)}</div>
                 )}
               </div>
+
+              {onAutoPeriodicSyncChange && (
+                <label style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  padding: "12px 14px",
+                  marginBottom: 16,
+                  borderRadius: 8,
+                  border: `1px solid ${colors.border}`,
+                  backgroundColor: colors.cardBg,
+                  cursor: "pointer",
+                  fontSize: 13,
+                  color: colors.text,
+                }}>
+                  <span style={{ lineHeight: 1.45 }}>
+                    <strong style={{ display: "block", marginBottom: 2 }}>阅读时自动云同步</strong>
+                    <span style={{ color: colors.secondary, fontSize: 12 }}>
+                      前台连续阅读每 10 分钟同步一次（手动「立即同步」不受影响）
+                    </span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={autoPeriodicSync}
+                    onChange={(e) => onAutoPeriodicSyncChange(e.target.checked)}
+                    style={{ width: 18, height: 18, flexShrink: 0, cursor: "pointer" }}
+                  />
+                </label>
+              )}
 
               {/* 单按钮双向同步 */}
               <button onClick={onSync} disabled={syncing} style={{

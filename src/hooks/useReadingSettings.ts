@@ -45,6 +45,8 @@ export interface ReadingSettingsStorage {
   fontFamily: FontFamilySetting;
   autoTheme: boolean;
   cefrColorPalette: CefrColorPaletteId;
+  /** 阅读时是否每 10 分钟自动云同步 */
+  autoPeriodicSync: boolean;
 }
 
 export type { CefrColorPaletteId };
@@ -114,6 +116,7 @@ function loadSettingsFromStorage(): ReadingSettingsStorage {
     fontFamily: "georgia" as FontFamilySetting,
     autoTheme: false,
     cefrColorPalette: "standard" as CefrColorPaletteId,
+    autoPeriodicSync: true,
   };
   if (typeof window === "undefined") return defaults;
 
@@ -129,6 +132,7 @@ function loadSettingsFromStorage(): ReadingSettingsStorage {
         fontFamily: migrateFontFamily(parsed.fontFamily ?? 'georgia'),
         autoTheme: parsed.autoTheme ?? false,
         cefrColorPalette: parseCefrColorPaletteId(parsed.cefrColorPalette),
+        autoPeriodicSync: parsed.autoPeriodicSync !== false,
       };
     }
   } catch (e) {
@@ -162,6 +166,7 @@ export function useReadingSettings() {
     fontFamily: "georgia",
     autoTheme: false,
     cefrColorPalette: "standard",
+    autoPeriodicSync: true,
   });
   const [isLoaded, setIsLoaded] = useState(false);
   const [dictMode, setDictModeState] = useState<'zh' | 'en' | 'en-simple'>('zh');
@@ -171,6 +176,7 @@ export function useReadingSettings() {
   const [fontFamily, setFontFamilyState] = useState<FontFamilySetting>('georgia');
   const [autoTheme, setAutoThemeState] = useState(false);
   const [cefrColorPalette, setCefrColorPaletteState] = useState<CefrColorPaletteId>('standard');
+  const [autoPeriodicSync, setAutoPeriodicSyncState] = useState(true);
   const autoThemeRef = useRef(false);
 
   // Load settings on mount
@@ -185,6 +191,7 @@ export function useReadingSettings() {
     setAutoThemeState(loaded.autoTheme ?? false);
     autoThemeRef.current = loaded.autoTheme ?? false;
     setCefrColorPaletteState(parseCefrColorPaletteId(loaded.cefrColorPalette));
+    setAutoPeriodicSyncState(loaded.autoPeriodicSync !== false);
 
     let themeId = loaded.backgroundTheme;
     if (loaded.autoTheme && typeof window !== 'undefined') {
@@ -229,6 +236,7 @@ export function useReadingSettings() {
         fontFamily: storage.fontFamily,
         autoTheme: storage.autoTheme,
         cefrColorPalette: storage.cefrColorPalette,
+        autoPeriodicSync: storage.autoPeriodicSync,
       });
     }
   }, [settings, storage, isLoaded]);
@@ -297,8 +305,10 @@ export function useReadingSettings() {
       fontFamily: 'georgia',
       autoTheme: false,
       cefrColorPalette: 'standard',
+      autoPeriodicSync: true,
     }));
     setCefrColorPaletteState('standard');
+    setAutoPeriodicSyncState(true);
     setDictModeState('zh');
     setPageTurnRatioState(0.9);
     setClickToTurnPageState(false);
@@ -353,6 +363,11 @@ export function useReadingSettings() {
     setStorage((prev) => ({ ...prev, cefrColorPalette: paletteId }));
   }, []);
 
+  const setAutoPeriodicSync = useCallback((enabled: boolean) => {
+    setAutoPeriodicSyncState(enabled);
+    setStorage((prev) => ({ ...prev, autoPeriodicSync: enabled }));
+  }, []);
+
   const annotationFontSize = Math.round(settings.fontSize * 0.7);
 
   const fontFamilyCss = FONT_FAMILIES.find(f => f.id === fontFamily)?.css
@@ -395,5 +410,7 @@ export function useReadingSettings() {
     setAutoTheme,
     cefrColorPalette,
     setCefrColorPalette,
+    autoPeriodicSync,
+    setAutoPeriodicSync,
   };
 }
