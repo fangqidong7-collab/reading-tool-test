@@ -655,6 +655,72 @@ const masteredWords = useMemo(() => new Set(Object.keys(masteredVocabulary)), [m
     }
   }, []);
 
+  /** 标记为已掌握：若在词汇表中则移出并保留释义；否则写入已掌握列表（可带词典释义） */
+  const markWordAsMastered = useCallback((
+    root: string,
+    supplemental?: {
+      meaning?: string;
+      pos?: string;
+      meaningZh?: string;
+      meaningEn?: string;
+      meaningEnSimple?: string;
+    },
+  ) => {
+    let preserved: {
+      root: string;
+      meaning: string;
+      pos: string;
+      correctCount: number;
+      meaningZh?: string;
+      meaningEn?: string;
+      meaningEnSimple?: string;
+    } | null = null;
+
+    setGlobalVocabulary((prev) => {
+      const entry = prev[root];
+      if (!entry) return prev;
+      preserved = entry;
+      const next = { ...prev };
+      delete next[root];
+      return next;
+    });
+
+    setMasteredVocabulary((prev) => {
+      if (prev[root]) return prev;
+      if (preserved) {
+        return { ...prev, [root]: preserved };
+      }
+      const safeMeaning =
+        supplemental?.meaning && !isTranslationError(supplemental.meaning)
+          ? supplemental.meaning
+          : '';
+      const safeZh =
+        supplemental?.meaningZh && !isTranslationError(supplemental.meaningZh)
+          ? supplemental.meaningZh
+          : undefined;
+      const safeEn =
+        supplemental?.meaningEn && !isTranslationError(supplemental.meaningEn)
+          ? supplemental.meaningEn
+          : undefined;
+      const safeEnSimple =
+        supplemental?.meaningEnSimple && !isTranslationError(supplemental.meaningEnSimple)
+          ? supplemental.meaningEnSimple
+          : undefined;
+      return {
+        ...prev,
+        [root]: {
+          root,
+          meaning: safeMeaning,
+          pos: supplemental?.pos ?? '',
+          correctCount: 0,
+          meaningZh: safeZh,
+          meaningEn: safeEn,
+          meaningEnSimple: safeEnSimple,
+        },
+      };
+    });
+  }, []);
+
   // 从全局词汇表删除词（标记为已掌握，保留释义到 masteredVocabulary）
   const removeFromGlobalVocabulary = useCallback((root: string) => {
     let preservedEntry: { root: string; meaning: string; pos: string; correctCount: number; meaningZh?: string; meaningEn?: string; meaningEnSimple?: string } | null = null;
@@ -1118,6 +1184,7 @@ const masteredWords = useMemo(() => new Set(Object.keys(masteredVocabulary)), [m
     masteredVocabulary,
     addToGlobalVocabulary,
     removeFromGlobalVocabulary,
+    markWordAsMastered,
     restoreFromMastered,
     removeFromMastered,
     clearMasteredVocabulary,

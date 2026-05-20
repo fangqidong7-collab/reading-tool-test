@@ -51,6 +51,7 @@ export default function Home() {
     masteredVocabulary,
     addToGlobalVocabulary,
     removeFromGlobalVocabulary,
+    markWordAsMastered,
     restoreFromMastered,
     removeFromMastered,
     clearMasteredVocabulary,
@@ -1657,6 +1658,7 @@ export default function Home() {
       removeFromMastered={removeFromMastered}
       addToGlobalVocabulary={addToGlobalVocabulary}
       mergeGlobalVocabulary={mergeGlobalVocabulary}
+      markWordAsMastered={markWordAsMastered}
     />
   );
 }
