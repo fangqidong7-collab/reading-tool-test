@@ -168,6 +168,10 @@ export interface ReadingHomeViewProps {
   removeFromMastered?: (root: string) => void;
   addToGlobalVocabulary?: (word: string, meaning: string, pos: string, langs?: { zh?: string; en?: string; enSimple?: string }) => void;
   mergeGlobalVocabulary?: (entries: Record<string, { root: string; meaning: string; pos: string; meaningZh?: string; meaningEn?: string; meaningEnSimple?: string }>) => void;
+  markWordAsMastered?: (
+    word: string,
+    supplemental?: { meaning?: string; pos?: string; meaningZh?: string; meaningEn?: string; meaningEnSimple?: string },
+  ) => void;
 }
 
 const noteInputColors = {
@@ -300,6 +304,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
     removeFromMastered,
     addToGlobalVocabulary,
     mergeGlobalVocabulary,
+    markWordAsMastered,
   } = props;
 
   const [showNoteInput, setShowNoteInput] = React.useState(false);
@@ -500,6 +505,8 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
         masteredWords={masteredWords}
         onAddToVocabulary={addToGlobalVocabulary}
         onBatchAddToVocabulary={mergeGlobalVocabulary}
+        onMarkAsMastered={markWordAsMastered}
+        onUnmarkMastered={removeFromMastered}
         dictMode={dictMode}
         cefrColorPalette={cefrColorPalette}
       />

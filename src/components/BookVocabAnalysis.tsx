@@ -23,6 +23,11 @@ interface BookVocabAnalysisProps {
   masteredWords?: Set<string>;
   onAddToVocabulary?: (word: string, meaning: string, pos: string, langs?: { zh?: string; en?: string; enSimple?: string }) => void;
   onBatchAddToVocabulary?: (entries: Record<string, { root: string; meaning: string; pos: string; meaningZh?: string; meaningEn?: string; meaningEnSimple?: string }>) => void;
+  onMarkAsMastered?: (
+    word: string,
+    supplemental?: { meaning?: string; pos?: string; meaningZh?: string; meaningEn?: string; meaningEnSimple?: string },
+  ) => void;
+  onUnmarkMastered?: (word: string) => void;
   dictMode?: 'zh' | 'en' | 'en-simple';
   cefrColorPalette?: CefrColorPaletteId;
 }
@@ -93,6 +98,8 @@ export function BookVocabAnalysis({
   masteredWords,
   onAddToVocabulary,
   onBatchAddToVocabulary,
+  onMarkAsMastered,
+  onUnmarkMastered,
   dictMode = 'zh',
   cefrColorPalette = 'standard',
 }: BookVocabAnalysisProps) {
@@ -219,6 +226,72 @@ export function BookVocabAnalysis({
     });
   }, []);
 
+  const buildLangPayload = useCallback((word: string, meaning: string) => {
+    const langs = lookupAllLocal(word);
+    if (dictMode === 'zh') langs.zh = meaning;
+    else if (dictMode === 'en') langs.en = meaning;
+    else langs.enSimple = meaning;
+    return langs;
+  }, [dictMode]);
+
+  const handleMarkSingle = useCallback(async (word: string) => {
+    if (!onMarkAsMastered || isMastered(word)) return;
+    if (globalVocabulary?.[word]) {
+      onMarkAsMastered(word);
+      setSelected((prev) => {
+        const n = new Set(prev);
+        n.delete(word);
+        return n;
+      });
+      return;
+    }
+    let meaning = lookupMeaning(word, dictMode);
+    if (!meaning || isTranslationError(meaning)) {
+      setLoadingWord(word);
+      meaning = await aiTranslate(word, dictMode);
+      setLoadingWord(null);
+    }
+    const langs = buildLangPayload(word, meaning || '');
+    onMarkAsMastered(word, {
+      meaning: meaning || langs.zh || langs.en || langs.enSimple || '',
+      pos: '',
+      meaningZh: langs.zh,
+      meaningEn: langs.en,
+      meaningEnSimple: langs.enSimple,
+    });
+    setSelected((prev) => {
+      const n = new Set(prev);
+      n.delete(word);
+      return n;
+    });
+  }, [onMarkAsMastered, isMastered, globalVocabulary, dictMode, buildLangPayload]);
+
+  const handleBatchMarkMastered = useCallback(async () => {
+    if (!onMarkAsMastered) return;
+    const wordsToMark = [...selected].filter((w) => !isMastered(w));
+    if (wordsToMark.length === 0) return;
+
+    for (const word of wordsToMark) {
+      if (globalVocabulary?.[word]) {
+        onMarkAsMastered(word);
+        continue;
+      }
+      let meaning = lookupMeaning(word, dictMode);
+      if (!meaning || isTranslationError(meaning)) {
+        meaning = await aiTranslate(word, dictMode);
+      }
+      const langs = buildLangPayload(word, meaning || '');
+      onMarkAsMastered(word, {
+        meaning: meaning || langs.zh || langs.en || langs.enSimple || '',
+        pos: '',
+        meaningZh: langs.zh,
+        meaningEn: langs.en,
+        meaningEnSimple: langs.enSimple,
+      });
+    }
+    setSelected(new Set());
+  }, [onMarkAsMastered, selected, isMastered, globalVocabulary, dictMode, buildLangPayload]);
+
   const handleAddSingle = useCallback(async (word: string) => {
     if (!onAddToVocabulary) return;
     let meaning = lookupMeaning(word, dictMode);
@@ -228,14 +301,11 @@ export function BookVocabAnalysis({
       setLoadingWord(null);
     }
     if (!meaning || isTranslationError(meaning)) return;
-    const langs = lookupAllLocal(word);
-    if (dictMode === 'zh') langs.zh = meaning;
-    else if (dictMode === 'en') langs.en = meaning;
-    else langs.enSimple = meaning;
+    const langs = buildLangPayload(word, meaning);
     onAddToVocabulary(word, meaning, '', langs);
     setAddedWords(prev => new Set(prev).add(word));
     setSelected(prev => { const n = new Set(prev); n.delete(word); return n; });
-  }, [onAddToVocabulary, dictMode]);
+  }, [onAddToVocabulary, dictMode, buildLangPayload]);
 
   const handleBatchAdd = useCallback(async () => {
     if (!onBatchAddToVocabulary || !onAddToVocabulary || selected.size === 0) return;
@@ -322,8 +392,10 @@ export function BookVocabAnalysis({
   });
 
   const addableFiltered = filteredWords.filter(w => !isInVocab(w.word) && !isMastered(w.word));
+  const masterableFiltered = filteredWords.filter(w => !isMastered(w.word));
   const selectedInView = filteredWords.filter(w => selected.has(w.word) && !isInVocab(w.word) && !isMastered(w.word));
-  const allAddableSelected = addableFiltered.length > 0 && addableFiltered.every(w => selected.has(w.word));
+  const selectedMasterableInView = filteredWords.filter(w => selected.has(w.word) && !isMastered(w.word));
+  const allMasterableSelected = masterableFiltered.length > 0 && masterableFiltered.every(w => selected.has(w.word));
 
   const maxLevelCount = Math.max(...ALL_LEVELS.map(l => analysis.levelUniqueWords[l] || 0), analysis.unknownUniqueCount || 1);
 
@@ -506,7 +578,7 @@ export function BookVocabAnalysis({
               </div>
 
               {/* Batch actions bar */}
-              {onAddToVocabulary && (
+              {(onAddToVocabulary || onMarkAsMastered) && (
                 <div className="va-batch-bar">
                   {batchProgress ? (
                     <div className="va-progress-row">
@@ -518,26 +590,38 @@ export function BookVocabAnalysis({
                     </div>
                   ) : (
                     <>
-                      <label className="va-select-all" onClick={() => {
-                        if (allAddableSelected) {
-                          setSelected(prev => {
-                            const n = new Set(prev);
-                            addableFiltered.forEach(w => n.delete(w.word));
-                            return n;
-                          });
-                        } else {
-                          setSelected(prev => {
-                            const n = new Set(prev);
-                            addableFiltered.forEach(w => n.add(w.word));
-                            return n;
-                          });
-                        }
-                      }}>
-                        <input type="checkbox" checked={allAddableSelected} readOnly style={{ cursor: 'pointer' }} />
-                        <span>全选可添加 ({addableFiltered.length})</span>
-                      </label>
-                      {selectedInView.length > 0 && (
-                        <button className="va-batch-add-btn" onClick={handleBatchAdd}>
+                      {onMarkAsMastered && masterableFiltered.length > 0 && (
+                        <label className="va-select-all" onClick={() => {
+                          if (allMasterableSelected) {
+                            setSelected((prev) => {
+                              const n = new Set(prev);
+                              masterableFiltered.forEach((w) => n.delete(w.word));
+                              return n;
+                            });
+                          } else {
+                            setSelected((prev) => {
+                              const n = new Set(prev);
+                              masterableFiltered.forEach((w) => n.add(w.word));
+                              return n;
+                            });
+                          }
+                        }}>
+                          <input type="checkbox" checked={allMasterableSelected} readOnly style={{ cursor: 'pointer' }} />
+                          <span>全选 ({masterableFiltered.length})</span>
+                        </label>
+                      )}
+                      {onMarkAsMastered && selectedMasterableInView.length > 0 && (
+                        <button
+                          type="button"
+                          className="va-batch-master-btn"
+                          onClick={handleBatchMarkMastered}
+                          disabled={loadingWord !== null}
+                        >
+                          标记已掌握 ({selectedMasterableInView.length})
+                        </button>
+                      )}
+                      {onAddToVocabulary && selectedInView.length > 0 && (
+                        <button type="button" className="va-batch-add-btn" onClick={handleBatchAdd}>
                           加入词汇表 ({selectedInView.length})
                         </button>
                       )}
@@ -561,7 +645,15 @@ export function BookVocabAnalysis({
                     : undefined;
                   return (
                     <div key={w.word} className={`va-word-item ${inVocab ? 'in-vocab' : ''} ${mastered && !inVocab ? 'mastered' : ''}`}>
-                      {onAddToVocabulary && !inVocab && !mastered && (
+                      {onMarkAsMastered && !mastered && (
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelect(w.word)}
+                          className="va-word-check"
+                        />
+                      )}
+                      {!onMarkAsMastered && onAddToVocabulary && !inVocab && !mastered && (
                         <input
                           type="checkbox"
                           checked={isSelected}
@@ -580,14 +672,40 @@ export function BookVocabAnalysis({
                         {w.level ? LEVEL_LABELS[w.level] : '超纲'}
                       </span>
                       <span className="va-word-freq">×{w.count}</span>
-                      {onAddToVocabulary && !inVocab && !mastered && (
-                        <button
-                          className="va-word-add"
-                          onClick={() => handleAddSingle(w.word)}
-                          title="加入词汇表"
-                          disabled={loadingWord === w.word}
-                        >{loadingWord === w.word ? '…' : '+'}</button>
-                      )}
+                      <div className="va-word-actions">
+                        {onMarkAsMastered && !mastered && (
+                          <button
+                            type="button"
+                            className="va-word-master"
+                            onClick={() => handleMarkSingle(w.word)}
+                            title={inVocab ? '从词汇表移出并标记已掌握' : '标记为已掌握'}
+                            disabled={loadingWord === w.word}
+                          >
+                            {loadingWord === w.word ? '…' : '★'}
+                          </button>
+                        )}
+                        {mastered && onUnmarkMastered && (
+                          <button
+                            type="button"
+                            className="va-word-unmaster"
+                            onClick={() => onUnmarkMastered(w.word)}
+                            title="取消已掌握"
+                          >
+                            ↩
+                          </button>
+                        )}
+                        {onAddToVocabulary && !inVocab && !mastered && (
+                          <button
+                            type="button"
+                            className="va-word-add"
+                            onClick={() => handleAddSingle(w.word)}
+                            title="加入词汇表"
+                            disabled={loadingWord === w.word}
+                          >
+                            {loadingWord === w.word ? '…' : '+'}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
@@ -852,6 +970,19 @@ export function BookVocabAnalysis({
           transition: background 0.15s;
         }
         .va-batch-add-btn:hover { background: #3a7bc8; }
+        .va-batch-master-btn {
+          padding: 5px 12px;
+          border: none;
+          border-radius: 6px;
+          background: #f59e0b;
+          color: #fff;
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: background 0.15s;
+        }
+        .va-batch-master-btn:hover:not(:disabled) { background: #d97706; }
+        .va-batch-master-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .va-progress-row {
           display: flex;
           align-items: center;
@@ -904,19 +1035,44 @@ export function BookVocabAnalysis({
         .va-word-text { flex: 1; font-weight: 500; }
         .va-word-level { font-size: 11px; margin-right: 4px; flex-shrink: 0; }
         .va-word-freq { font-size: 12px; opacity: 0.5; min-width: 32px; text-align: right; flex-shrink: 0; }
+        .va-word-actions {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          flex-shrink: 0;
+        }
+        .va-word-master,
+        .va-word-unmaster,
         .va-word-add {
           width: 24px; height: 24px;
           border: 1px solid rgba(128,128,128,0.3);
           border-radius: 6px;
           background: transparent;
           color: inherit;
-          font-size: 16px;
+          font-size: 14px;
           font-weight: 600;
           cursor: pointer;
           display: flex;
           align-items: center;
           justify-content: center;
           flex-shrink: 0;
+        }
+        .va-word-master {
+          color: #f59e0b;
+          border-color: rgba(245, 158, 11, 0.45);
+        }
+        .va-word-master:hover:not(:disabled) {
+          background: rgba(245, 158, 11, 0.12);
+        }
+        .va-word-unmaster {
+          font-size: 12px;
+          opacity: 0.75;
+        }
+        .va-word-unmaster:hover {
+          background: rgba(128, 128, 128, 0.1);
+        }
+        .va-word-add {
+          font-size: 16px;
           transition: all 0.15s;
           margin-left: 4px;
         }
