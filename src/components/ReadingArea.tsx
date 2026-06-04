@@ -393,10 +393,10 @@ const Paragraph = React.memo(({
         const key = `${pIndex}-${sIndex}`;
         const segCharStart = segmentOffsets[sIndex];
         const matchedSA = getSentenceAnnotationForChar(segCharStart);
-        const hasUnderline = !!matchedSA;
         const showTranslation = matchedSA && isLastSegmentOfAnnotation(sIndex, matchedSA);
 
         if (segment.type === "space" || segment.type === "punctuation") {
+          const hasUnderline = !!matchedSA;
           return (
             <React.Fragment key={key}>
               <span style={hasUnderline ? getUnderlineStyle() : (isInTtsSentence(segCharStart) ? getTtsHighlightStyle() : undefined)}>
@@ -431,6 +431,8 @@ const Paragraph = React.memo(({
         const original = segment.text.toLowerCase();
         const annotation = annotations?.[original] || annotations?.[lemma];
         const isAnnotated = !!annotation;
+        // 已有单词标注的不叠加句级下划线，避免与释义样式冲突
+        const hasUnderline = !!matchedSA && !isAnnotated;
         const meaningColor = annotation
           ? (annotation.cefrLevel
             ? getLevelColor(annotation.cefrLevel as CEFRLevel, cefrColorPalette, isDarkMode) || annotationColor
