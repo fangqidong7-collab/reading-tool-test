@@ -5,6 +5,10 @@ import { ProcessedContent, SentenceAnnotation } from "@/hooks/useBookshelf";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { getLevelColor, type CEFRLevel } from "@/lib/vocabLevel";
 import type { CefrColorPaletteId } from "@/lib/cefrColorPalettes";
+import {
+  aboveModeParagraphPaddingTop,
+  type AnnotationDisplayMode,
+} from "@/lib/readingAnnotationLayout";
 
 // Layout constants
 const READING_PADDING_HORIZONTAL = 32;
@@ -156,6 +160,8 @@ interface ParagraphProps {
   highlightBg?: string;
   isDarkMode?: boolean;
   cefrColorPalette?: CefrColorPaletteId;
+  annotationDisplayMode?: AnnotationDisplayMode;
+  annotationFontSize?: number;
   sentenceAnnotations?: SentenceAnnotation[];
   onRemoveSentenceAnnotation?: (id: string) => void;
   onRemoveAnnotation?: (word: string, lemma: string) => void;
@@ -177,6 +183,8 @@ const Paragraph = React.memo(({
   highlightBg = "#FFEB3B",
   isDarkMode = false,
   cefrColorPalette = 'standard',
+  annotationDisplayMode = 'inline',
+  annotationFontSize = 12,
   sentenceAnnotations = [],
   onRemoveSentenceAnnotation,
   onRemoveAnnotation,
@@ -369,12 +377,17 @@ const Paragraph = React.memo(({
 
   return (
     <p 
-      className={`paragraph ${isHeading ? 'heading-paragraph' : ''} ${isCurrentSearchResult ? 'search-highlight' : ''}`}
+      className={`paragraph ${isHeading ? 'heading-paragraph' : ''} ${isCurrentSearchResult ? 'search-highlight' : ''}${annotationDisplayMode === 'above' ? ' paragraph-above-annotations' : ''}`}
       data-paragraph-index={pIndex}
       data-heading-level={isHeading ? headingLevel : undefined}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
-      style={isCurrentSearchResult ? { backgroundColor: highlightBg } : (isHeading ? getHeadingStyles() : undefined)}
+      style={{
+        ...(isCurrentSearchResult ? { backgroundColor: highlightBg } : (isHeading ? getHeadingStyles() : undefined)),
+        ...(annotationDisplayMode === 'above'
+          ? { paddingTop: aboveModeParagraphPaddingTop(annotationFontSize) }
+          : undefined),
+      }}
     >
       {paragraph.segments.map((segment, sIndex) => {
         const key = `${pIndex}-${sIndex}`;
@@ -418,41 +431,71 @@ const Paragraph = React.memo(({
         const original = segment.text.toLowerCase();
         const annotation = annotations?.[original] || annotations?.[lemma];
         const isAnnotated = !!annotation;
+        const meaningColor = annotation
+          ? (annotation.cefrLevel
+            ? getLevelColor(annotation.cefrLevel as CEFRLevel, cefrColorPalette, isDarkMode) || annotationColor
+            : annotationColor)
+          : annotationColor;
+        const annotationStyle: React.CSSProperties = {
+          color: meaningColor,
+          fontSize: `${annotationFontSize}px`,
+          fontFamily: '"Microsoft YaHei", "微软雅黑", sans-serif',
+          cursor: 'pointer',
+          ...(hasUnderline ? getUnderlineStyle() : {}),
+        };
+        const handleAnnotationClick = (e: React.MouseEvent) => {
+          e.stopPropagation();
+          if (onRemoveAnnotation) {
+            onRemoveAnnotation(segment.text, lemma);
+          }
+        };
         
         return (
           <React.Fragment key={key}>
-            <span
-              className="word"
-              data-word={segment.text}
-              data-lemma={lemma}
-              style={{
-                ...(hasUnderline ? getUnderlineStyle() : {}),
-                ...(isInTtsSentence(segCharStart) ? getTtsHighlightStyle() : {}),
-              }}
-            >
-              {segment.text}
-            </span>
-            {isAnnotated && (
-              <span 
-                className="annotation"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (onRemoveAnnotation) {
-                    onRemoveAnnotation(segment.text, lemma);
-                  }
-                }}
-                style={{ 
-                  color: annotation.cefrLevel
-                    ? getLevelColor(annotation.cefrLevel as CEFRLevel, cefrColorPalette, isDarkMode) || annotationColor
-                    : annotationColor,
-                  fontSize: '0.7em',
-                  fontFamily: '"Microsoft YaHei", "微软雅黑", sans-serif',
-                  cursor: 'pointer',
-                  ...(hasUnderline ? getUnderlineStyle() : {}),
-                }}
-              >
-                ({annotation.meaning})
+            {isAnnotated && annotationDisplayMode === 'above' ? (
+              <span className="annotated-unit">
+                <span
+                  className="annotation-above"
+                  onClick={handleAnnotationClick}
+                  style={annotationStyle}
+                >
+                  {annotation.meaning}
+                </span>
+                <span
+                  className="word"
+                  data-word={segment.text}
+                  data-lemma={lemma}
+                  style={{
+                    ...(hasUnderline ? getUnderlineStyle() : {}),
+                    ...(isInTtsSentence(segCharStart) ? getTtsHighlightStyle() : {}),
+                  }}
+                >
+                  {segment.text}
+                </span>
               </span>
+            ) : (
+              <>
+                <span
+                  className="word"
+                  data-word={segment.text}
+                  data-lemma={lemma}
+                  style={{
+                    ...(hasUnderline ? getUnderlineStyle() : {}),
+                    ...(isInTtsSentence(segCharStart) ? getTtsHighlightStyle() : {}),
+                  }}
+                >
+                  {segment.text}
+                </span>
+                {isAnnotated && (
+                  <span
+                    className="annotation"
+                    onClick={handleAnnotationClick}
+                    style={annotationStyle}
+                  >
+                    ({annotation.meaning})
+                  </span>
+                )}
+              </>
             )}
             {showTranslation && matchedSA && (
               <span
@@ -498,6 +541,8 @@ function paragraphPropsAreEqual(
     highlightBg?: string;
     isDarkMode?: boolean;
     cefrColorPalette?: CefrColorPaletteId;
+    annotationDisplayMode?: AnnotationDisplayMode;
+    annotationFontSize?: number;
     sentenceAnnotations?: SentenceAnnotation[];
     onRemoveSentenceAnnotation?: (id: string) => void;
     onRemoveAnnotation?: (word: string, lemma: string) => void;
@@ -516,6 +561,8 @@ function paragraphPropsAreEqual(
     highlightBg?: string;
     isDarkMode?: boolean;
     cefrColorPalette?: CefrColorPaletteId;
+    annotationDisplayMode?: AnnotationDisplayMode;
+    annotationFontSize?: number;
     sentenceAnnotations?: SentenceAnnotation[];
     onRemoveSentenceAnnotation?: (id: string) => void;
     onRemoveAnnotation?: (word: string, lemma: string) => void;
@@ -531,6 +578,8 @@ function paragraphPropsAreEqual(
   if (prev.highlightBg !== next.highlightBg) return false;
   if (prev.isDarkMode !== next.isDarkMode) return false;
   if (prev.cefrColorPalette !== next.cefrColorPalette) return false;
+  if (prev.annotationDisplayMode !== next.annotationDisplayMode) return false;
+  if (prev.annotationFontSize !== next.annotationFontSize) return false;
   if (prev.onWordDoubleClick !== next.onWordDoubleClick) return false;
   if (prev.sentenceAnnotations !== next.sentenceAnnotations) return false;
   if (prev.onRemoveSentenceAnnotation !== next.onRemoveSentenceAnnotation) return false;
@@ -564,6 +613,7 @@ interface ReadingAreaProps {
   backgroundColor?: string;
   annotationColor?: string;
   annotationFontSize?: number;
+  annotationDisplayMode?: AnnotationDisplayMode;
   highlightBg?: string;
   highlightBgHover?: string;
   isDarkMode?: boolean;
@@ -606,6 +656,8 @@ export const ReadingArea = forwardRef(function ReadingArea({
   textColor = "#333333",
   backgroundColor = "#FFF8F0",
   annotationColor = "#E74C3C",
+  annotationFontSize = 12,
+  annotationDisplayMode = 'inline',
   highlightBg = "#FFEB3B",
   highlightBgHover = "#FFD700",
   isDarkMode = false,
@@ -776,6 +828,16 @@ export const ReadingArea = forwardRef(function ReadingArea({
       el.dispatchEvent(new Event('scroll'));
     });
   }, [clickToTurnPage, updatePageMask, virtualizer]);
+
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      try {
+        virtualizer.measure();
+      } catch {
+        /* ignore */
+      }
+    });
+  }, [annotationDisplayMode, annotationFontSize, lineHeight, fontSize, virtualizer]);
 
   // 文本选择功能 - 句子翻译
   const handleTextSelection = useCallback(() => {
@@ -1407,6 +1469,8 @@ export const ReadingArea = forwardRef(function ReadingArea({
                     highlightBg={highlightBg}
                     isDarkMode={isDarkMode}
                     cefrColorPalette={cefrColorPalette}
+                    annotationDisplayMode={annotationDisplayMode}
+                    annotationFontSize={annotationFontSize}
                     sentenceAnnotations={sentenceAnnotations}
                     onRemoveSentenceAnnotation={onRemoveSentenceAnnotation}
                     onRemoveAnnotation={onRemoveAnnotation}
@@ -1488,8 +1552,19 @@ export const ReadingArea = forwardRef(function ReadingArea({
           }
 
           .reader-content :global(.annotation) {
-            color: ${annotationColor};
-            font-size: 0.7em;
+            font-family: "Microsoft YaHei", "微软雅黑", sans-serif;
+          }
+
+          .reader-content :global(.annotated-unit) {
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            vertical-align: baseline;
+          }
+
+          .reader-content :global(.annotation-above) {
+            line-height: 1.15;
+            white-space: nowrap;
             font-family: "Microsoft YaHei", "微软雅黑", sans-serif;
           }
 
