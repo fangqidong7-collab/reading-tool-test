@@ -455,13 +455,6 @@ const Paragraph = React.memo(({
             {isAnnotated && annotationDisplayMode === 'above' ? (
               <span className="annotated-unit">
                 <span
-                  className="annotation-above"
-                  onClick={handleAnnotationClick}
-                  style={annotationStyle}
-                >
-                  {annotation.meaning}
-                </span>
-                <span
                   className="word"
                   data-word={segment.text}
                   data-lemma={lemma}
@@ -471,6 +464,13 @@ const Paragraph = React.memo(({
                   }}
                 >
                   {segment.text}
+                </span>
+                <span
+                  className="annotation-above"
+                  onClick={handleAnnotationClick}
+                  style={annotationStyle}
+                >
+                  {annotation.meaning}
                 </span>
               </span>
             ) : (
@@ -1556,16 +1556,21 @@ export const ReadingArea = forwardRef(function ReadingArea({
           }
 
           .reader-content :global(.annotated-unit) {
-            display: inline-flex;
-            flex-direction: column;
-            align-items: center;
+            position: relative;
+            display: inline-block;
             vertical-align: baseline;
           }
 
           .reader-content :global(.annotation-above) {
+            position: absolute;
+            left: 50%;
+            bottom: 100%;
+            transform: translateX(-50%);
+            margin-bottom: 2px;
             line-height: 1.15;
             white-space: nowrap;
             font-family: "Microsoft YaHei", "微软雅黑", sans-serif;
+            pointer-events: auto;
           }
 
           @media (max-width: 768px) {
