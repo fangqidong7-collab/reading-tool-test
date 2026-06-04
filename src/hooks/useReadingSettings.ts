@@ -2,6 +2,16 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { parseCefrColorPaletteId, type CefrColorPaletteId } from "@/lib/cefrColorPalettes";
+import {
+  ABOVE_MODE_DEFAULTS,
+  clampAnnotationFontSize,
+  defaultInlineAnnotationFontSize,
+  defaultAnnotationFontSize,
+  parseAnnotationDisplayMode,
+  type AnnotationDisplayMode,
+} from "@/lib/readingAnnotationLayout";
+
+export type { AnnotationDisplayMode };
 
 export interface ReadingSettings {
   fontSize: number;
@@ -47,6 +57,8 @@ export interface ReadingSettingsStorage {
   cefrColorPalette: CefrColorPaletteId;
   /** 阅读时是否每 10 分钟自动云同步 */
   autoPeriodicSync: boolean;
+  annotationDisplayMode: AnnotationDisplayMode;
+  annotationFontSize: number;
 }
 
 export type { CefrColorPaletteId };
@@ -117,6 +129,8 @@ function loadSettingsFromStorage(): ReadingSettingsStorage {
     autoTheme: false,
     cefrColorPalette: "standard" as CefrColorPaletteId,
     autoPeriodicSync: true,
+    annotationDisplayMode: "inline" as AnnotationDisplayMode,
+    annotationFontSize: defaultInlineAnnotationFontSize(DEFAULT_SETTINGS.fontSize),
   };
   if (typeof window === "undefined") return defaults;
 
@@ -124,15 +138,21 @@ function loadSettingsFromStorage(): ReadingSettingsStorage {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
+      const fontSize = parsed.fontSize ?? defaults.fontSize;
       return {
         ...defaults,
         ...parsed,
+        fontSize,
         clickToTurnPage: parsed.clickToTurnPage ?? false,
         vocabLevel: parsed.vocabLevel ?? 'off',
         fontFamily: migrateFontFamily(parsed.fontFamily ?? 'georgia'),
         autoTheme: parsed.autoTheme ?? false,
         cefrColorPalette: parseCefrColorPaletteId(parsed.cefrColorPalette),
         autoPeriodicSync: parsed.autoPeriodicSync !== false,
+        annotationDisplayMode: parseAnnotationDisplayMode(parsed.annotationDisplayMode),
+        annotationFontSize: clampAnnotationFontSize(
+          parsed.annotationFontSize ?? defaultInlineAnnotationFontSize(fontSize),
+        ),
       };
     }
   } catch (e) {
@@ -167,6 +187,8 @@ export function useReadingSettings() {
     autoTheme: false,
     cefrColorPalette: "standard",
     autoPeriodicSync: true,
+    annotationDisplayMode: "inline",
+    annotationFontSize: defaultInlineAnnotationFontSize(DEFAULT_SETTINGS.fontSize),
   });
   const [isLoaded, setIsLoaded] = useState(false);
   const [dictMode, setDictModeState] = useState<'zh' | 'en' | 'en-simple'>('zh');
@@ -177,6 +199,10 @@ export function useReadingSettings() {
   const [autoTheme, setAutoThemeState] = useState(false);
   const [cefrColorPalette, setCefrColorPaletteState] = useState<CefrColorPaletteId>('standard');
   const [autoPeriodicSync, setAutoPeriodicSyncState] = useState(true);
+  const [annotationDisplayMode, setAnnotationDisplayModeState] = useState<AnnotationDisplayMode>('inline');
+  const [annotationFontSize, setAnnotationFontSizeState] = useState(
+    defaultInlineAnnotationFontSize(DEFAULT_SETTINGS.fontSize),
+  );
   const autoThemeRef = useRef(false);
 
   // Load settings on mount
@@ -192,6 +218,12 @@ export function useReadingSettings() {
     autoThemeRef.current = loaded.autoTheme ?? false;
     setCefrColorPaletteState(parseCefrColorPaletteId(loaded.cefrColorPalette));
     setAutoPeriodicSyncState(loaded.autoPeriodicSync !== false);
+    setAnnotationDisplayModeState(parseAnnotationDisplayMode(loaded.annotationDisplayMode));
+    setAnnotationFontSizeState(
+      clampAnnotationFontSize(
+        loaded.annotationFontSize ?? defaultInlineAnnotationFontSize(loaded.fontSize),
+      ),
+    );
 
     let themeId = loaded.backgroundTheme;
     if (loaded.autoTheme && typeof window !== 'undefined') {
@@ -237,6 +269,8 @@ export function useReadingSettings() {
         autoTheme: storage.autoTheme,
         cefrColorPalette: storage.cefrColorPalette,
         autoPeriodicSync: storage.autoPeriodicSync,
+        annotationDisplayMode: storage.annotationDisplayMode,
+        annotationFontSize: storage.annotationFontSize,
       });
     }
   }, [settings, storage, isLoaded]);
@@ -306,9 +340,13 @@ export function useReadingSettings() {
       autoTheme: false,
       cefrColorPalette: 'standard',
       autoPeriodicSync: true,
+      annotationDisplayMode: 'inline',
+      annotationFontSize: defaultInlineAnnotationFontSize(16),
     }));
     setCefrColorPaletteState('standard');
     setAutoPeriodicSyncState(true);
+    setAnnotationDisplayModeState('inline');
+    setAnnotationFontSizeState(defaultInlineAnnotationFontSize(16));
     setDictModeState('zh');
     setPageTurnRatioState(0.9);
     setClickToTurnPageState(false);
@@ -368,7 +406,33 @@ export function useReadingSettings() {
     setStorage((prev) => ({ ...prev, autoPeriodicSync: enabled }));
   }, []);
 
-  const annotationFontSize = Math.round(settings.fontSize * 0.7);
+  const setAnnotationFontSize = useCallback((size: number) => {
+    const clamped = clampAnnotationFontSize(size);
+    setAnnotationFontSizeState(clamped);
+    setStorage((prev) => ({ ...prev, annotationFontSize: clamped }));
+  }, []);
+
+  const setAnnotationDisplayMode = useCallback((mode: AnnotationDisplayMode) => {
+    setAnnotationDisplayModeState(mode);
+    setStorage((prev) => {
+      const next = { ...prev, annotationDisplayMode: mode };
+      if (mode === 'above') {
+        const nextLineHeight = ABOVE_MODE_DEFAULTS.lineHeight;
+        const nextAnnotSize = defaultAnnotationFontSize(prev.fontSize);
+        setSettings((s) => ({
+          ...s,
+          lineHeight: nextLineHeight,
+        }));
+        setAnnotationFontSizeState(nextAnnotSize);
+        return {
+          ...next,
+          lineHeight: nextLineHeight,
+          annotationFontSize: nextAnnotSize,
+        };
+      }
+      return next;
+    });
+  }, []);
 
   const fontFamilyCss = FONT_FAMILIES.find(f => f.id === fontFamily)?.css
     ?? FONT_FAMILIES[0].css;
@@ -412,5 +476,8 @@ export function useReadingSettings() {
     setCefrColorPalette,
     autoPeriodicSync,
     setAutoPeriodicSync,
+    annotationDisplayMode,
+    setAnnotationDisplayMode,
+    setAnnotationFontSize,
   };
 }

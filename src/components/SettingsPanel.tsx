@@ -2,8 +2,9 @@
 
 import React, { useEffect, useRef, useCallback, useState } from "react";
 import { X } from "lucide-react";
-import { BACKGROUND_THEMES, FONT_FAMILIES, type FontFamilySetting, type CefrColorPaletteId } from "@/hooks/useReadingSettings";
+import { BACKGROUND_THEMES, FONT_FAMILIES, type FontFamilySetting, type CefrColorPaletteId, type AnnotationDisplayMode } from "@/hooks/useReadingSettings";
 import { CEFR_COLOR_PALETTE_OPTIONS, getLevelColors, LEVEL_LABELS, type CEFRLevel } from "@/lib/vocabLevel";
+import { ANNOTATION_FONT_SIZE_MIN, ANNOTATION_FONT_SIZE_MAX } from "@/lib/readingAnnotationLayout";
 
 const CEFR_LEVELS: CEFRLevel[] = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 
@@ -35,6 +36,10 @@ interface SettingsPanelProps {
   onAutoThemeChange: (enabled: boolean) => void;
   cefrColorPalette: CefrColorPaletteId;
   onCefrColorPaletteChange: (paletteId: CefrColorPaletteId) => void;
+  annotationDisplayMode: AnnotationDisplayMode;
+  onAnnotationDisplayModeChange: (mode: AnnotationDisplayMode) => void;
+  annotationFontSize: number;
+  onAnnotationFontSizeChange: (size: number) => void;
 }
 
 export function SettingsPanel({
@@ -65,6 +70,10 @@ export function SettingsPanel({
   onAutoThemeChange,
   cefrColorPalette,
   onCefrColorPaletteChange,
+  annotationDisplayMode,
+  onAnnotationDisplayModeChange,
+  annotationFontSize,
+  onAnnotationFontSizeChange,
 }: SettingsPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -104,6 +113,7 @@ export function SettingsPanel({
   const currentFontLabel = FONT_FAMILIES.find((f) => f.id === fontFamily)?.label || '系统默认';
   const dictLabels: Record<string, string> = { zh: '中文', en: 'English', 'en-simple': 'Easy English' };
   const vocabLabelText = vocabLevel === 'off' ? '关闭' : `≥${vocabLevel}`;
+  const annotationModeLabel = annotationDisplayMode === 'above' ? '词上方' : '括号跟词';
 
   return (
     <div className="settings-backdrop" onClick={handleBackdropClick}>
@@ -148,6 +158,50 @@ export function SettingsPanel({
                 <input type="range" min="1.2" max="2.5" step="0.1" value={lineHeight}
                   onChange={(e) => onLineHeightChange(Number(e.target.value))} className="slider" />
               </div>
+            </div>
+          )}
+
+          {/* Annotation display mode */}
+          <div className="setting-row" onClick={() => toggle('annotationDisplay')}>
+            <span className="row-title">标注形式</span>
+            <span className="row-value">{annotationModeLabel}</span>
+          </div>
+          {expanded === 'annotationDisplay' && (
+            <div className="setting-expand">
+              <div className="mode-options">
+                <button
+                  className={`mode-btn ${annotationDisplayMode === 'inline' ? 'active' : ''}`}
+                  onClick={() => onAnnotationDisplayModeChange('inline')}
+                >
+                  括号跟词
+                </button>
+                <button
+                  className={`mode-btn ${annotationDisplayMode === 'above' ? 'active' : ''}`}
+                  onClick={() => onAnnotationDisplayModeChange('above')}
+                >
+                  词上方
+                </button>
+              </div>
+              <div className="setting-control" style={{ marginTop: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: 12 }}>
+                  <span>标注字号</span>
+                  <span>{annotationFontSize}px</span>
+                </div>
+                <input
+                  type="range"
+                  min={ANNOTATION_FONT_SIZE_MIN}
+                  max={ANNOTATION_FONT_SIZE_MAX}
+                  step="1"
+                  value={annotationFontSize}
+                  onChange={(e) => onAnnotationFontSizeChange(Number(e.target.value))}
+                  className="slider"
+                />
+              </div>
+              {annotationDisplayMode === 'above' && (
+                <p style={{ margin: '10px 0 0', fontSize: 12, color: isDarkMode ? '#aaa' : '#888', lineHeight: 1.5 }}>
+                  切换至词上方模式时会自动应用推荐行间距与标注字号；行间距可在上方「行间距」中调节，建议 ≥ 1.8。
+                </p>
+              )}
             </div>
           )}
 

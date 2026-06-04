@@ -105,6 +105,9 @@ export default function Home() {
     setCefrColorPalette,
     autoPeriodicSync,
     setAutoPeriodicSync,
+    annotationDisplayMode,
+    setAnnotationDisplayMode,
+    setAnnotationFontSize,
   } = useReadingSettings();
 
   // Bookshelf theme (independent from reading theme)
@@ -1631,6 +1634,10 @@ export default function Home() {
       setAutoTheme={setAutoTheme}
       cefrColorPalette={cefrColorPalette}
       setCefrColorPalette={setCefrColorPalette}
+      annotationDisplayMode={annotationDisplayMode}
+      setAnnotationDisplayMode={setAnnotationDisplayMode}
+      annotationFontSize={annotationFontSize}
+      setAnnotationFontSize={setAnnotationFontSize}
       readingStats={readingStats}
       setCurrentScrollPercent={setCurrentScrollPercent}
       setCurrentParagraphIndex={setCurrentParagraphIndex}

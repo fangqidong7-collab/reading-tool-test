@@ -9,7 +9,7 @@ import { SyncPanel } from "@/components/SyncPanel";
 import { BookVocabAnalysis } from "@/components/BookVocabAnalysis";
 import { ReadingStatsPanel } from "@/components/ReadingStatsPanel";
 import { useTTS, SPEED_OPTIONS } from "@/hooks/useTTS";
-import type { FontFamilySetting, CefrColorPaletteId } from "@/hooks/useReadingSettings";
+import type { FontFamilySetting, CefrColorPaletteId, AnnotationDisplayMode } from "@/hooks/useReadingSettings";
 import type { ReadingStatsReturn } from "@/hooks/useReadingStats";
 import type { Book, ProcessedContent, SentenceAnnotation } from "@/hooks/useBookshelf";
 interface AnnotatedWord {
@@ -84,6 +84,10 @@ export interface ReadingHomeViewProps {
   setAutoTheme: (enabled: boolean) => void;
   cefrColorPalette: CefrColorPaletteId;
   setCefrColorPalette: (paletteId: CefrColorPaletteId) => void;
+  annotationDisplayMode: AnnotationDisplayMode;
+  setAnnotationDisplayMode: (mode: AnnotationDisplayMode) => void;
+  annotationFontSize: number;
+  setAnnotationFontSize: (size: number) => void;
   readingStats: ReadingStatsReturn;
   // Dict status
   dictLoadStatus: string;
@@ -235,6 +239,10 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
     setAutoTheme,
     cefrColorPalette,
     setCefrColorPalette,
+    annotationDisplayMode,
+    setAnnotationDisplayMode,
+    annotationFontSize,
+    setAnnotationFontSize,
     readingStats,
     dictLoadStatus,
     syncPanelOpen,
@@ -540,6 +548,10 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
         onAutoThemeChange={setAutoTheme}
         cefrColorPalette={cefrColorPalette}
         onCefrColorPaletteChange={setCefrColorPalette}
+        annotationDisplayMode={annotationDisplayMode}
+        onAnnotationDisplayModeChange={setAnnotationDisplayMode}
+        annotationFontSize={annotationFontSize}
+        onAnnotationFontSizeChange={setAnnotationFontSize}
       />
 
       {/* Cloud Sync Panel */}
@@ -1318,6 +1330,8 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
               textColor={textColor}
               backgroundColor={backgroundColor}
               annotationColor={annotationColor}
+              annotationFontSize={annotationFontSize}
+              annotationDisplayMode={annotationDisplayMode}
               highlightBg={highlightBg}
               highlightBgHover={highlightBgHover}
               isDarkMode={isDarkMode}
