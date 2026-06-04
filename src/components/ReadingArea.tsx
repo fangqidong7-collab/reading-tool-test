@@ -1559,15 +1559,19 @@ export const ReadingArea = forwardRef(function ReadingArea({
             position: relative;
             display: inline-block;
             vertical-align: baseline;
+            line-height: 1;
+          }
+
+          .reader-content :global(.annotated-unit .word) {
+            line-height: 1;
           }
 
           .reader-content :global(.annotation-above) {
             position: absolute;
             left: 50%;
-            bottom: 100%;
-            transform: translateX(-50%);
-            margin-bottom: 2px;
-            line-height: 1.15;
+            top: 0;
+            transform: translate(-50%, -100%);
+            line-height: 1.1;
             white-space: nowrap;
             font-family: "Microsoft YaHei", "微软雅黑", sans-serif;
             pointer-events: auto;
