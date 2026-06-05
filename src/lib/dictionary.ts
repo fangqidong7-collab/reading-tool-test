@@ -156,7 +156,7 @@ export const irregularVerbs: Record<string, string> = {
   "shook": "shake",
   "shaken": "shake",
   "shone": "shine",
-  "shot": "shot",
+  "shot": "shoot",
   "showed": "show",
   "shown": "show",
   "shrank": "shrink",
@@ -983,7 +983,10 @@ export function lemmatize(word: string): string {
   return lowerWord;
 }
 
-const DOUBLE_CONSONANTS = ['b', 'd', 'g', 'l', 'm', 'n', 'p', 'r', 's', 't'];
+const DOUBLE_CONSONANTS = ['b', 'd', 'g', 'm', 'n', 'p', 'r', 't'];
+function isVowel(ch: string): boolean {
+  return 'aeiou'.includes(ch);
+}
 
 /**
  * 屈折还原（统计 / 标注分组用）：合并时态、复数、进行式等到词根。
@@ -1000,10 +1003,16 @@ export function lemmatizeInflection(word: string): string {
   for (const sfx of ['ing', 'ed'] as const) {
     if (!lower.endsWith(sfx) || lower.length < sfx.length + 3) continue;
     const base = lower.slice(0, -sfx.length);
-    if (base.length >= 2) {
+    if (base.length >= 3) {
       const a = base[base.length - 1];
       const b = base[base.length - 2];
-      if (a === b && DOUBLE_CONSONANTS.includes(a)) {
+      const c = base[base.length - 3];
+      if (
+        a === b &&
+        DOUBLE_CONSONANTS.includes(a) &&
+        isVowel(c) &&
+        (base.length < 4 || !isVowel(base[base.length - 4]))
+      ) {
         return base.slice(0, -1);
       }
     }
@@ -1028,8 +1037,11 @@ export function lemmatizeInflection(word: string): string {
     if (baseD.endsWith('e') && baseD.length >= 3) return baseD;
   }
   if (lower.endsWith('es') && lower.length > 3) {
-    const base = lower.slice(0, -2);
-    if (base.length >= 2) return base;
+    const baseMinusEs = lower.slice(0, -2);
+    if (baseMinusEs.length >= 2 && /[xz]$|ss$|[cs]h$/.test(baseMinusEs)) return baseMinusEs;
+    if (baseMinusEs.length <= 3 && baseMinusEs.endsWith('s')) return baseMinusEs;
+    const baseMinusS = lower.slice(0, -1);
+    if (baseMinusS.endsWith('e') && baseMinusS.length >= 3) return baseMinusS;
   }
   if (
     lower.endsWith('s') &&
@@ -1045,9 +1057,9 @@ export function lemmatizeInflection(word: string): string {
 
 /** -ing 词干还原：making→make, backing→back, writing→write */
 function stemIngBase(base: string): string {
+  if (base.endsWith('x') || base.endsWith('ck') || base.endsWith('ng')) return base;
   if (base.length <= 3) return base + 'e';
-  if (base.endsWith('ck') || base.endsWith('ng')) return base;
-  if (/[aeiou][b-df-hj-np-tv-xz]$/.test(base) && !base.endsWith('w')) return base + 'e';
+  if (/[aeiou][b-df-hj-np-tv-z]$/.test(base) && !base.endsWith('w')) return base + 'e';
   return base;
 }
 
@@ -1134,7 +1146,7 @@ export function normalizeAnnotationsToLemma<
     }
     out[root] = {
       ...existing,
-      count: Math.max(existing.count ?? 0, merged.count ?? 0),
+      count: (existing.count ?? 0) + (merged.count ?? 0),
       meaning: existing.meaning || merged.meaning,
       cefrLevel: existing.cefrLevel || merged.cefrLevel,
     };
