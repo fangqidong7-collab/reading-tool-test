@@ -5,9 +5,16 @@ let builtinDictLoaded = false;
 export async function loadBuiltinDictionary(): Promise<void> {
   if (builtinDictLoaded) return;
   try {
-    const resp = await fetch('/dict_builtin.json');
-    if (resp.ok) {
-      englishDictionary = await resp.json();
+    const [mainResp, extraResp] = await Promise.all([
+      fetch('/dict_builtin.json'),
+      fetch('/dict_builtin_extra.json'),
+    ]);
+    if (mainResp.ok) {
+      englishDictionary = await mainResp.json();
+      if (extraResp.ok) {
+        const extra = await extraResp.json();
+        englishDictionary = { ...englishDictionary, ...extra };
+      }
       builtinDictLoaded = true;
     }
   } catch (e) {
@@ -1102,9 +1109,16 @@ let builtinDictEnLoaded = false;
 export async function loadBuiltinDictionaryEn(): Promise<void> {
   if (builtinDictEnLoaded) return;
   try {
-    const resp = await fetch('/dict_builtin_en.json');
-    if (resp.ok) {
-      englishDictionaryEn = await resp.json();
+    const [mainResp, extraResp] = await Promise.all([
+      fetch('/dict_builtin_en.json'),
+      fetch('/dict_builtin_en_extra.json'),
+    ]);
+    if (mainResp.ok) {
+      englishDictionaryEn = await mainResp.json();
+      if (extraResp.ok) {
+        const extra = await extraResp.json();
+        englishDictionaryEn = { ...englishDictionaryEn, ...extra };
+      }
       builtinDictEnLoaded = true;
     }
   } catch (e) {

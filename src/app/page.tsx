@@ -73,6 +73,8 @@ export default function Home() {
     addSentenceAnnotation,
     removeSentenceAnnotation,
     flushBooksToStorage,
+    resolveBookContent,
+    openingBookId,
   } = useBookshelf();
 
 
@@ -222,7 +224,7 @@ export default function Home() {
 
     await Promise.all(
       books.map(async (book) => {
-        const contentStr = typeof book.content === "string" ? book.content : "";
+        const contentStr = book.content || (await resolveBookContent(book.id));
         const hash = await sha256Utf8(contentStr);
         contentHashes[book.id] = hash;
         bookManifest.push({ id: book.id, title: book.title, contentHash: hash });
@@ -262,20 +264,22 @@ export default function Home() {
       bookManifest,
       contentHashes,
     };
-  }, [globalVocabulary, masteredWords, masteredVocabulary, books]);
+  }, [globalVocabulary, masteredWords, masteredVocabulary, books, resolveBookContent]);
 
   // 按 ID 列表构建完整书籍数据（仅在 needBooks 时调用）
-  const buildBooksPayload = useCallback((bookIds: string[]): Book[] => {
+  const buildBooksPayload = useCallback(async (bookIds: string[]): Promise<Book[]> => {
     const idSet = new Set(bookIds);
-    return books
-      .filter(b => idSet.has(b.id))
-      .map(book => {
+    const selected = books.filter((b) => idSet.has(b.id));
+    return Promise.all(
+      selected.map(async (book) => {
+        const content = book.content || (await resolveBookContent(book.id));
         const { processedContent, syncContentHash, ...rest } = book;
         void processedContent;
         void syncContentHash;
-        return rest;
-      });
-  }, [books]);
+        return { ...rest, content };
+      }),
+    );
+  }, [books, resolveBookContent]);
 
   // 首次创建同步码时的完整数据（含全部书籍正文）
   const buildFullSyncData = useCallback(async (): Promise<{
@@ -283,18 +287,20 @@ export default function Home() {
     contentHashes: Record<string, string>;
   }> => {
     const contentHashes: Record<string, string> = {};
-    const booksPayload = books.map((book) => {
-      const { processedContent, syncContentHash, ...rest } = book;
-      void processedContent;
-      void syncContentHash;
-      return rest;
-    });
+    const booksPayload = await Promise.all(
+      books.map(async (book) => {
+        const content = book.content || (await resolveBookContent(book.id));
+        const { processedContent, syncContentHash, ...rest } = book;
+        void processedContent;
+        void syncContentHash;
+        return { ...rest, content };
+      }),
+    );
 
     await Promise.all(
       booksPayload.map(async (book) => {
-        const contentStr = typeof book.content === "string" ? book.content : "";
-        contentHashes[book.id] = await sha256Utf8(contentStr);
-      })
+        contentHashes[book.id] = await sha256Utf8(book.content || "");
+      }),
     );
 
     return {
@@ -330,7 +336,7 @@ export default function Home() {
       },
       contentHashes,
     };
-  }, [globalVocabulary, masteredWords, masteredVocabulary, books]);
+  }, [globalVocabulary, masteredWords, masteredVocabulary, books, resolveBookContent]);
 
   // Handle create sync - push current local data to cloud (full payload with books)
   const handleCreateSync = useCallback(async () => {
@@ -1549,6 +1555,7 @@ export default function Home() {
         deleteBook={deleteBook}
         renameBook={renameBook}
         openBook={openBook}
+        openingBookId={openingBookId}
         globalVocabulary={globalVocabulary}
         removeFromGlobalVocabulary={removeFromGlobalVocabulary}
         clearGlobalVocabulary={clearGlobalVocabulary}
