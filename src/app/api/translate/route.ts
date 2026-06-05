@@ -1,5 +1,10 @@
 import { LLMClient } from 'coze-coding-dev-sdk';
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  buildWordCacheKey,
+  getServerTranslationCache,
+  setServerTranslationCache,
+} from '@/lib/translateCache.server';
 
 const llmClient = new LLMClient();
 
@@ -139,7 +144,14 @@ export async function POST(request: NextRequest) {
     }
 
     const cleanWord = word.toLowerCase().trim();
+    const resolvedLang = lang === 'en-simple' || lang === 'en' ? lang : 'zh';
+    const serverCacheKey = buildWordCacheKey(resolvedLang, cleanWord);
+    const cachedTranslation = getServerTranslationCache(serverCacheKey);
+    if (cachedTranslation) {
+      return NextResponse.json({ translation: cachedTranslation, cached: true });
+    }
 
+    const llmStartedAt = Date.now();
     let response;
     if (lang === 'en-simple') {
       // Easy English: longer definition using only basic everyday words
@@ -154,10 +166,12 @@ export async function POST(request: NextRequest) {
 
       const rawTranslation = response.content || '';
       const processedTranslation = postProcessTranslationEn(rawTranslation, 150);
+      const translation = processedTranslation || 'No definition found';
+      setServerTranslationCache(serverCacheKey, translation);
+      console.info(`[translate] en-simple ${Date.now() - llmStartedAt}ms`);
 
       return NextResponse.json({
-        translation: processedTranslation || 'No definition found',
-        raw: rawTranslation
+        translation,
       });
     } else if (lang === 'en') {
       // Short English definition
@@ -172,10 +186,12 @@ export async function POST(request: NextRequest) {
 
       const rawTranslation = response.content || '';
       const processedTranslation = postProcessTranslationEn(rawTranslation);
+      const translation = processedTranslation || 'No definition found';
+      setServerTranslationCache(serverCacheKey, translation);
+      console.info(`[translate] en ${Date.now() - llmStartedAt}ms`);
 
       return NextResponse.json({
-        translation: processedTranslation || 'No definition found',
-        raw: rawTranslation
+        translation,
       });
     } else {
       // Chinese translation mode (default)
@@ -188,13 +204,14 @@ export async function POST(request: NextRequest) {
         model: 'doubao-seed-1-6-lite-251015',
       });
 
-      // Post-process the translation
       const rawTranslation = response.content || '';
       const processedTranslation = postProcessTranslation(rawTranslation);
+      const translation = processedTranslation || '未找到释义';
+      setServerTranslationCache(serverCacheKey, translation);
+      console.info(`[translate] zh ${Date.now() - llmStartedAt}ms`);
 
       return NextResponse.json({
-        translation: processedTranslation || '未找到释义',
-        raw: rawTranslation // Keep raw for debugging
+        translation,
       });
     }
   } catch (error) {

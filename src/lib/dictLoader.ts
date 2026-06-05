@@ -33,77 +33,175 @@ const CACHE_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
 let externalDictEn: Record<string, string> = {};
 let loadStatusEn: DictLoadStatus = 'idle';
 const CACHE_KEY_EN = 'reading_assistant_ext_dict_en';
+const CACHE_VERSION_KEY_EN = 'reading_assistant_dict_en_version';
+
+let zhRefreshPromise: Promise<DictLoadStatus> | null = null;
+let enRefreshPromise: Promise<DictLoadStatus> | null = null;
+
+function getDictFetchUrl(filename: string): string {
+  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
+    return `${window.location.protocol}//${window.location.host}/${filename}`;
+  }
+  return `/${filename}`;
+}
+
+function parseDictPayload(data: DictData | LegacyDictData): Record<string, string> {
+  if ('entries' in data && data.entries) {
+    const entries = data.entries;
+    const parsed: Record<string, string> = {};
+    for (const [word, entry] of Object.entries(entries)) {
+      parsed[word] = typeof entry === 'string' ? entry : (entry as DictEntry).meaning;
+    }
+    return parsed;
+  }
+  return data as unknown as Record<string, string>;
+}
+
+async function registerExternalWords(words: string[]): Promise<void> {
+  try {
+    const { registerKnownWords } = await import('@/lib/dictionary');
+    registerKnownWords(words);
+  } catch {
+    /* dictionary module not available */
+  }
+}
+
+function applyExternalDict(dict: Record<string, string>): void {
+  externalDict = dict;
+  loadStatus = 'loaded';
+  void registerExternalWords(Object.keys(externalDict));
+}
+
+function applyExternalDictEn(dict: Record<string, string>): void {
+  externalDictEn = dict;
+  loadStatusEn = 'loaded';
+}
 
 /**
- * Load external dictionary from server or cache
- * Always fetches from server to check for updates
+ * 同步从 localStorage 恢复外部词典，供启动后立即可查。
+ */
+export function hydrateExternalDictionaryFromCache(): boolean {
+  if (loadStatus === 'loaded' && Object.keys(externalDict).length > 0) {
+    return true;
+  }
+  const cached = loadFromCache();
+  if (cached && Object.keys(cached).length > 0) {
+    applyExternalDict(cached);
+    return true;
+  }
+  return false;
+}
+
+export function hydrateExternalDictionaryEnFromCache(): boolean {
+  if (loadStatusEn === 'loaded' && Object.keys(externalDictEn).length > 0) {
+    return true;
+  }
+  const cached = loadEnFromCache();
+  if (cached && Object.keys(cached).length > 0) {
+    applyExternalDictEn(cached);
+    return true;
+  }
+  return false;
+}
+
+async function fetchExternalDictionaryFromNetwork(): Promise<Record<string, string>> {
+  const response = await fetch(getDictFetchUrl('dict.json'));
+  if (!response.ok) {
+    throw new Error(`Failed to load dictionary: ${response.status}`);
+  }
+  const data: DictData | LegacyDictData = await response.json();
+  return parseDictPayload(data);
+}
+
+async function fetchExternalDictionaryEnFromNetwork(): Promise<Record<string, string>> {
+  const response = await fetch(getDictFetchUrl('dict_en.json'));
+  if (!response.ok) {
+    throw new Error(`Failed to load English dictionary: ${response.status}`);
+  }
+  const data: DictData = await response.json();
+  return data as unknown as Record<string, string>;
+}
+
+async function refreshExternalDictionaryInBackground(): Promise<DictLoadStatus> {
+  if (zhRefreshPromise) return zhRefreshPromise;
+  zhRefreshPromise = (async () => {
+    try {
+      const dict = await fetchExternalDictionaryFromNetwork();
+      applyExternalDict(dict);
+      saveToCache(externalDict);
+      loadError = null;
+      return 'loaded' as DictLoadStatus;
+    } catch (error) {
+      console.warn('Background dictionary refresh failed:', error);
+      if (loadStatus !== 'loaded') {
+        loadError = error instanceof Error ? error.message : 'Unknown error';
+        loadStatus = 'failed';
+        return 'failed' as DictLoadStatus;
+      }
+      return 'loaded' as DictLoadStatus;
+    } finally {
+      zhRefreshPromise = null;
+    }
+  })();
+  return zhRefreshPromise;
+}
+
+async function refreshExternalDictionaryEnInBackground(): Promise<DictLoadStatus> {
+  if (enRefreshPromise) return enRefreshPromise;
+  enRefreshPromise = (async () => {
+    try {
+      const dict = await fetchExternalDictionaryEnFromNetwork();
+      applyExternalDictEn(dict);
+      saveEnToCache(externalDictEn);
+      return 'loaded' as DictLoadStatus;
+    } catch (error) {
+      console.warn('Background English dictionary refresh failed:', error);
+      if (loadStatusEn !== 'loaded') {
+        loadStatusEn = 'failed';
+        return 'failed' as DictLoadStatus;
+      }
+      return 'loaded' as DictLoadStatus;
+    } finally {
+      enRefreshPromise = null;
+    }
+  })();
+  return enRefreshPromise;
+}
+
+/**
+ * Load external dictionary: cache first, then background network refresh.
  */
 export async function loadExternalDictionary(): Promise<DictLoadStatus> {
-  if (loadStatus === 'loaded' || loadStatus === 'loading') {
-    return loadStatus;
+  const hadCache = hydrateExternalDictionaryFromCache();
+  if (hadCache) {
+    void refreshExternalDictionaryInBackground();
+    return 'loaded';
+  }
+
+  if (loadStatus === 'loading' && zhRefreshPromise) {
+    return zhRefreshPromise;
   }
 
   loadStatus = 'loading';
   loadError = null;
+  return refreshExternalDictionaryInBackground();
+}
 
-  try {
-    // Always fetch from server to check if dict.json has been updated
-    const fetchUrl = typeof window !== 'undefined' && window.location.hostname !== 'localhost' 
-      ? `${window.location.protocol}//${window.location.host}/dict.json` 
-      : '/dict.json';
-    const response = await fetch(fetchUrl, {
-      headers: {
-        'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache'
-      }
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Failed to load dictionary: ${response.status}`);
-    }
+/**
+ * 启动时初始化中英外部词典：先用缓存，再后台更新。
+ */
+export async function initializeExternalDictionaries(): Promise<{
+  zh: DictLoadStatus;
+  en: DictLoadStatus;
+}> {
+  hydrateExternalDictionaryFromCache();
+  hydrateExternalDictionaryEnFromCache();
 
-    const data: DictData = await response.json();
-    
-    // Handle new simple format (word -> meaning string)
-    // or legacy format (entries: { word -> { meaning, pos } })
-    if ('entries' in data && data.entries) {
-      // Legacy format
-      const entries = data.entries;
-      externalDict = {};
-      for (const [word, entry] of Object.entries(entries)) {
-        externalDict[word] = typeof entry === 'string' ? entry : (entry as DictEntry).meaning;
-      }
-    } else {
-      // New simple format
-      externalDict = data as unknown as Record<string, string>;
-    }
-    
-    
-    // Save to cache (this will overwrite any old cache)
-    saveToCache(externalDict);
-
-    try {
-      const { registerKnownWords } = await import('@/lib/dictionary');
-      registerKnownWords(Object.keys(externalDict));
-    } catch (_) { /* dictionary module not available */ }
-
-    loadStatus = 'loaded';
-    return 'loaded';
-  } catch (error) {
-    console.error('Failed to load external dictionary:', error);
-    loadError = error instanceof Error ? error.message : 'Unknown error';
-    
-    // If we have cache, use it even if fetch fails
-    const cached = loadFromCache();
-    if (cached) {
-      externalDict = cached;
-      loadStatus = 'loaded';
-      return 'loaded';
-    }
-    
-    loadStatus = 'failed';
-    return 'failed';
-  }
+  const [zh, en] = await Promise.all([
+    loadExternalDictionary(),
+    loadExternalDictionaryEn(),
+  ]);
+  return { zh, en };
 }
 
 /**
@@ -112,6 +210,7 @@ export async function loadExternalDictionary(): Promise<DictLoadStatus> {
 export async function forceReloadDictionary(): Promise<DictLoadStatus> {
   resetDictState();
   clearCache();
+  zhRefreshPromise = null;
   return loadExternalDictionary();
 }
 
@@ -282,73 +381,56 @@ function clearCache(): void {
 export async function reloadExternalDictionary(): Promise<DictLoadStatus> {
   resetDictState();
   clearCache();
+  zhRefreshPromise = null;
   return loadExternalDictionary();
 }
 
 // ==================== English-English Dictionary ====================
 
+function loadEnFromCache(): Record<string, string> | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const cached = localStorage.getItem(CACHE_KEY_EN);
+    const cachedVersion = localStorage.getItem(CACHE_VERSION_KEY_EN);
+    if (!cached || !cachedVersion) return null;
+    const expiryTime = parseInt(cachedVersion.split('_')[1] || '0', 10);
+    if (Date.now() > expiryTime + CACHE_EXPIRY_MS) {
+      localStorage.removeItem(CACHE_KEY_EN);
+      localStorage.removeItem(CACHE_VERSION_KEY_EN);
+      return null;
+    }
+    return JSON.parse(cached);
+  } catch {
+    return null;
+  }
+}
+
+function saveEnToCache(dict: Record<string, string>): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(CACHE_KEY_EN, JSON.stringify(dict));
+    localStorage.setItem(CACHE_VERSION_KEY_EN, `v1_${Date.now()}`);
+  } catch (error) {
+    console.warn('Failed to cache English dictionary:', error);
+  }
+}
+
 /**
  * Load external English-English dictionary from server or cache
  */
 export async function loadExternalDictionaryEn(): Promise<DictLoadStatus> {
-  if (loadStatusEn === 'loaded' || loadStatusEn === 'loading') {
-    return loadStatusEn;
+  const hadCache = hydrateExternalDictionaryEnFromCache();
+  if (hadCache) {
+    void refreshExternalDictionaryEnInBackground();
+    return 'loaded';
+  }
+
+  if (loadStatusEn === 'loading' && enRefreshPromise) {
+    return enRefreshPromise;
   }
 
   loadStatusEn = 'loading';
-
-  try {
-    // Load from server
-    const fetchUrl = typeof window !== 'undefined' && window.location.hostname !== 'localhost' 
-      ? `${window.location.protocol}//${window.location.host}/dict_en.json` 
-      : '/dict_en.json';
-    
-    const response = await fetch(fetchUrl, {
-      headers: {
-        'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache'
-      }
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Failed to load English dictionary: ${response.status}`);
-    }
-
-    const data: DictData = await response.json();
-    externalDictEn = data as unknown as Record<string, string>;
-    
-    
-    // Save to cache
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem(CACHE_KEY_EN, JSON.stringify(externalDictEn));
-      } catch (error) {
-        console.warn('Failed to cache English dictionary:', error);
-      }
-    }
-    
-    loadStatusEn = 'loaded';
-    return 'loaded';
-  } catch (error) {
-    console.error('Failed to load English dictionary:', error);
-    
-    // Try to load from cache
-    if (typeof window !== 'undefined') {
-      try {
-        const cached = localStorage.getItem(CACHE_KEY_EN);
-        if (cached) {
-          externalDictEn = JSON.parse(cached);
-          loadStatusEn = 'loaded';
-          return 'loaded';
-        }
-      } catch {
-        // Ignore cache errors
-      }
-    }
-    
-    loadStatusEn = 'failed';
-    return 'failed';
-  }
+  return refreshExternalDictionaryEnInBackground();
 }
 
 /**

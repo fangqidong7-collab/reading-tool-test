@@ -176,6 +176,7 @@ export interface ReadingHomeViewProps {
     word: string,
     supplemental?: { meaning?: string; pos?: string; meaningZh?: string; meaningEn?: string; meaningEnSimple?: string },
   ) => void;
+  lookupOnlineWord: (word: string, lemma: string) => Promise<string | null>;
 }
 
 const noteInputColors = {
@@ -313,6 +314,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
     addToGlobalVocabulary,
     mergeGlobalVocabulary,
     markWordAsMastered,
+    lookupOnlineWord,
   } = props;
 
   const [showNoteInput, setShowNoteInput] = React.useState(false);
@@ -1421,6 +1423,7 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
           isDarkMode={isDarkMode}
           textColor={textColor}
           accentColor={annotationColor}
+          onOnlineLookup={lookupOnlineWord}
         />
       )}
 
