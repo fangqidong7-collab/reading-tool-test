@@ -1,7 +1,7 @@
 import type { ProcessedContent } from '@/hooks/useBookshelf';
 import { idbGet, idbRemove, idbSet } from '@/lib/storage';
 
-const CACHE_PREFIX = 'processed_content:';
+const CACHE_PREFIX = 'processed_content:v3:';
 
 function cacheKey(bookId: string, contentHash: string): string {
   return `${CACHE_PREFIX}${bookId}:${contentHash}`;

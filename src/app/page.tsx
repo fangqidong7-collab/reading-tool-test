@@ -12,7 +12,7 @@ import { sha256Utf8 } from "@/lib/syncSha256";
 import { useReadingSettings } from "@/hooks/useReadingSettings";
 import { useReadingStats } from "@/hooks/useReadingStats";
 import { useBookshelfTheme } from "@/hooks/useBookshelfTheme";
-import { lemmatize, findWordFamily, loadBuiltinDictionary, loadBuiltinDictionaryEn } from "@/lib/dictionary";
+import { lemmatize, lemmatizeInflection, findWordFamily, loadBuiltinDictionary, loadBuiltinDictionaryEn, normalizeAnnotationsToLemma, getCanonicalLemma, resolveAnnotation } from "@/lib/dictionary";
 import { translateWord, translateWordEn, translateWordEnSimple, translateSentence, isTranslationError } from "@/lib/translate";
 import { initializeExternalDictionaries, type DictLoadStatus } from "@/lib/dictLoader";
 import { lookupLocalMeaning } from "@/lib/wordLookup";
@@ -629,7 +629,7 @@ export default function Home() {
         incoming === lastPersistedAnnotationsRef.current;
       currentBookAnnotationsRef.current = incoming;
       if (!isEcho) {
-        setAnnotations(incoming);
+        setAnnotations(normalizeAnnotationsToLemma(incoming));
       }
     }
   }, [currentBook?.id, currentBook?.content, currentBook?.annotations]);
@@ -862,14 +862,15 @@ export default function Home() {
     for (const [key, ann] of Object.entries(annotations)) {
       if (!ann.cefrLevel) result[key] = ann;
     }
+    const normalized = normalizeAnnotationsToLemma(result);
     const prev = prevPersistableRef.current;
-    const resultKeys = Object.keys(result);
+    const resultKeys = Object.keys(normalized);
     const prevKeys = Object.keys(prev);
-    if (resultKeys.length === prevKeys.length && resultKeys.every(k => result[k] === prev[k])) {
+    if (resultKeys.length === prevKeys.length && resultKeys.every(k => normalized[k] === prev[k])) {
       return prev;
     }
-    prevPersistableRef.current = result;
-    return result;
+    prevPersistableRef.current = normalized;
+    return normalized;
   }, [annotations]);
 
   useLayoutEffect(() => {
@@ -897,8 +898,7 @@ export default function Home() {
         clearTimeout(clickTimerRef.current);
       }
       clickTimerRef.current = setTimeout(() => {
-        const lemmaKey =
-          lemma && lemma.trim().length > 0 ? lemma.trim() : lemmatize(cleanWord);
+        const lemmaKey = getCanonicalLemma(cleanWord, lemma);
         setSelectedWord({
           word: cleanWord,
           lemma: lemmaKey,
@@ -957,8 +957,7 @@ export default function Home() {
       const cleanWord = word.toLowerCase().trim();
       if (!cleanWord) return;
 
-      const root =
-        lemma && lemma.trim().length > 0 ? lemma.trim() : lemmatize(cleanWord);
+      const root = getCanonicalLemma(cleanWord, lemma);
 
       // Skip if already annotated with same mode
       const existing = annotations[root];
@@ -991,7 +990,8 @@ export default function Home() {
       if (rawMeaning && !isTranslationError(rawMeaning)) {
         const shortMeaning = shortenTranslation(rawMeaning, dictMode);
         if (!isTranslationError(shortMeaning)) {
-          const newAnnotation = { root, meaning: shortMeaning, pos: "", count: 1 };
+          const family = findWordFamily(root, text);
+          const newAnnotation = { root, meaning: shortMeaning, pos: "", count: family.length };
           setAnnotations((prev) => ({
             ...prev,
             [root]: newAnnotation,
@@ -1004,14 +1004,14 @@ export default function Home() {
         }
       }
     },
-    [annotations, currentBook, dictMode, addToGlobalVocabulary, lookupAllLocalMeanings]
+    [annotations, text, dictMode, addToGlobalVocabulary, lookupAllLocalMeanings]
   );
 
   // Annotate all occurrences of a word
   const annotateAll = useCallback(
     async (word: string) => {
       const cleanWord = word.toLowerCase().trim();
-      const root = lemmatize(cleanWord);
+      const root = getCanonicalLemma(cleanWord);
 
       const existing = annotations[root];
       const isEnglishMode = dictMode === 'en' || dictMode === 'en-simple';
@@ -1108,12 +1108,10 @@ export default function Home() {
         for (const seg of para.segments) {
           if (seg.type !== 'word') continue;
           const original = seg.text.toLowerCase();
-          const root = seg.lemma || lemmatize(original);
-          const lookupKey = original === root ? root : original;
-          if (seen.has(lookupKey)) continue;
-          seen.add(lookupKey);
-          if (root !== original) seen.add(root);
-          if (dismissedCefrRef.current.has(lookupKey)) continue;
+          const root = seg.lemma || lemmatizeInflection(original);
+          if (seen.has(root)) continue;
+          seen.add(root);
+          if (dismissedCefrRef.current.has(root)) continue;
 
           const levelOriginal = getWordLevel(original);
           const levelRoot = original !== root ? getWordLevel(root) : null;
@@ -1124,7 +1122,7 @@ export default function Home() {
           if (!meaning) continue;
 
           const shortened = shortenTranslation(meaning, dictMode);
-          batch[lookupKey] = { root: lookupKey, meaning: shortened, pos: '', count: 1, cefrLevel: level };
+          batch[root] = { root, meaning: shortened, pos: '', count: 1, cefrLevel: level };
         }
       }
 
@@ -1178,21 +1176,26 @@ export default function Home() {
 
   // Remove annotation
   const removeAnnotation = useCallback((word: string, lemmaOverride?: string) => {
-    const root =
-      lemmaOverride !== undefined && lemmaOverride.trim().length > 0
-        ? lemmaOverride.trim()
-        : lemmatize(word.toLowerCase());
-    const original = word.toLowerCase();
+    const canonical = getCanonicalLemma(word, lemmaOverride);
     setAnnotations((prev) => {
       const next = { ...prev };
-      if (next[root]?.cefrLevel) dismissedCefrRef.current.add(root);
-      if (original !== root && next[original]?.cefrLevel) dismissedCefrRef.current.add(original);
-      delete next[root];
-      if (original !== root) delete next[original];
+      for (const key of Object.keys(next)) {
+        if (lemmatizeInflection(key) === canonical) {
+          if (next[key]?.cefrLevel) dismissedCefrRef.current.add(canonical);
+          delete next[key];
+        }
+      }
       return next;
     });
-    removeFromGlobalVocabulary(root);
-    if (original !== root) removeFromGlobalVocabulary(original);
+    removeFromGlobalVocabulary(canonical);
+    const surface = word.toLowerCase();
+    if (surface !== canonical) removeFromGlobalVocabulary(surface);
+    if (lemmaOverride) {
+      const lemmaLower = lemmaOverride.toLowerCase();
+      if (lemmaLower !== canonical && lemmaLower !== surface) {
+        removeFromGlobalVocabulary(lemmaLower);
+      }
+    }
     setSelectedWord(null);
   }, [removeFromGlobalVocabulary]);
 
@@ -1485,33 +1488,30 @@ export default function Home() {
       if (dictMode === 'zh' && vocab.meaningZh) displayMeaning = vocab.meaningZh;
       else if (dictMode === 'en' && vocab.meaningEn) displayMeaning = vocab.meaningEn;
       else if (dictMode === 'en-simple' && vocab.meaningEnSimple) displayMeaning = vocab.meaningEnSimple;
-      // 查 CEFR 级别：让词汇表里的分级词保留其分级颜色，超纲词使用默认 annotationColor（红）
-      const rootLemma = lemmatize(root);
-      const cefrLevel = getWordLevel(root) || (rootLemma !== root ? getWordLevel(rootLemma) : null) || undefined;
-      merged[root] = { root, meaning: displayMeaning, pos: vocab.pos, count: 0, cefrLevel: cefrLevel || undefined };
-      if (rootLemma !== root && !merged[rootLemma]) {
-        merged[rootLemma] = { root: rootLemma, meaning: displayMeaning, pos: vocab.pos, count: 0, cefrLevel: cefrLevel || undefined };
-      }
+      const lemma = lemmatizeInflection(root);
+      const cefrLevel = getWordLevel(root) || (lemma !== root ? getWordLevel(lemma) : null) || undefined;
+      merged[lemma] = { root: lemma, meaning: displayMeaning, pos: vocab.pos, count: 0, cefrLevel: cefrLevel || undefined };
     }
-    for (const [root, ann] of Object.entries(annotations)) {
-      merged[root] = ann;
-    }
-    return merged;
+    return normalizeAnnotationsToLemma({
+      ...merged,
+      ...annotations,
+    });
   }, [annotations, globalVocabulary, dictMode]);
 
   const sidebarAnnotations = React.useMemo(() => {
-    const result: Record<string, { root: string; meaning: string; pos: string; count: number; cefrLevel?: string }> = {};
+    const merged: Record<string, { root: string; meaning: string; pos: string; count: number; cefrLevel?: string }> = {};
     for (const [root, vocab] of Object.entries(globalVocabulary)) {
       let displayMeaning = vocab.meaning;
       if (dictMode === 'zh' && vocab.meaningZh) displayMeaning = vocab.meaningZh;
       else if (dictMode === 'en' && vocab.meaningEn) displayMeaning = vocab.meaningEn;
       else if (dictMode === 'en-simple' && vocab.meaningEnSimple) displayMeaning = vocab.meaningEnSimple;
-      result[root] = { root, meaning: displayMeaning, pos: vocab.pos, count: 0 };
+      const lemma = lemmatizeInflection(root);
+      merged[lemma] = { root: lemma, meaning: displayMeaning, pos: vocab.pos, count: 0 };
     }
-    for (const [root, ann] of Object.entries(annotations)) {
-      result[root] = ann;
-    }
-    return result;
+    return normalizeAnnotationsToLemma({
+      ...merged,
+      ...annotations,
+    });
   }, [annotations, globalVocabulary, dictMode]);
 
   // Show loading while initializing
