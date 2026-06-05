@@ -3,7 +3,7 @@
 import React, { useMemo, useState, useCallback, useRef, useEffect } from "react";
 import { X } from "lucide-react";
 import type { ProcessedContent } from "@/hooks/useBookshelf";
-import { getWordLevel, getLevelColors, LEVEL_LABELS, type CEFRLevel } from "@/lib/vocabLevel";
+import { getWordLevel, getLevelColors, LEVEL_LABELS, type CEFRLevel, subscribeVocabLevels, getVocabLevelsVersion } from "@/lib/vocabLevel";
 import type { CefrColorPaletteId } from "@/lib/cefrColorPalettes";
 import { lemmatizeInflection } from "@/lib/dictionary";
 import { translateWord, translateWordEn, translateWordEnSimple, isTranslationError } from "@/lib/translate";
@@ -113,6 +113,9 @@ export function BookVocabAnalysis({
   const [showScrollTop, setShowScrollTop] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
 
+  const [vocabVersion, setVocabVersion] = useState(getVocabLevelsVersion);
+  useEffect(() => subscribeVocabLevels(() => setVocabVersion(getVocabLevelsVersion())), []);
+
   const [minLen, setMinLen] = useState<number>(() => {
     if (typeof window === 'undefined') return 0;
     const saved = localStorage.getItem('va-min-word-len');
@@ -165,7 +168,7 @@ export function BookVocabAnalysis({
 
     const words: WordStat[] = [];
     for (const [root, data] of wordCounts) {
-      const level = getWordLevel(root);
+      const level = getWordLevel(root) || getWordLevel(data.original.toLowerCase());
       words.push({ word: root, count: data.count, level });
       if (level) {
         levelCounts[level] = (levelCounts[level] || 0) + data.count;
@@ -187,7 +190,8 @@ export function BookVocabAnalysis({
       unknownUniqueCount,
       words,
     };
-  }, [processedContent]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [processedContent, vocabVersion]);
 
   const isInVocab = useCallback((word: string) => {
     return !!(globalVocabulary && globalVocabulary[word]) || addedWords.has(word);

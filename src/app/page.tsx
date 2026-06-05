@@ -25,7 +25,7 @@ import {
   loadProcessedContentCache,
   saveProcessedContentCache,
 } from "@/lib/processedContentCache";
-import { loadVocabLevels, getWordLevel, isAtOrAbove, type CEFRLevel } from "@/lib/vocabLevel";
+import { loadVocabLevels, getWordLevel, isAtOrAbove, type CEFRLevel, subscribeVocabLevels, getVocabLevelsVersion } from "@/lib/vocabLevel";
 import { scheduleIdleTask } from "@/lib/scheduleIdle";
 
 async function hashesFromMergedBooks(bookList: Book[]): Promise<Record<string, string>> {
@@ -139,6 +139,9 @@ export default function Home() {
     lemma: string;
     position: { x: number; y: number };
   } | null>(null);
+  const [vocabLevelsReady, setVocabLevelsReady] = useState(getVocabLevelsVersion() > 0);
+  useEffect(() => subscribeVocabLevels(() => setVocabLevelsReady(true)), []);
+
   const [loading, setLoading] = useState(false);
   const [annotating, setAnnotating] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -1136,7 +1139,7 @@ export default function Home() {
     });
 
     return cancelIdle;
-  }, [vocabLevel, processedContent, dictMode, loading]);
+  }, [vocabLevel, processedContent, dictMode, loading, vocabLevelsReady]);
 
   const prevDictModeRef = useRef(dictMode);
   useEffect(() => {
