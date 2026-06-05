@@ -109,7 +109,7 @@ CREATE INDEX sync_data_sync_code_idx ON sync_data(sync_code);
 - 入口：书架页面右上角的"云同步"按钮
 
 ### 数据限制
-- 单条数据上限：10MB
+- 单条数据上限：20MB
 - 超过限制提示用户"数据过大，请删除部分书籍后重试"
 
 

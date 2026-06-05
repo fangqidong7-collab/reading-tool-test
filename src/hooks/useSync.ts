@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from "react";
 import type { Book } from "@/hooks/useBookshelf";
 import { parseSyncJsonResponse, postSyncJson } from "@/lib/syncFetch";
+import { assertSyncPayloadWithinLimit } from "@/lib/syncSizeLimit";
 
 const SYNC_CODE_KEY = "english-reader-sync-code";
 const LAST_SYNC_KEY = "english-reader-last-sync";
@@ -75,6 +76,10 @@ export function useSync() {
     setSyncing(true);
     setSyncError(null);
     try {
+      const sizeCheck = assertSyncPayloadWithinLimit(data, '同步数据');
+      if (!sizeCheck.ok) {
+        throw new Error(sizeCheck.message);
+      }
       const res = await postSyncJson("/api/sync/create", { data });
       if (!res.ok) {
         const p = await readErrJson(res);
@@ -134,6 +139,10 @@ export function useSync() {
     setSyncing(true);
     setSyncError(null);
     try {
+      const sizeCheck = assertSyncPayloadWithinLimit(data, '同步数据');
+      if (!sizeCheck.ok) {
+        throw new Error(sizeCheck.message);
+      }
       const res = await postSyncJson("/api/sync/push", { syncCode, data });
       if (!res.ok) {
         const p = await readErrJson(res);
@@ -230,6 +239,10 @@ export function useSync() {
 
       if (json.action === 'needBooks' && json.missingBookIds) {
         const missingBooks = options.getBooksForIds(json.missingBookIds);
+        const booksSizeCheck = assertSyncPayloadWithinLimit({ books: missingBooks }, '书籍数据');
+        if (!booksSizeCheck.ok) {
+          throw new Error(booksSizeCheck.message);
+        }
         const booksRes = await postSyncJson(
           "/api/sync/push-books",
           { syncCode, books: missingBooks },
