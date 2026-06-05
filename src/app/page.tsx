@@ -12,9 +12,10 @@ import { sha256Utf8 } from "@/lib/syncSha256";
 import { useReadingSettings } from "@/hooks/useReadingSettings";
 import { useReadingStats } from "@/hooks/useReadingStats";
 import { useBookshelfTheme } from "@/hooks/useBookshelfTheme";
-import { lemmatize, getWordMeaning, getWordMeaningEn, findWordFamily, loadBuiltinDictionary, loadBuiltinDictionaryEn } from "@/lib/dictionary";
+import { lemmatize, findWordFamily, loadBuiltinDictionary, loadBuiltinDictionaryEn } from "@/lib/dictionary";
 import { translateWord, translateWordEn, translateWordEnSimple, translateSentence, isTranslationError } from "@/lib/translate";
-import { forceReloadDictionary, lookupExternalDict, lookupExternalDictEn, loadExternalDictionaryEn, type DictLoadStatus } from "@/lib/dictLoader";
+import { initializeExternalDictionaries, type DictLoadStatus } from "@/lib/dictLoader";
+import { lookupLocalMeaning } from "@/lib/wordLookup";
 import { cleanTranslation, shortenTranslation } from "@/lib/annotationText";
 import { processTextToSegmentsAsync } from "@/lib/processBookContent";
 import { loadVocabLevels, getWordLevel, isAtOrAbove, type CEFRLevel } from "@/lib/vocabLevel";
@@ -515,16 +516,13 @@ export default function Home() {
     }
   }, []);
 
-  // Load external dictionary on mount (force reload to get latest dict.json and dict_en.json)
+  // Load external dictionary on mount: cache first, background refresh
   useEffect(() => {
     loadBuiltinDictionary();
     loadBuiltinDictionaryEn();
     loadVocabLevels();
     
-    Promise.all([
-      forceReloadDictionary(),
-      loadExternalDictionaryEn()
-    ]).then(([zhStatus, enStatus]) => {
+    initializeExternalDictionaries().then(({ zh: zhStatus }) => {
       setDictLoadStatus(zhStatus);
 
       // Auto-dismiss status after 3 seconds
@@ -563,9 +561,8 @@ export default function Home() {
     for (const [key, entry] of entries) {
       if (entry.meaningZh !== undefined || entry.meaningEn !== undefined) continue;
 
-      const zhEntry = getWordMeaning(key);
-      const zhRaw = zhEntry?.meaning || lookupExternalDict(key) || '';
-      const enRaw = getWordMeaningEn(key) || lookupExternalDictEn(key) || '';
+      const zhRaw = lookupLocalMeaning(key, key, 'zh');
+      const enRaw = lookupLocalMeaning(key, key, 'en');
 
       const meaningZh = zhRaw ? shortenTranslation(zhRaw, 'zh') : undefined;
       const meaningEn = enRaw ? shortenTranslation(enRaw, 'en') : undefined;
@@ -857,16 +854,34 @@ export default function Home() {
 
   const lookupAllLocalMeanings = useCallback((word: string, root: string) => {
     const langs: { zh?: string; en?: string; enSimple?: string } = {};
-    const zhEntry = getWordMeaning(root);
-    const zhRaw = zhEntry?.meaning || lookupExternalDict(root) || lookupExternalDict(word) || '';
+    const zhRaw = lookupLocalMeaning(root, word, 'zh');
     if (zhRaw) langs.zh = shortenTranslation(zhRaw, 'zh');
-    const enRaw = getWordMeaningEn(root) || lookupExternalDictEn(root) || lookupExternalDictEn(word) || '';
+    const enRaw = lookupLocalMeaning(root, word, 'en');
     if (enRaw) {
       langs.en = shortenTranslation(enRaw, 'en');
       langs.enSimple = shortenTranslation(enRaw, 'en-simple');
     }
     return langs;
   }, []);
+
+  const lookupOnlineWord = useCallback(
+    async (word: string, lemma: string): Promise<string | null> => {
+      const cleanWord = word.toLowerCase().trim();
+      const root = lemma.trim() || lemmatize(cleanWord);
+      const lookupKey = root || cleanWord;
+      let rawMeaning = '';
+      if (dictMode === 'en-simple') {
+        rawMeaning = await translateWordEnSimple(lookupKey);
+      } else if (dictMode === 'en') {
+        rawMeaning = await translateWordEn(lookupKey);
+      } else {
+        rawMeaning = await translateWord(lookupKey);
+      }
+      if (!rawMeaning || isTranslationError(rawMeaning)) return null;
+      return shortenTranslation(rawMeaning, dictMode);
+    },
+    [dictMode],
+  );
 
   // Handle word double click - auto annotate without popup
   const handleWordDoubleClick = useCallback(
@@ -881,7 +896,8 @@ export default function Home() {
       const cleanWord = word.toLowerCase().trim();
       if (!cleanWord) return;
 
-      const root = lemmatize(cleanWord);
+      const root =
+        lemma && lemma.trim().length > 0 ? lemma.trim() : lemmatize(cleanWord);
 
       // Skip if already annotated with same mode
       const existing = annotations[root];
@@ -898,32 +914,16 @@ export default function Home() {
         return;
       }
 
-      // 1. 先查内置词典
-      let rawMeaning = "";
-      if (isEnglishMode) {
-        const enEntry = getWordMeaningEn(cleanWord);
-        if (enEntry) rawMeaning = enEntry;
-      } else {
-        const zhEntry = getWordMeaning(cleanWord);
-        if (zhEntry?.meaning) rawMeaning = zhEntry.meaning;
-      }
+      let rawMeaning = lookupLocalMeaning(root, cleanWord, dictMode);
 
-      // 2. 内置词典没有，再查外部词典
       if (!rawMeaning) {
-        const extMeaning = isEnglishMode
-          ? lookupExternalDictEn(cleanWord)
-          : lookupExternalDict(cleanWord);
-        if (extMeaning) rawMeaning = extMeaning;
-      }
-
-      // 3. 外部词典也没有，调用AI翻译
-      if (!rawMeaning) {
+        const lookupKey = root || cleanWord;
         if (dictMode === 'en-simple') {
-          rawMeaning = await translateWordEnSimple(cleanWord);
+          rawMeaning = await translateWordEnSimple(lookupKey);
         } else if (dictMode === 'en') {
-          rawMeaning = await translateWordEn(cleanWord);
+          rawMeaning = await translateWordEn(lookupKey);
         } else {
-          rawMeaning = await translateWord(cleanWord);
+          rawMeaning = await translateWord(lookupKey);
         }
       }
 
@@ -969,41 +969,16 @@ export default function Home() {
       setSelectedWord(null);
       setAnnotating(true);
       try {
-        let rawMeaning = "";
+        let rawMeaning = lookupLocalMeaning(root, cleanWord, dictMode);
 
-        if (isEnglishMode) {
-          const enEntry = getWordMeaningEn(root);
-          if (enEntry) {
-            rawMeaning = enEntry;
-          }
-
-          if (!rawMeaning) {
-            const extEnMeaning = lookupExternalDictEn(root) || lookupExternalDictEn(cleanWord);
-            if (extEnMeaning) {
-              rawMeaning = extEnMeaning;
-            }
-          }
-
-          if (!rawMeaning) {
-            rawMeaning = dictMode === 'en-simple'
-              ? await translateWordEnSimple(root || cleanWord)
-              : await translateWordEn(root || cleanWord);
-          }
-        } else {
-          const entry = getWordMeaning(root);
-          if (entry?.meaning) {
-            rawMeaning = entry.meaning;
-          }
-
-          if (!rawMeaning) {
-            const extMeaning = lookupExternalDict(cleanWord);
-            if (extMeaning) {
-              rawMeaning = extMeaning;
-            }
-          }
-
-          if (!rawMeaning) {
-            rawMeaning = await translateWord(cleanWord);
+        if (!rawMeaning) {
+          const lookupKey = root || cleanWord;
+          if (dictMode === 'en-simple') {
+            rawMeaning = await translateWordEnSimple(lookupKey);
+          } else if (dictMode === 'en') {
+            rawMeaning = await translateWordEn(lookupKey);
+          } else {
+            rawMeaning = await translateWord(lookupKey);
           }
         }
 
@@ -1081,13 +1056,7 @@ export default function Home() {
         const level = levelOriginal || levelRoot;
         if (!level || !isAtOrAbove(level, threshold)) continue;
 
-        let meaning = '';
-        if (isEnMode) {
-          meaning = getWordMeaningEn(root) || lookupExternalDictEn(root) || lookupExternalDictEn(original) || '';
-        } else {
-          const entry = getWordMeaning(root);
-          meaning = entry?.meaning || lookupExternalDict(root) || lookupExternalDict(original) || '';
-        }
+        const meaning = lookupLocalMeaning(root, original, isEnMode ? 'en' : 'zh');
         if (!meaning) continue;
 
         const shortened = shortenTranslation(meaning, dictMode);
@@ -1666,6 +1635,7 @@ export default function Home() {
       addToGlobalVocabulary={addToGlobalVocabulary}
       mergeGlobalVocabulary={mergeGlobalVocabulary}
       markWordAsMastered={markWordAsMastered}
+      lookupOnlineWord={lookupOnlineWord}
     />
   );
 }
