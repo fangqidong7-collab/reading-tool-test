@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { idbGet, idbSet } from "@/lib/storage";
+import { removeProcessedContentCacheForBook } from "@/lib/processedContentCache";
 import { isTranslationError } from "@/lib/translate";
 
 // Processed content segment type
@@ -489,6 +490,7 @@ const masteredWords = useMemo(() => new Set(Object.keys(masteredVocabulary)), [m
       if (book?.isSample) return prev; // Cannot delete sample books
       return prev.filter((b) => b.id !== id);
     });
+    void removeProcessedContentCacheForBook(id);
     // If current book is deleted, go back to bookshelf
     if (currentBookId === id) {
       setCurrentBookId(null);

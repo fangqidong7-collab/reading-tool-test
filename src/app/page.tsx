@@ -17,7 +17,14 @@ import { translateWord, translateWordEn, translateWordEnSimple, translateSentenc
 import { initializeExternalDictionaries, type DictLoadStatus } from "@/lib/dictLoader";
 import { lookupLocalMeaning } from "@/lib/wordLookup";
 import { cleanTranslation, shortenTranslation } from "@/lib/annotationText";
-import { processTextToSegmentsAsync } from "@/lib/processBookContent";
+import {
+  processTextToSegmentsAsync,
+  INITIAL_PARAGRAPH_BATCH,
+} from "@/lib/processBookContent";
+import {
+  loadProcessedContentCache,
+  saveProcessedContentCache,
+} from "@/lib/processedContentCache";
 import { loadVocabLevels, getWordLevel, isAtOrAbove, type CEFRLevel } from "@/lib/vocabLevel";
 
 async function hashesFromMergedBooks(bookList: Book[]): Promise<Record<string, string>> {
@@ -156,8 +163,8 @@ export default function Home() {
   // Ref for debounced scroll save
   const scrollSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Track last processed book ID to avoid duplicate processing
-  const lastProcessedBookIdRef = useRef<string | null>(null);
+  // Track last processed book+content hash to avoid duplicate processing
+  const lastProcessedKeyRef = useRef<string | null>(null);
   
   // Store current book data in refs to avoid dependency issues
   const currentBookIdRef = useRef<string | null>(null);
@@ -594,7 +601,7 @@ export default function Home() {
       currentBookContentRef.current = "";
       currentBookAnnotationsRef.current = {};
       lastPersistedAnnotationsRef.current = null;
-      lastProcessedBookIdRef.current = null;
+      lastProcessedKeyRef.current = null;
       setProcessedContent(null);
       setLoading(false);
       return;
@@ -619,34 +626,76 @@ export default function Home() {
       }
     }
 
-    // Only process segments on first open (bookId change)
-    if (lastProcessedBookIdRef.current !== currentBook.id) {
-      setProcessedContent(null);
-      lastProcessedBookIdRef.current = currentBook.id;
-      setLoading(true);
+    const bookId = currentBook.id;
+    const bookContent = currentBook.content;
+    const savedParagraphIndex = currentBook.lastParagraphIndex ?? -1;
+    const persistedText = currentBook.lastParagraphText || "";
 
-      const savedScrollPercent = currentBook.lastScrollPosition || 0;
-      const savedParagraphIndex = currentBook.lastParagraphIndex ?? -1;
+    let cancelled = false;
 
-      const persistedText = currentBook.lastParagraphText || "";
+    const applyParagraphPreview = (processed: ProcessedContent) => {
+      if (persistedText) {
+        setCurrentParagraphText(persistedText);
+      } else if (savedParagraphIndex >= 0 && savedParagraphIndex < processed.length) {
+        const derived = processed[savedParagraphIndex].segments
+          .map((s) => s.text)
+          .join("")
+          .substring(0, 80);
+        setCurrentParagraphText(derived);
+      } else {
+        setCurrentParagraphText("");
+      }
+    };
 
-      processTextToSegmentsAsync(currentBook.content).then((processed) => {
-        setProcessedContent(processed);
+    (async () => {
+      const contentHash = await sha256Utf8(bookContent);
+      if (cancelled) return;
+
+      const processKey = `${bookId}:${contentHash}`;
+      if (lastProcessedKeyRef.current === processKey) {
         setLoading(false);
+        return;
+      }
 
-        if (persistedText) {
-          setCurrentParagraphText(persistedText);
-        } else if (savedParagraphIndex >= 0 && savedParagraphIndex < processed.length) {
-          const derived = processed[savedParagraphIndex].segments
-            .map((s) => s.text)
-            .join("")
-            .substring(0, 80);
-          setCurrentParagraphText(derived);
-        } else {
-          setCurrentParagraphText("");
-        }
+      setLoading(true);
+      setProcessedContent(null);
+      lastProcessedKeyRef.current = processKey;
+
+      const cached = await loadProcessedContentCache(bookId, contentHash);
+      if (cancelled) return;
+
+      if (cached) {
+        setProcessedContent(cached);
+        setLoading(false);
+        applyParagraphPreview(cached);
+        return;
+      }
+
+      let firstPaintDone = false;
+      const processed = await processTextToSegmentsAsync(bookContent, {
+        initialBatch: INITIAL_PARAGRAPH_BATCH,
+        onPartial: (partial) => {
+          if (cancelled) return;
+          setProcessedContent(partial);
+          if (!firstPaintDone) {
+            firstPaintDone = true;
+            setLoading(false);
+            applyParagraphPreview(partial);
+          }
+        },
       });
-    }
+
+      if (cancelled) return;
+
+      setProcessedContent(processed);
+      setLoading(false);
+      applyParagraphPreview(processed);
+      void saveProcessedContentCache(bookId, contentHash, processed);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [currentBook?.id, currentBook?.content, currentBook?.annotations]);
 
   // 切换书籍时重置滚动相关状态，防止旧书进度被写入新书
@@ -1020,7 +1069,7 @@ export default function Home() {
     if (prevVocabLevelRef.current !== vocabLevel) {
       dismissedCefrRef.current.clear();
     }
-    if (!processedContent || vocabLevel === 'off') {
+    if (loading || !processedContent || vocabLevel === 'off') {
       if (prevVocabLevelRef.current !== 'off' && vocabLevel === 'off') {
         setAnnotations((prev) => {
           const next = { ...prev };
@@ -1071,7 +1120,7 @@ export default function Home() {
       }
       return { ...next, ...batch };
     });
-  }, [vocabLevel, processedContent, dictMode]);
+  }, [vocabLevel, processedContent, dictMode, loading]);
 
   const prevDictModeRef = useRef(dictMode);
   useEffect(() => {
@@ -1392,7 +1441,7 @@ export default function Home() {
   const handleReturnToBookshelf = useCallback(() => {
     flushScrollPosition();
     isProgrammaticScrollRef.current = true;
-    lastProcessedBookIdRef.current = null;
+    lastProcessedKeyRef.current = null;
     closeBook();
     setText("");
     setAnnotations({});
