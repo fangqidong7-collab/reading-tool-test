@@ -921,16 +921,24 @@ const masteredWords = useMemo(() => new Set(Object.keys(masteredVocabulary)), [m
             const merged: Book = { ...existing };
 
             // content：优先保留「非空且更长」的字符串
+            // 本地可能 lazy-unloaded（content=""），用 contentCharLength 做长度比较
             const remoteContent = remoteBook.content || '';
             const localContent = existing.content || '';
-            const mergedContent = remoteContent.length >= localContent.length
-              ? remoteContent
-              : localContent;
+            const localEffectiveLength = localContent.length || existing.contentCharLength || 0;
+            let mergedContent: string;
+            if (localContent.length > 0 && localContent.length >= remoteContent.length) {
+              mergedContent = localContent;
+            } else if (remoteContent.length >= localEffectiveLength) {
+              mergedContent = remoteContent;
+            } else {
+              // 远端比本地实际 charLength 短，且本地未加载 — 保留本地（不覆盖 IDB）
+              mergedContent = localContent; // "" — IDB 中仍有原始内容
+            }
             if (mergedContent.length > 0) {
               void saveBookContent(existing.id, mergedContent);
             }
             merged.content = existing.id === currentBookIdRef.current ? mergedContent : "";
-            merged.contentCharLength = mergedContent.length || existing.contentCharLength;
+            merged.contentCharLength = Math.max(mergedContent.length, localEffectiveLength);
 
             merged.lastScrollPosition = Math.max(
               remoteBook.lastScrollPosition ?? 0,
@@ -1072,7 +1080,10 @@ const masteredWords = useMemo(() => new Set(Object.keys(masteredVocabulary)), [m
     return stored ?? "";
   }, []);
 
+  const openingRef = useRef(false);
   const openBook = useCallback(async (id: string) => {
+    if (openingRef.current) return;
+    openingRef.current = true;
     setOpeningBookId(id);
     try {
       await ensureBookContentLoaded(id);
@@ -1095,6 +1106,7 @@ const masteredWords = useMemo(() => new Set(Object.keys(masteredVocabulary)), [m
       });
       setCurrentBookId(id);
     } finally {
+      openingRef.current = false;
       setOpeningBookId(null);
     }
   }, [ensureBookContentLoaded]);
@@ -1213,11 +1225,12 @@ const masteredWords = useMemo(() => new Set(Object.keys(masteredVocabulary)), [m
         const base = hasSampleInRemote ? remoteBooks : (sample ? [sample, ...remoteBooks] : remoteBooks);
 
         // Preserve the currently open book so it's never dropped mid-reading
-        if (currentBookId) {
-          const inBase = base.some((b) => b.id === currentBookId);
+        const activeBookId = currentBookIdRef.current;
+        if (activeBookId) {
+          const inBase = base.some((b) => b.id === activeBookId);
           if (!inBase) {
-            const openBook = prev.find((b) => b.id === currentBookId);
-            if (openBook) base.push(openBook);
+            const activeBook = prev.find((b) => b.id === activeBookId);
+            if (activeBook) base.push(activeBook);
           }
         }
 
@@ -1255,7 +1268,7 @@ const masteredWords = useMemo(() => new Set(Object.keys(masteredVocabulary)), [m
         };
       }));
     }
-  }, [globalVocabulary]);
+  }, []);
 
   return {
     books,

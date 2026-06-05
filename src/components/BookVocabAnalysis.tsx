@@ -399,7 +399,7 @@ export function BookVocabAnalysis({
     }
 
     setSelected(new Set());
-  }, [onBatchAddToVocabulary, onAddToVocabulary, selected, dictMode, isInVocab]);
+  }, [onBatchAddToVocabulary, onAddToVocabulary, selected, dictMode, isInVocab, isMastered]);
 
   if (!isOpen || !analysis) return null;
 
