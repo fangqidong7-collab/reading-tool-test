@@ -25,7 +25,7 @@ import {
   loadProcessedContentCache,
   saveProcessedContentCache,
 } from "@/lib/processedContentCache";
-import { loadVocabLevels, getWordLevel, isAtOrAbove, type CEFRLevel } from "@/lib/vocabLevel";
+import { loadVocabLevels, getWordLevel, isAtOrAbove, type CEFRLevel, subscribeVocabLevels, getVocabLevelsVersion } from "@/lib/vocabLevel";
 import { scheduleIdleTask } from "@/lib/scheduleIdle";
 
 async function hashesFromMergedBooks(bookList: Book[]): Promise<Record<string, string>> {
@@ -139,7 +139,11 @@ export default function Home() {
     lemma: string;
     position: { x: number; y: number };
   } | null>(null);
+  const [vocabLevelsReady, setVocabLevelsReady] = useState(getVocabLevelsVersion() > 0);
+  useEffect(() => subscribeVocabLevels(() => setVocabLevelsReady(true)), []);
+
   const [loading, setLoading] = useState(false);
+  const [processingComplete, setProcessingComplete] = useState(false);
   const [annotating, setAnnotating] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
@@ -611,6 +615,7 @@ export default function Home() {
       lastProcessedKeyRef.current = null;
       setProcessedContent(null);
       setLoading(false);
+      setProcessingComplete(false);
       return;
     }
 
@@ -670,6 +675,7 @@ export default function Home() {
       }
 
       setLoading(true);
+      setProcessingComplete(false);
       setProcessedContent(null);
       lastProcessedKeyRef.current = processKey;
 
@@ -679,6 +685,7 @@ export default function Home() {
       if (cached) {
         setProcessedContent(cached);
         setLoading(false);
+        setProcessingComplete(true);
         applyParagraphPreview(cached);
         return;
       }
@@ -701,6 +708,7 @@ export default function Home() {
 
       setProcessedContent(processed);
       setLoading(false);
+      setProcessingComplete(true);
       applyParagraphPreview(processed);
       void saveProcessedContentCache(bookId, contentHash, processed);
     })();
@@ -866,7 +874,16 @@ export default function Home() {
     const prev = prevPersistableRef.current;
     const resultKeys = Object.keys(normalized);
     const prevKeys = Object.keys(prev);
-    if (resultKeys.length === prevKeys.length && resultKeys.every(k => normalized[k] === prev[k])) {
+    if (
+      resultKeys.length === prevKeys.length &&
+      resultKeys.every(k => {
+        const a = normalized[k];
+        const b = prev[k];
+        if (a === b) return true;
+        if (!a || !b) return false;
+        return a.root === b.root && a.meaning === b.meaning && a.pos === b.pos && a.count === b.count;
+      })
+    ) {
       return prev;
     }
     prevPersistableRef.current = normalized;
@@ -1081,7 +1098,7 @@ export default function Home() {
     if (prevVocabLevelRef.current !== vocabLevel) {
       dismissedCefrRef.current.clear();
     }
-    if (loading || !processedContent || vocabLevel === 'off') {
+    if (!processingComplete || !processedContent || vocabLevel === 'off') {
       if (prevVocabLevelRef.current !== 'off' && vocabLevel === 'off') {
         setAnnotations((prev) => {
           const next = { ...prev };
@@ -1136,7 +1153,7 @@ export default function Home() {
     });
 
     return cancelIdle;
-  }, [vocabLevel, processedContent, dictMode, loading]);
+  }, [vocabLevel, processedContent, dictMode, processingComplete, vocabLevelsReady]);
 
   const prevDictModeRef = useRef(dictMode);
   useEffect(() => {
