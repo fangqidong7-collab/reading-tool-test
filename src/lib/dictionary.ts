@@ -983,11 +983,109 @@ export function lemmatize(word: string): string {
   return lowerWord;
 }
 
+const DOUBLE_CONSONANTS = ['b', 'd', 'g', 'l', 'm', 'n', 'p', 'r', 's', 't'];
+
 /**
- * 获取单词的中文释义 - 使用智能后缀去除
+ * 屈折还原（统计 / 标注分组用）：合并时态、复数、进行式等到词根。
+ * 不做派生词缀 er/est/ly，避免 teacher→teach 类误匹配。
+ * 不依赖词典是否收录词根。
  */
-export function getWordMeaning(word: string): { meaning: string; pos: string } | null {
-  return smartLookup(word);
+export function lemmatizeInflection(word: string): string {
+  const lower = word.toLowerCase();
+
+  if (irregularVerbs[lower]) return irregularVerbs[lower];
+  if (verbForms[lower]) return verbForms[lower];
+  if (irregularNouns[lower]) return irregularNouns[lower];
+
+  for (const sfx of ['ing', 'ed'] as const) {
+    if (!lower.endsWith(sfx) || lower.length < sfx.length + 3) continue;
+    const base = lower.slice(0, -sfx.length);
+    if (base.length >= 2) {
+      const a = base[base.length - 1];
+      const b = base[base.length - 2];
+      if (a === b && DOUBLE_CONSONANTS.includes(a)) {
+        return base.slice(0, -1);
+      }
+    }
+  }
+
+  if (lower.endsWith('ied') && lower.length > 4) {
+    return lower.slice(0, -3) + 'y';
+  }
+  if (lower.endsWith('ies') && lower.length > 4) {
+    return lower.slice(0, -3) + 'y';
+  }
+  if (lower.endsWith('ing') && lower.length > 4) {
+    const base = lower.slice(0, -3);
+    if (base.length >= 3) {
+      return stemIngBase(base);
+    }
+  }
+  if (lower.endsWith('ed') && lower.length > 3) {
+    const baseEd = lower.slice(0, -2);
+    if (baseEd.length >= 3 && !baseEd.endsWith('e')) return baseEd;
+    const baseD = lower.slice(0, -1);
+    if (baseD.endsWith('e') && baseD.length >= 3) return baseD;
+  }
+  if (lower.endsWith('es') && lower.length > 3) {
+    const base = lower.slice(0, -2);
+    if (base.length >= 2) return base;
+  }
+  if (
+    lower.endsWith('s') &&
+    lower.length > 3 &&
+    !lower.endsWith('ss') &&
+    !lower.endsWith('us')
+  ) {
+    return lower.slice(0, -1);
+  }
+
+  return lower;
+}
+
+/** -ing 词干还原：making→make, backing→back, writing→write */
+function stemIngBase(base: string): string {
+  if (base.length <= 3) return base + 'e';
+  if (base.endsWith('ck') || base.endsWith('ng')) return base;
+  if (/[aeiou][b-df-hj-np-tv-xz]$/.test(base) && !base.endsWith('w')) return base + 'e';
+  return base;
+}
+
+/** 标注/词汇表统一使用的屈折词根 key */
+export function getCanonicalLemma(word: string, lemma?: string): string {
+  const raw = (lemma?.trim() || word).toLowerCase().trim();
+  return lemmatizeInflection(raw);
+}
+
+/** 按词根查找标注（兼容旧数据中 surface form key） */
+export function resolveAnnotation<
+  T extends { root: string; meaning: string; pos: string; count?: number; cefrLevel?: string },
+>(annotations: Record<string, T> | undefined, word: string, lemma?: string): T | undefined {
+  if (!annotations) return undefined;
+  const canonical = getCanonicalLemma(word, lemma);
+  if (annotations[canonical]) return annotations[canonical];
+  const lower = word.toLowerCase();
+  if (annotations[lower]) return annotations[lower];
+  for (const [key, ann] of Object.entries(annotations)) {
+    if (lemmatizeInflection(key) === canonical) return ann;
+    if (lemmatizeInflection(ann.root) === canonical) return ann;
+  }
+  return undefined;
+}
+
+/** 收集与某词根对应的全部 annotation key（用于删除） */
+export function collectAnnotationKeysForLemma(
+  annotations: Record<string, unknown>,
+  word: string,
+  lemma?: string,
+): string[] {
+  const canonical = getCanonicalLemma(word, lemma);
+  const keys = new Set<string>();
+  for (const key of Object.keys(annotations)) {
+    if (lemmatizeInflection(key) === canonical) keys.add(key);
+  }
+  keys.add(canonical);
+  return [...keys];
 }
 
 /**
@@ -1003,13 +1101,45 @@ export function findWordFamily(root: string, text: string): string[] {
   
   while ((match = wordRegex.exec(text)) !== null) {
     const word = match[0].toLowerCase();
-    const wordRoot = lemmatize(word);
+    const wordRoot = lemmatizeInflection(word);
     if (wordRoot === lowerRoot) {
       family.add(match[0]);
     }
   }
   
   return Array.from(family);
+}
+
+/**
+ * 获取单词的中文释义 - 使用智能后缀去除
+ */
+export function getWordMeaning(word: string): { meaning: string; pos: string } | null {
+  return smartLookup(word);
+}
+
+/**
+ * 将标注表按屈折词根合并（合并 count，保留已有释义）
+ */
+export function normalizeAnnotationsToLemma<
+  T extends { root: string; meaning: string; pos: string; count: number; cefrLevel?: string },
+>(annotations: Record<string, T>): Record<string, T> {
+  const out: Record<string, T> = {};
+  for (const [key, ann] of Object.entries(annotations)) {
+    const root = lemmatizeInflection(ann.root || key);
+    const merged: T = { ...ann, root };
+    const existing = out[root];
+    if (!existing) {
+      out[root] = merged;
+      continue;
+    }
+    out[root] = {
+      ...existing,
+      count: Math.max(existing.count ?? 0, merged.count ?? 0),
+      meaning: existing.meaning || merged.meaning,
+      cefrLevel: existing.cefrLevel || merged.cefrLevel,
+    };
+  }
+  return out;
 }
 
 /**
