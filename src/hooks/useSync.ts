@@ -201,7 +201,7 @@ export function useSync() {
       bookProgress: Record<string, unknown>;
     };
     bookManifest: BookManifestEntry[];
-    getBooksForIds: (ids: string[]) => Book[];
+    getBooksForIds: (ids: string[]) => Book[] | Promise<Book[]>;
     onConfirmOverwrite?: (info: { localCount: number; cloudCount: number }) => Promise<boolean>;
   }): Promise<SyncMergedPayload | null> => {
     if (!syncCode) return null;
@@ -238,7 +238,7 @@ export function useSync() {
       };
 
       if (json.action === 'needBooks' && json.missingBookIds) {
-        const missingBooks = options.getBooksForIds(json.missingBookIds);
+        const missingBooks = await Promise.resolve(options.getBooksForIds(json.missingBookIds));
         const booksSizeCheck = assertSyncPayloadWithinLimit({ books: missingBooks }, '书籍数据');
         if (!booksSizeCheck.ok) {
           throw new Error(booksSizeCheck.message);

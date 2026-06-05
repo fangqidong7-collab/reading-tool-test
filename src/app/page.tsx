@@ -26,6 +26,7 @@ import {
   saveProcessedContentCache,
 } from "@/lib/processedContentCache";
 import { loadVocabLevels, getWordLevel, isAtOrAbove, type CEFRLevel } from "@/lib/vocabLevel";
+import { scheduleIdleTask } from "@/lib/scheduleIdle";
 
 async function hashesFromMergedBooks(bookList: Book[]): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
@@ -72,6 +73,8 @@ export default function Home() {
     addSentenceAnnotation,
     removeSentenceAnnotation,
     flushBooksToStorage,
+    resolveBookContent,
+    openingBookId,
   } = useBookshelf();
 
 
@@ -221,7 +224,7 @@ export default function Home() {
 
     await Promise.all(
       books.map(async (book) => {
-        const contentStr = typeof book.content === "string" ? book.content : "";
+        const contentStr = book.content || (await resolveBookContent(book.id));
         const hash = await sha256Utf8(contentStr);
         contentHashes[book.id] = hash;
         bookManifest.push({ id: book.id, title: book.title, contentHash: hash });
@@ -261,20 +264,22 @@ export default function Home() {
       bookManifest,
       contentHashes,
     };
-  }, [globalVocabulary, masteredWords, masteredVocabulary, books]);
+  }, [globalVocabulary, masteredWords, masteredVocabulary, books, resolveBookContent]);
 
   // 按 ID 列表构建完整书籍数据（仅在 needBooks 时调用）
-  const buildBooksPayload = useCallback((bookIds: string[]): Book[] => {
+  const buildBooksPayload = useCallback(async (bookIds: string[]): Promise<Book[]> => {
     const idSet = new Set(bookIds);
-    return books
-      .filter(b => idSet.has(b.id))
-      .map(book => {
+    const selected = books.filter((b) => idSet.has(b.id));
+    return Promise.all(
+      selected.map(async (book) => {
+        const content = book.content || (await resolveBookContent(book.id));
         const { processedContent, syncContentHash, ...rest } = book;
         void processedContent;
         void syncContentHash;
-        return rest;
-      });
-  }, [books]);
+        return { ...rest, content };
+      }),
+    );
+  }, [books, resolveBookContent]);
 
   // 首次创建同步码时的完整数据（含全部书籍正文）
   const buildFullSyncData = useCallback(async (): Promise<{
@@ -282,18 +287,20 @@ export default function Home() {
     contentHashes: Record<string, string>;
   }> => {
     const contentHashes: Record<string, string> = {};
-    const booksPayload = books.map((book) => {
-      const { processedContent, syncContentHash, ...rest } = book;
-      void processedContent;
-      void syncContentHash;
-      return rest;
-    });
+    const booksPayload = await Promise.all(
+      books.map(async (book) => {
+        const content = book.content || (await resolveBookContent(book.id));
+        const { processedContent, syncContentHash, ...rest } = book;
+        void processedContent;
+        void syncContentHash;
+        return { ...rest, content };
+      }),
+    );
 
     await Promise.all(
       booksPayload.map(async (book) => {
-        const contentStr = typeof book.content === "string" ? book.content : "";
-        contentHashes[book.id] = await sha256Utf8(contentStr);
-      })
+        contentHashes[book.id] = await sha256Utf8(book.content || "");
+      }),
     );
 
     return {
@@ -329,7 +336,7 @@ export default function Home() {
       },
       contentHashes,
     };
-  }, [globalVocabulary, masteredWords, masteredVocabulary, books]);
+  }, [globalVocabulary, masteredWords, masteredVocabulary, books, resolveBookContent]);
 
   // Handle create sync - push current local data to cloud (full payload with books)
   const handleCreateSync = useCallback(async () => {
@@ -594,7 +601,7 @@ export default function Home() {
     }
   }, [isLoaded, globalVocabulary, mergeGlobalVocabulary]);
 
-  // Effect-book: sync book content/annotations and process on first open
+  // Effect-book: sync text/annotations (annotation-only changes must not re-tokenize)
   useEffect(() => {
     if (!currentBook) {
       currentBookIdRef.current = null;
@@ -625,6 +632,11 @@ export default function Home() {
         setAnnotations(incoming);
       }
     }
+  }, [currentBook?.id, currentBook?.content, currentBook?.annotations]);
+
+  // Effect-process: tokenize book content in Worker; skip when only annotations change
+  useEffect(() => {
+    if (!currentBook) return;
 
     const bookId = currentBook.id;
     const bookContent = currentBook.content;
@@ -696,7 +708,7 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [currentBook?.id, currentBook?.content, currentBook?.annotations]);
+  }, [currentBook?.id, currentBook?.content]);
 
   // 切换书籍时重置滚动相关状态，防止旧书进度被写入新书
   useEffect(() => {
@@ -1086,40 +1098,46 @@ export default function Home() {
 
     const threshold = vocabLevel as CEFRLevel;
     const isEnMode = dictMode === 'en' || dictMode === 'en-simple';
-    const batch: Record<string, { root: string; meaning: string; pos: string; count: number; cefrLevel: string }> = {};
+    const contentSnapshot = processedContent;
 
-    const seen = new Set<string>();
-    for (const para of processedContent) {
-      for (const seg of para.segments) {
-        if (seg.type !== 'word') continue;
-        const original = seg.text.toLowerCase();
-        const root = seg.lemma || lemmatize(original);
-        const lookupKey = original === root ? root : original;
-        if (seen.has(lookupKey)) continue;
-        seen.add(lookupKey);
-        if (root !== original) seen.add(root);
-        if (dismissedCefrRef.current.has(lookupKey)) continue;
+    const cancelIdle = scheduleIdleTask(() => {
+      const batch: Record<string, { root: string; meaning: string; pos: string; count: number; cefrLevel: string }> = {};
+      const seen = new Set<string>();
 
-        const levelOriginal = getWordLevel(original);
-        const levelRoot = original !== root ? getWordLevel(root) : null;
-        const level = levelOriginal || levelRoot;
-        if (!level || !isAtOrAbove(level, threshold)) continue;
+      for (const para of contentSnapshot) {
+        for (const seg of para.segments) {
+          if (seg.type !== 'word') continue;
+          const original = seg.text.toLowerCase();
+          const root = seg.lemma || lemmatize(original);
+          const lookupKey = original === root ? root : original;
+          if (seen.has(lookupKey)) continue;
+          seen.add(lookupKey);
+          if (root !== original) seen.add(root);
+          if (dismissedCefrRef.current.has(lookupKey)) continue;
 
-        const meaning = lookupLocalMeaning(root, original, isEnMode ? 'en' : 'zh');
-        if (!meaning) continue;
+          const levelOriginal = getWordLevel(original);
+          const levelRoot = original !== root ? getWordLevel(root) : null;
+          const level = levelOriginal || levelRoot;
+          if (!level || !isAtOrAbove(level, threshold)) continue;
 
-        const shortened = shortenTranslation(meaning, dictMode);
-        batch[lookupKey] = { root: lookupKey, meaning: shortened, pos: '', count: 1, cefrLevel: level };
+          const meaning = lookupLocalMeaning(root, original, isEnMode ? 'en' : 'zh');
+          if (!meaning) continue;
+
+          const shortened = shortenTranslation(meaning, dictMode);
+          batch[lookupKey] = { root: lookupKey, meaning: shortened, pos: '', count: 1, cefrLevel: level };
+        }
       }
-    }
 
-    setAnnotations((prev) => {
-      const next = { ...prev };
-      for (const key of Object.keys(next)) {
-        if (next[key].cefrLevel) delete next[key];
-      }
-      return { ...next, ...batch };
+      setAnnotations((prev) => {
+        const next = { ...prev };
+        for (const key of Object.keys(next)) {
+          if (next[key].cefrLevel) delete next[key];
+        }
+        return { ...next, ...batch };
+      });
     });
+
+    return cancelIdle;
   }, [vocabLevel, processedContent, dictMode, loading]);
 
   const prevDictModeRef = useRef(dictMode);
@@ -1279,7 +1297,11 @@ export default function Home() {
 
 
   // Search functionality
-  const performSearch = useCallback((query: string, content: string) => {
+  const performSearch = useCallback((
+    query: string,
+    content: string,
+    processed: ProcessedContent | null,
+  ) => {
     if (!query.trim()) {
       setSearchResults([]);
       setCurrentSearchIndex(0);
@@ -1287,7 +1309,9 @@ export default function Home() {
     }
 
     const results: Array<{ paragraphIndex: number; charIndex: number }> = [];
-    const paragraphs = content.split(/\n\n+/);
+    const paragraphs = processed?.length
+      ? processed.map((p) => p.segments.map((s) => s.text).join(''))
+      : content.split(/\n\n+/).filter(Boolean);
     const lowerQuery = query.toLowerCase();
 
     paragraphs.forEach((paragraph, pIndex) => {
@@ -1319,9 +1343,9 @@ export default function Home() {
       clearTimeout(searchTimeoutRef.current);
     }
     searchTimeoutRef.current = setTimeout(() => {
-      performSearch(query, text);
+      performSearch(query, text, processedContent);
     }, 300);
-  }, [text, performSearch]);
+  }, [text, processedContent, performSearch]);
 
   const goToNextSearchResult = useCallback(() => {
     if (searchResults.length === 0) return;
@@ -1531,6 +1555,7 @@ export default function Home() {
         deleteBook={deleteBook}
         renameBook={renameBook}
         openBook={openBook}
+        openingBookId={openingBookId}
         globalVocabulary={globalVocabulary}
         removeFromGlobalVocabulary={removeFromGlobalVocabulary}
         clearGlobalVocabulary={clearGlobalVocabulary}

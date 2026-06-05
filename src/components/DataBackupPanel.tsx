@@ -14,6 +14,11 @@ import {
   BookOpen,
 } from "lucide-react";
 import { idbGet, idbSet } from "@/lib/storage";
+import {
+  BOOKS_MANIFEST_KEY,
+  exportBooksWithContent,
+  importBooksWithContent,
+} from "@/lib/bookContentStorage";
 
 const MASTERED_VOCAB_KEY = "english-reader-mastered-vocabulary";
 const MASTERED_WORDS_KEY = "english-reader-mastered-words";
@@ -95,8 +100,17 @@ export function DataBackupPanel({
     try {
       const data: Record<string, unknown> = {};
       try {
-        const booksStr = await idbGet("english-reader-books");
-        if (booksStr) data.books = JSON.parse(booksStr);
+        const booksStr = await idbGet(BOOKS_MANIFEST_KEY);
+        if (booksStr) {
+          const manifest = JSON.parse(booksStr) as Array<{
+            id: string;
+            title: string;
+            content?: string;
+            isSample?: boolean;
+            [key: string]: unknown;
+          }>;
+          data.books = await exportBooksWithContent(manifest as never);
+        }
       } catch (e) {
         console.warn("从 IndexedDB 读取书籍失败:", e);
       }
@@ -162,7 +176,7 @@ export function DataBackupPanel({
         return;
       }
       setMessage("正在导入数据...");
-      if (data.books) await idbSet("english-reader-books", JSON.stringify(data.books));
+      if (data.books) await importBooksWithContent(data.books);
       if (data.globalVocabulary) await idbSet("english-reader-global-vocabulary", JSON.stringify(data.globalVocabulary));
       if (data.masteredVocabulary) {
         await idbSet(MASTERED_VOCAB_KEY, JSON.stringify(data.masteredVocabulary));
