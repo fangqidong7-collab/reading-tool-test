@@ -3,12 +3,12 @@
 import React, { useMemo, useState, useCallback, useRef, useEffect } from "react";
 import { X } from "lucide-react";
 import type { ProcessedContent } from "@/hooks/useBookshelf";
-import { getWordLevel, getLevelColors, LEVEL_LABELS, type CEFRLevel, subscribeVocabLevels, getVocabLevelsVersion } from "@/lib/vocabLevel";
+import { getWordLevel, getLevelColors, LEVEL_LABELS, type CEFRLevel } from "@/lib/vocabLevel";
 import type { CefrColorPaletteId } from "@/lib/cefrColorPalettes";
-import { lemmatizeInflection } from "@/lib/dictionary";
+import { lemmatize, getWordMeaning, getWordMeaningEn } from "@/lib/dictionary";
+import { lookupExternalDict, lookupExternalDictEn } from "@/lib/dictLoader";
 import { translateWord, translateWordEn, translateWordEnSimple, isTranslationError } from "@/lib/translate";
 import { shortenTranslation } from "@/lib/annotationText";
-import { batchLocalLookup, batchLocalLookupAll } from "@/lib/batchLocalLookup";
 
 interface BookVocabAnalysisProps {
   isOpen: boolean;
@@ -52,17 +52,25 @@ const STOPWORDS = new Set([
 ]);
 
 function lookupMeaning(word: string, dictMode: 'zh' | 'en' | 'en-simple'): string {
-  return batchLocalLookup([word], dictMode).get(word)?.meaning ?? '';
+  const isEn = dictMode === 'en' || dictMode === 'en-simple';
+  if (isEn) {
+    return getWordMeaningEn(word) || lookupExternalDictEn(word) || '';
+  }
+  const entry = getWordMeaning(word);
+  return entry?.meaning || lookupExternalDict(word) || '';
 }
 
 function lookupAllLocal(word: string): { zh?: string; en?: string; enSimple?: string } {
-  const hit = batchLocalLookupAll([word]).get(word);
-  if (!hit) return {};
-  return {
-    zh: hit.meaningZh,
-    en: hit.meaningEn,
-    enSimple: hit.meaningEnSimple,
-  };
+  const langs: { zh?: string; en?: string; enSimple?: string } = {};
+  const zhEntry = getWordMeaning(word);
+  const zhRaw = zhEntry?.meaning || lookupExternalDict(word) || '';
+  if (zhRaw) langs.zh = shortenTranslation(zhRaw, 'zh');
+  const enRaw = getWordMeaningEn(word) || lookupExternalDictEn(word) || '';
+  if (enRaw) {
+    langs.en = shortenTranslation(enRaw, 'en');
+    langs.enSimple = shortenTranslation(enRaw, 'en-simple');
+  }
+  return langs;
 }
 
 async function aiTranslate(word: string, dictMode: 'zh' | 'en' | 'en-simple'): Promise<string> {
@@ -113,9 +121,6 @@ export function BookVocabAnalysis({
   const [showScrollTop, setShowScrollTop] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
 
-  const [vocabVersion, setVocabVersion] = useState(getVocabLevelsVersion);
-  useEffect(() => subscribeVocabLevels(() => setVocabVersion(getVocabLevelsVersion())), []);
-
   const [minLen, setMinLen] = useState<number>(() => {
     if (typeof window === 'undefined') return 0;
     const saved = localStorage.getItem('va-min-word-len');
@@ -148,7 +153,7 @@ export function BookVocabAnalysis({
       for (const seg of para.segments) {
         if (seg.type !== 'word') continue;
         totalWords++;
-        const root = seg.lemma || lemmatizeInflection(seg.text.toLowerCase());
+        const root = seg.lemma || lemmatize(seg.text.toLowerCase());
         if (STOPWORDS.has(root) || root.length <= 1) continue;
         const existing = wordCounts.get(root);
         if (existing) {
@@ -168,7 +173,7 @@ export function BookVocabAnalysis({
 
     const words: WordStat[] = [];
     for (const [root, data] of wordCounts) {
-      const level = getWordLevel(root) || getWordLevel(data.original.toLowerCase());
+      const level = getWordLevel(root);
       words.push({ word: root, count: data.count, level });
       if (level) {
         levelCounts[level] = (levelCounts[level] || 0) + data.count;
@@ -190,8 +195,7 @@ export function BookVocabAnalysis({
       unknownUniqueCount,
       words,
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [processedContent, vocabVersion]);
+  }, [processedContent]);
 
   const isInVocab = useCallback((word: string) => {
     return !!(globalVocabulary && globalVocabulary[word]) || addedWords.has(word);
@@ -267,61 +271,26 @@ export function BookVocabAnalysis({
     const wordsToMark = [...selected].filter((w) => !isMastered(w));
     if (wordsToMark.length === 0) return;
 
-    const vocabOnly = wordsToMark.filter((w) => globalVocabulary?.[w]);
-    for (const word of vocabOnly) {
-      onMarkAsMastered(word);
-    }
-
-    const needLookup = wordsToMark.filter((w) => !globalVocabulary?.[w]);
-    const localHits = batchLocalLookup(needLookup, dictMode);
-    for (const [word, hit] of localHits) {
+    for (const word of wordsToMark) {
+      if (globalVocabulary?.[word]) {
+        onMarkAsMastered(word);
+        continue;
+      }
+      let meaning = lookupMeaning(word, dictMode);
+      if (!meaning || isTranslationError(meaning)) {
+        meaning = await aiTranslate(word, dictMode);
+      }
+      const langs = buildLangPayload(word, meaning || '');
       onMarkAsMastered(word, {
-        meaning: hit.meaning,
+        meaning: meaning || langs.zh || langs.en || langs.enSimple || '',
         pos: '',
-        meaningZh: hit.meaningZh,
-        meaningEn: hit.meaningEn,
-        meaningEnSimple: hit.meaningEnSimple,
+        meaningZh: langs.zh,
+        meaningEn: langs.en,
+        meaningEnSimple: langs.enSimple,
       });
     }
-
-    const needAI = needLookup.filter((w) => !localHits.has(w));
-    if (needAI.length > 0) {
-      batchAbortRef.current = false;
-      setBatchProgress({ done: 0, total: needAI.length });
-      const CONCURRENCY = 3;
-      let doneCount = 0;
-      const queue = [...needAI];
-
-      const worker = async () => {
-        while (queue.length > 0 && !batchAbortRef.current) {
-          const word = queue.shift()!;
-          const meaning = await aiTranslate(word, dictMode);
-          if (meaning && !isTranslationError(meaning) && !batchAbortRef.current) {
-            const langs = lookupAllLocal(word);
-            if (dictMode === 'zh') langs.zh = meaning;
-            else if (dictMode === 'en') langs.en = meaning;
-            else langs.enSimple = meaning;
-            onMarkAsMastered(word, {
-              meaning,
-              pos: '',
-              meaningZh: langs.zh,
-              meaningEn: langs.en,
-              meaningEnSimple: langs.enSimple,
-            });
-          }
-          doneCount++;
-          setBatchProgress({ done: doneCount, total: needAI.length });
-        }
-      };
-
-      await Promise.all(
-        Array.from({ length: Math.min(CONCURRENCY, needAI.length) }, () => worker()),
-      );
-      setBatchProgress(null);
-    }
-
     setSelected(new Set());
-  }, [onMarkAsMastered, selected, isMastered, globalVocabulary, dictMode]);
+  }, [onMarkAsMastered, selected, isMastered, globalVocabulary, dictMode, buildLangPayload]);
 
   const handleAddSingle = useCallback(async (word: string) => {
     if (!onAddToVocabulary) return;
@@ -347,19 +316,20 @@ export function BookVocabAnalysis({
     }
     if (wordsToAdd.length === 0) return;
 
-    const localHits = batchLocalLookup(wordsToAdd, dictMode);
     const localEntries: Record<string, { root: string; meaning: string; pos: string; meaningZh?: string; meaningEn?: string; meaningEnSimple?: string }> = {};
-    for (const [word, hit] of localHits) {
-      localEntries[word] = {
-        root: word,
-        meaning: hit.meaning,
-        pos: '',
-        meaningZh: hit.meaningZh,
-        meaningEn: hit.meaningEn,
-        meaningEnSimple: hit.meaningEnSimple,
-      };
+    const needAI: string[] = [];
+    for (const word of wordsToAdd) {
+      const meaning = lookupMeaning(word, dictMode);
+      if (meaning) {
+        const langs = lookupAllLocal(word);
+        if (dictMode === 'zh') langs.zh = meaning;
+        else if (dictMode === 'en') langs.en = meaning;
+        else langs.enSimple = meaning;
+        localEntries[word] = { root: word, meaning, pos: '', meaningZh: langs.zh, meaningEn: langs.en, meaningEnSimple: langs.enSimple };
+      } else {
+        needAI.push(word);
+      }
     }
-    const needAI = wordsToAdd.filter((w) => !localHits.has(w));
 
     if (Object.keys(localEntries).length > 0) {
       onBatchAddToVocabulary(localEntries);
@@ -399,7 +369,7 @@ export function BookVocabAnalysis({
     }
 
     setSelected(new Set());
-  }, [onBatchAddToVocabulary, onAddToVocabulary, selected, dictMode, isInVocab, isMastered]);
+  }, [onBatchAddToVocabulary, onAddToVocabulary, selected, dictMode, isInVocab]);
 
   if (!isOpen || !analysis) return null;
 

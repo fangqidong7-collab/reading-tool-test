@@ -30,7 +30,6 @@ interface BookCardProps {
   isAddCard?: boolean;
   coverPalette?: CoverColor[];
   isDarkTheme?: boolean;
-  isOpening?: boolean;
 }
 
 export function BookCard({
@@ -43,7 +42,6 @@ export function BookCard({
   isAddCard,
   coverPalette,
   isDarkTheme,
-  isOpening,
 }: BookCardProps) {
   if (isAddCard) {
     return (
@@ -84,11 +82,7 @@ export function BookCard({
   const { bg, spine } = getCoverColors(book.title, coverPalette || DEFAULT_PALETTE);
 
   return (
-    <div
-      className={`book-card${isOpening ? " book-card-opening" : ""}`}
-      onClick={isOpening ? undefined : onOpen}
-      style={isOpening ? { opacity: 0.65, pointerEvents: "none" } : undefined}
-    >
+    <div className="book-card" onClick={onOpen}>
       <div className="book-cover-3d">
         <div className="book-spine" style={{ background: spine }} />
         <div className="book-front" style={{ background: bg }}>

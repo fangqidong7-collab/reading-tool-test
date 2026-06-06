@@ -25,18 +25,6 @@ export const LEVEL_LABELS: Record<CEFRLevel, string> = {
 
 let vocabData: Record<string, CEFRLevel> | null = null;
 let loading = false;
-let loadedVersion = 0;
-type Listener = () => void;
-const listeners = new Set<Listener>();
-
-export function subscribeVocabLevels(listener: Listener): () => void {
-  listeners.add(listener);
-  return () => { listeners.delete(listener); };
-}
-
-export function getVocabLevelsVersion(): number {
-  return loadedVersion;
-}
 
 export async function loadVocabLevels(): Promise<void> {
   if (vocabData || loading) return;
@@ -45,12 +33,10 @@ export async function loadVocabLevels(): Promise<void> {
     const res = await fetch('/vocab-levels.json');
     if (res.ok) {
       vocabData = await res.json();
-      loadedVersion++;
       try {
         const { registerKnownWords } = await import('@/lib/dictionary');
         registerKnownWords(Object.keys(vocabData!));
       } catch (_) { /* dictionary module not available */ }
-      for (const fn of listeners) fn();
     }
   } catch (e) {
     console.warn('[VocabLevel] failed to load:', e);

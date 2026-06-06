@@ -1,9 +1,8 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { lemmatize } from "@/lib/dictionary";
-import { lookupLocalMeaning } from "@/lib/wordLookup";
-import { formatLookupTiming, getLastLookupTiming } from "@/lib/lookupTiming";
+import { lemmatize, getWordMeaning, getWordMeaningEn } from "@/lib/dictionary";
+import { lookupExternalDict, lookupExternalDictEn } from "@/lib/dictLoader";
 import { speakWord } from "@/lib/speak";
 
 
@@ -22,7 +21,6 @@ interface WordTooltipProps {
     pos: string;
   } | null;
   dictMode?: "zh" | "en" | "en-simple";
-  onOnlineLookup?: (word: string, lemma: string) => Promise<string | null>;
   // Dark mode
   isDarkMode?: boolean;
   bgColor?: string;
@@ -87,7 +85,6 @@ export function WordTooltip({
   isAnnotated,
   annotation,
   dictMode = "zh",
-  onOnlineLookup,
   isDarkMode = false,
   bgColor = "#FFFFFF",
   textColor = "#333333",
@@ -95,55 +92,34 @@ export function WordTooltip({
 }: WordTooltipProps) {
 
   const [visible, setVisible] = useState(false);
-  const [onlineMeaning, setOnlineMeaning] = useState<string | null>(null);
-  const [onlineLoading, setOnlineLoading] = useState(false);
-  const [onlineError, setOnlineError] = useState(false);
   const root =
     lemma !== undefined && lemma.trim().length > 0 ? lemma.trim() : lemmatize(word);
   
-  const isEnMode = dictMode === "en" || dictMode === "en-simple";
-  const localMeaning = annotation
-    ? annotation.meaning
-    : lookupLocalMeaning(root, word, dictMode);
+  // 智能查词：先查内置词典，再查外部词典，最后精简
+const internalZhEntry = annotation || getWordMeaning(root);
+const externalZhRaw = !annotation
+  ? (lookupExternalDict(root) || lookupExternalDict(word))
+  : null;
 
-  const displayMeaning = localMeaning
-    ? (isEnMode ? localMeaning : shortenTranslation(localMeaning))
-    : onlineMeaning;
+const externalEnRaw = !annotation
+  ? (lookupExternalDictEn(root) || lookupExternalDictEn(word))
+  : null;
 
-  const displayEntry = displayMeaning
-    ? {
-        meaning: displayMeaning,
-        pos: isEnMode ? "" : (annotation?.pos || ""),
-      }
-    : null;
+const isEnMode = dictMode === "en" || dictMode === "en-simple";
+const displayMeaning =
+  isEnMode
+    ? (annotation?.meaning || getWordMeaningEn(root) || externalEnRaw || null)
+    : (internalZhEntry
+        ? shortenTranslation(internalZhEntry.meaning)
+        : (externalZhRaw ? shortenTranslation(externalZhRaw) : null));
 
-  const timingLabel = process.env.NODE_ENV === 'development'
-    ? formatLookupTiming(getLastLookupTiming())
-    : null;
-
-  const handleOnlineLookup = async () => {
-    if (!onOnlineLookup || onlineLoading) return;
-    setOnlineLoading(true);
-    setOnlineError(false);
-    try {
-      const meaning = await onOnlineLookup(word, root);
-      if (meaning) {
-        setOnlineMeaning(meaning);
-      } else {
-        setOnlineError(true);
-      }
-    } catch {
-      setOnlineError(true);
-    } finally {
-      setOnlineLoading(false);
+const displayEntry = displayMeaning
+  ? {
+      meaning: displayMeaning,
+      pos: isEnMode ? "" : (internalZhEntry?.pos || ""),
     }
-  };
+  : null;
 
-  useEffect(() => {
-    setOnlineMeaning(null);
-    setOnlineError(false);
-    setOnlineLoading(false);
-  }, [word, root, dictMode]);
 
   useEffect(() => {
     // 延迟显示以实现淡入效果
@@ -225,27 +201,16 @@ export function WordTooltip({
           <div className="tooltip-meaning" style={{ color: colors.accent }}>
             {displayEntry.meaning}
           </div>
-        ) : onlineLoading ? (
-          <div className="tooltip-meaning tooltip-unknown" style={{ color: colors.secondaryText }}>
-            {isEnMode ? "Looking up..." : "查询中…"}
-          </div>
         ) : (
-          <div className="tooltip-meaning tooltip-unknown" style={{ color: colors.secondaryText }}>
-            {onlineError
-              ? (isEnMode ? "Lookup failed" : "联网查词失败")
-              : (isEnMode ? "No definition found" : "未找到释义")}
-          </div>
+<div className="tooltip-meaning tooltip-unknown" style={{ color: colors.secondaryText }}>
+  {isEnMode ? "No definition found" : "未找到释义"}
+</div>
+
         )}
 
         {displayEntry && (
           <div className="tooltip-root" style={{ color: colors.secondaryText }}>
             词根: {root}
-          </div>
-        )}
-
-        {timingLabel && (
-          <div className="tooltip-timing" style={{ color: colors.secondaryText }}>
-            {timingLabel}
           </div>
         )}
 
@@ -258,27 +223,15 @@ export function WordTooltip({
               取消标注
             </button>
           ) : (
-            <>
-              {!displayEntry && onOnlineLookup && (
-                <button
-                  className="tooltip-btn tooltip-btn-online"
-                  style={{ backgroundColor: colors.buttonHover, color: colors.text }}
-                  onClick={handleOnlineLookup}
-                  disabled={onlineLoading}
-                >
-                  {onlineLoading
-                    ? (isEnMode ? "Looking up..." : "查询中…")
-                    : (isEnMode ? "Look up online" : "联网查词")}
-                </button>
-              )}
-              <button
-                className="tooltip-btn tooltip-btn-annotate"
-                style={{ backgroundColor: colors.accent }}
-                onClick={() => { onClose(); setTimeout(() => onAnnotateAll(word), 50); }}
-              >
-                标注全文
-              </button>
-            </>
+            <button
+              className="tooltip-btn tooltip-btn-annotate"
+              style={{ backgroundColor: colors.accent }}
+onClick={() => { onClose(); setTimeout(() => onAnnotateAll(word), 50); }}
+
+
+            >
+              标注全文
+            </button>
           )}
         </div>
       </div>
@@ -366,11 +319,6 @@ export function WordTooltip({
           margin-bottom: 10px;
         }
 
-        .tooltip-timing {
-          font-size: 11px;
-          margin-bottom: 8px;
-        }
-
         .tooltip-actions {
           display: flex;
           gap: 8px;
@@ -389,11 +337,6 @@ export function WordTooltip({
 
         .tooltip-btn-annotate:hover {
           filter: brightness(1.1);
-        }
-
-        .tooltip-btn-online:disabled {
-          opacity: 0.6;
-          cursor: wait;
         }
 
         .tooltip-btn-remove {

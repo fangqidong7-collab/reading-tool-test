@@ -3,7 +3,6 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { X } from "lucide-react";
 import { parseFile, ParseProgress, TocEntry } from "@/lib/fileParser";
-import { formatBookSizeHint } from "@/lib/bookSizeEstimate";
 
 interface AddBookModalProps {
   isOpen: boolean;
@@ -268,9 +267,6 @@ export function AddBookModal({ isOpen, onClose, onAdd }: AddBookModalProps) {
                     className="form-textarea"
                     disabled={parsing}
                   />
-                  {content.trim().length > 0 && (
-                    <p className="size-hint">{formatBookSizeHint(content.length)}</p>
-                  )}
                 </div>
               ) : (
                 content && (
@@ -281,7 +277,6 @@ export function AddBookModal({ isOpen, onClose, onAdd }: AddBookModalProps) {
                         {Math.round(content.length / 1024)} KB
                       </span>
                     </div>
-                    <p className="size-hint">{formatBookSizeHint(content.length)}</p>
                   </div>
                 )
               )}
@@ -383,13 +378,6 @@ export function AddBookModal({ isOpen, onClose, onAdd }: AddBookModalProps) {
 
         .error-icon {
           margin-bottom: 8px;
-        }
-
-        .size-hint {
-          margin: 8px 0 0;
-          font-size: 12px;
-          color: #888;
-          line-height: 1.5;
         }
       `}</style>
     </div>

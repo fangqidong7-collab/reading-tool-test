@@ -12,21 +12,12 @@ import { sha256Utf8 } from "@/lib/syncSha256";
 import { useReadingSettings } from "@/hooks/useReadingSettings";
 import { useReadingStats } from "@/hooks/useReadingStats";
 import { useBookshelfTheme } from "@/hooks/useBookshelfTheme";
-import { lemmatize, lemmatizeInflection, findWordFamily, loadBuiltinDictionary, loadBuiltinDictionaryEn, normalizeAnnotationsToLemma, getCanonicalLemma, resolveAnnotation } from "@/lib/dictionary";
+import { lemmatize, getWordMeaning, getWordMeaningEn, findWordFamily, loadBuiltinDictionary, loadBuiltinDictionaryEn } from "@/lib/dictionary";
 import { translateWord, translateWordEn, translateWordEnSimple, translateSentence, isTranslationError } from "@/lib/translate";
-import { initializeExternalDictionaries, type DictLoadStatus } from "@/lib/dictLoader";
-import { lookupLocalMeaning } from "@/lib/wordLookup";
+import { forceReloadDictionary, lookupExternalDict, lookupExternalDictEn, loadExternalDictionaryEn, type DictLoadStatus } from "@/lib/dictLoader";
 import { cleanTranslation, shortenTranslation } from "@/lib/annotationText";
-import {
-  processTextToSegmentsAsync,
-  INITIAL_PARAGRAPH_BATCH,
-} from "@/lib/processBookContent";
-import {
-  loadProcessedContentCache,
-  saveProcessedContentCache,
-} from "@/lib/processedContentCache";
-import { loadVocabLevels, getWordLevel, isAtOrAbove, type CEFRLevel, subscribeVocabLevels, getVocabLevelsVersion } from "@/lib/vocabLevel";
-import { scheduleIdleTask } from "@/lib/scheduleIdle";
+import { processTextToSegmentsAsync } from "@/lib/processBookContent";
+import { loadVocabLevels, getWordLevel, isAtOrAbove, type CEFRLevel } from "@/lib/vocabLevel";
 
 async function hashesFromMergedBooks(bookList: Book[]): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
@@ -73,8 +64,6 @@ export default function Home() {
     addSentenceAnnotation,
     removeSentenceAnnotation,
     flushBooksToStorage,
-    resolveBookContent,
-    openingBookId,
   } = useBookshelf();
 
 
@@ -139,11 +128,7 @@ export default function Home() {
     lemma: string;
     position: { x: number; y: number };
   } | null>(null);
-  const [vocabLevelsReady, setVocabLevelsReady] = useState(getVocabLevelsVersion() > 0);
-  useEffect(() => subscribeVocabLevels(() => setVocabLevelsReady(true)), []);
-
   const [loading, setLoading] = useState(false);
-  const [processingComplete, setProcessingComplete] = useState(false);
   const [annotating, setAnnotating] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
@@ -170,8 +155,8 @@ export default function Home() {
   // Ref for debounced scroll save
   const scrollSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Track last processed book+content hash to avoid duplicate processing
-  const lastProcessedKeyRef = useRef<string | null>(null);
+  // Track last processed book ID to avoid duplicate processing
+  const lastProcessedBookIdRef = useRef<string | null>(null);
   
   // Store current book data in refs to avoid dependency issues
   const currentBookIdRef = useRef<string | null>(null);
@@ -228,7 +213,7 @@ export default function Home() {
 
     await Promise.all(
       books.map(async (book) => {
-        const contentStr = book.content || (await resolveBookContent(book.id));
+        const contentStr = typeof book.content === "string" ? book.content : "";
         const hash = await sha256Utf8(contentStr);
         contentHashes[book.id] = hash;
         bookManifest.push({ id: book.id, title: book.title, contentHash: hash });
@@ -268,22 +253,20 @@ export default function Home() {
       bookManifest,
       contentHashes,
     };
-  }, [globalVocabulary, masteredWords, masteredVocabulary, books, resolveBookContent]);
+  }, [globalVocabulary, masteredWords, masteredVocabulary, books]);
 
   // 按 ID 列表构建完整书籍数据（仅在 needBooks 时调用）
-  const buildBooksPayload = useCallback(async (bookIds: string[]): Promise<Book[]> => {
+  const buildBooksPayload = useCallback((bookIds: string[]): Book[] => {
     const idSet = new Set(bookIds);
-    const selected = books.filter((b) => idSet.has(b.id));
-    return Promise.all(
-      selected.map(async (book) => {
-        const content = book.content || (await resolveBookContent(book.id));
+    return books
+      .filter(b => idSet.has(b.id))
+      .map(book => {
         const { processedContent, syncContentHash, ...rest } = book;
         void processedContent;
         void syncContentHash;
-        return { ...rest, content };
-      }),
-    );
-  }, [books, resolveBookContent]);
+        return rest;
+      });
+  }, [books]);
 
   // 首次创建同步码时的完整数据（含全部书籍正文）
   const buildFullSyncData = useCallback(async (): Promise<{
@@ -291,20 +274,18 @@ export default function Home() {
     contentHashes: Record<string, string>;
   }> => {
     const contentHashes: Record<string, string> = {};
-    const booksPayload = await Promise.all(
-      books.map(async (book) => {
-        const content = book.content || (await resolveBookContent(book.id));
-        const { processedContent, syncContentHash, ...rest } = book;
-        void processedContent;
-        void syncContentHash;
-        return { ...rest, content };
-      }),
-    );
+    const booksPayload = books.map((book) => {
+      const { processedContent, syncContentHash, ...rest } = book;
+      void processedContent;
+      void syncContentHash;
+      return rest;
+    });
 
     await Promise.all(
       booksPayload.map(async (book) => {
-        contentHashes[book.id] = await sha256Utf8(book.content || "");
-      }),
+        const contentStr = typeof book.content === "string" ? book.content : "";
+        contentHashes[book.id] = await sha256Utf8(contentStr);
+      })
     );
 
     return {
@@ -340,7 +321,7 @@ export default function Home() {
       },
       contentHashes,
     };
-  }, [globalVocabulary, masteredWords, masteredVocabulary, books, resolveBookContent]);
+  }, [globalVocabulary, masteredWords, masteredVocabulary, books]);
 
   // Handle create sync - push current local data to cloud (full payload with books)
   const handleCreateSync = useCallback(async () => {
@@ -534,13 +515,16 @@ export default function Home() {
     }
   }, []);
 
-  // Load external dictionary on mount: cache first, background refresh
+  // Load external dictionary on mount (force reload to get latest dict.json and dict_en.json)
   useEffect(() => {
     loadBuiltinDictionary();
     loadBuiltinDictionaryEn();
     loadVocabLevels();
     
-    initializeExternalDictionaries().then(({ zh: zhStatus }) => {
+    Promise.all([
+      forceReloadDictionary(),
+      loadExternalDictionaryEn()
+    ]).then(([zhStatus, enStatus]) => {
       setDictLoadStatus(zhStatus);
 
       // Auto-dismiss status after 3 seconds
@@ -579,8 +563,9 @@ export default function Home() {
     for (const [key, entry] of entries) {
       if (entry.meaningZh !== undefined || entry.meaningEn !== undefined) continue;
 
-      const zhRaw = lookupLocalMeaning(key, key, 'zh');
-      const enRaw = lookupLocalMeaning(key, key, 'en');
+      const zhEntry = getWordMeaning(key);
+      const zhRaw = zhEntry?.meaning || lookupExternalDict(key) || '';
+      const enRaw = getWordMeaningEn(key) || lookupExternalDictEn(key) || '';
 
       const meaningZh = zhRaw ? shortenTranslation(zhRaw, 'zh') : undefined;
       const meaningEn = enRaw ? shortenTranslation(enRaw, 'en') : undefined;
@@ -605,17 +590,16 @@ export default function Home() {
     }
   }, [isLoaded, globalVocabulary, mergeGlobalVocabulary]);
 
-  // Effect-book: sync text/annotations (annotation-only changes must not re-tokenize)
+  // Effect-book: sync book content/annotations and process on first open
   useEffect(() => {
     if (!currentBook) {
       currentBookIdRef.current = null;
       currentBookContentRef.current = "";
       currentBookAnnotationsRef.current = {};
       lastPersistedAnnotationsRef.current = null;
-      lastProcessedKeyRef.current = null;
+      lastProcessedBookIdRef.current = null;
       setProcessedContent(null);
       setLoading(false);
-      setProcessingComplete(false);
       return;
     }
 
@@ -634,89 +618,39 @@ export default function Home() {
         incoming === lastPersistedAnnotationsRef.current;
       currentBookAnnotationsRef.current = incoming;
       if (!isEcho) {
-        setAnnotations(normalizeAnnotationsToLemma(incoming));
+        setAnnotations(incoming);
       }
     }
-  }, [currentBook?.id, currentBook?.content, currentBook?.annotations]);
 
-  // Effect-process: tokenize book content in Worker; skip when only annotations change
-  useEffect(() => {
-    if (!currentBook) return;
-
-    const bookId = currentBook.id;
-    const bookContent = currentBook.content;
-    const savedParagraphIndex = currentBook.lastParagraphIndex ?? -1;
-    const persistedText = currentBook.lastParagraphText || "";
-
-    let cancelled = false;
-
-    const applyParagraphPreview = (processed: ProcessedContent) => {
-      if (persistedText) {
-        setCurrentParagraphText(persistedText);
-      } else if (savedParagraphIndex >= 0 && savedParagraphIndex < processed.length) {
-        const derived = processed[savedParagraphIndex].segments
-          .map((s) => s.text)
-          .join("")
-          .substring(0, 80);
-        setCurrentParagraphText(derived);
-      } else {
-        setCurrentParagraphText("");
-      }
-    };
-
-    (async () => {
-      const contentHash = await sha256Utf8(bookContent);
-      if (cancelled) return;
-
-      const processKey = `${bookId}:${contentHash}`;
-      if (lastProcessedKeyRef.current === processKey) {
-        setLoading(false);
-        return;
-      }
-
-      setLoading(true);
-      setProcessingComplete(false);
+    // Only process segments on first open (bookId change)
+    if (lastProcessedBookIdRef.current !== currentBook.id) {
       setProcessedContent(null);
-      lastProcessedKeyRef.current = processKey;
+      lastProcessedBookIdRef.current = currentBook.id;
+      setLoading(true);
 
-      const cached = await loadProcessedContentCache(bookId, contentHash);
-      if (cancelled) return;
+      const savedScrollPercent = currentBook.lastScrollPosition || 0;
+      const savedParagraphIndex = currentBook.lastParagraphIndex ?? -1;
 
-      if (cached) {
-        setProcessedContent(cached);
+      const persistedText = currentBook.lastParagraphText || "";
+
+      processTextToSegmentsAsync(currentBook.content).then((processed) => {
+        setProcessedContent(processed);
         setLoading(false);
-        setProcessingComplete(true);
-        applyParagraphPreview(cached);
-        return;
-      }
 
-      let firstPaintDone = false;
-      const processed = await processTextToSegmentsAsync(bookContent, {
-        initialBatch: INITIAL_PARAGRAPH_BATCH,
-        onPartial: (partial) => {
-          if (cancelled) return;
-          setProcessedContent(partial);
-          if (!firstPaintDone) {
-            firstPaintDone = true;
-            setLoading(false);
-            applyParagraphPreview(partial);
-          }
-        },
+        if (persistedText) {
+          setCurrentParagraphText(persistedText);
+        } else if (savedParagraphIndex >= 0 && savedParagraphIndex < processed.length) {
+          const derived = processed[savedParagraphIndex].segments
+            .map((s) => s.text)
+            .join("")
+            .substring(0, 80);
+          setCurrentParagraphText(derived);
+        } else {
+          setCurrentParagraphText("");
+        }
       });
-
-      if (cancelled) return;
-
-      setProcessedContent(processed);
-      setLoading(false);
-      setProcessingComplete(true);
-      applyParagraphPreview(processed);
-      void saveProcessedContentCache(bookId, contentHash, processed);
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [currentBook?.id, currentBook?.content]);
+    }
+  }, [currentBook?.id, currentBook?.content, currentBook?.annotations]);
 
   // 切换书籍时重置滚动相关状态，防止旧书进度被写入新书
   useEffect(() => {
@@ -870,24 +804,14 @@ export default function Home() {
     for (const [key, ann] of Object.entries(annotations)) {
       if (!ann.cefrLevel) result[key] = ann;
     }
-    const normalized = normalizeAnnotationsToLemma(result);
     const prev = prevPersistableRef.current;
-    const resultKeys = Object.keys(normalized);
+    const resultKeys = Object.keys(result);
     const prevKeys = Object.keys(prev);
-    if (
-      resultKeys.length === prevKeys.length &&
-      resultKeys.every(k => {
-        const a = normalized[k];
-        const b = prev[k];
-        if (a === b) return true;
-        if (!a || !b) return false;
-        return a.root === b.root && a.meaning === b.meaning && a.pos === b.pos && a.count === b.count;
-      })
-    ) {
+    if (resultKeys.length === prevKeys.length && resultKeys.every(k => result[k] === prev[k])) {
       return prev;
     }
-    prevPersistableRef.current = normalized;
-    return normalized;
+    prevPersistableRef.current = result;
+    return result;
   }, [annotations]);
 
   useLayoutEffect(() => {
@@ -915,7 +839,8 @@ export default function Home() {
         clearTimeout(clickTimerRef.current);
       }
       clickTimerRef.current = setTimeout(() => {
-        const lemmaKey = getCanonicalLemma(cleanWord, lemma);
+        const lemmaKey =
+          lemma && lemma.trim().length > 0 ? lemma.trim() : lemmatize(cleanWord);
         setSelectedWord({
           word: cleanWord,
           lemma: lemmaKey,
@@ -932,34 +857,16 @@ export default function Home() {
 
   const lookupAllLocalMeanings = useCallback((word: string, root: string) => {
     const langs: { zh?: string; en?: string; enSimple?: string } = {};
-    const zhRaw = lookupLocalMeaning(root, word, 'zh');
+    const zhEntry = getWordMeaning(root);
+    const zhRaw = zhEntry?.meaning || lookupExternalDict(root) || lookupExternalDict(word) || '';
     if (zhRaw) langs.zh = shortenTranslation(zhRaw, 'zh');
-    const enRaw = lookupLocalMeaning(root, word, 'en');
+    const enRaw = getWordMeaningEn(root) || lookupExternalDictEn(root) || lookupExternalDictEn(word) || '';
     if (enRaw) {
       langs.en = shortenTranslation(enRaw, 'en');
       langs.enSimple = shortenTranslation(enRaw, 'en-simple');
     }
     return langs;
   }, []);
-
-  const lookupOnlineWord = useCallback(
-    async (word: string, lemma: string): Promise<string | null> => {
-      const cleanWord = word.toLowerCase().trim();
-      const root = lemma.trim() || lemmatize(cleanWord);
-      const lookupKey = root || cleanWord;
-      let rawMeaning = '';
-      if (dictMode === 'en-simple') {
-        rawMeaning = await translateWordEnSimple(lookupKey);
-      } else if (dictMode === 'en') {
-        rawMeaning = await translateWordEn(lookupKey);
-      } else {
-        rawMeaning = await translateWord(lookupKey);
-      }
-      if (!rawMeaning || isTranslationError(rawMeaning)) return null;
-      return shortenTranslation(rawMeaning, dictMode);
-    },
-    [dictMode],
-  );
 
   // Handle word double click - auto annotate without popup
   const handleWordDoubleClick = useCallback(
@@ -974,7 +881,7 @@ export default function Home() {
       const cleanWord = word.toLowerCase().trim();
       if (!cleanWord) return;
 
-      const root = getCanonicalLemma(cleanWord, lemma);
+      const root = lemmatize(cleanWord);
 
       // Skip if already annotated with same mode
       const existing = annotations[root];
@@ -991,24 +898,39 @@ export default function Home() {
         return;
       }
 
-      let rawMeaning = lookupLocalMeaning(root, cleanWord, dictMode);
+      // 1. 先查内置词典
+      let rawMeaning = "";
+      if (isEnglishMode) {
+        const enEntry = getWordMeaningEn(cleanWord);
+        if (enEntry) rawMeaning = enEntry;
+      } else {
+        const zhEntry = getWordMeaning(cleanWord);
+        if (zhEntry?.meaning) rawMeaning = zhEntry.meaning;
+      }
 
+      // 2. 内置词典没有，再查外部词典
       if (!rawMeaning) {
-        const lookupKey = root || cleanWord;
+        const extMeaning = isEnglishMode
+          ? lookupExternalDictEn(cleanWord)
+          : lookupExternalDict(cleanWord);
+        if (extMeaning) rawMeaning = extMeaning;
+      }
+
+      // 3. 外部词典也没有，调用AI翻译
+      if (!rawMeaning) {
         if (dictMode === 'en-simple') {
-          rawMeaning = await translateWordEnSimple(lookupKey);
+          rawMeaning = await translateWordEnSimple(cleanWord);
         } else if (dictMode === 'en') {
-          rawMeaning = await translateWordEn(lookupKey);
+          rawMeaning = await translateWordEn(cleanWord);
         } else {
-          rawMeaning = await translateWord(lookupKey);
+          rawMeaning = await translateWord(cleanWord);
         }
       }
 
       if (rawMeaning && !isTranslationError(rawMeaning)) {
         const shortMeaning = shortenTranslation(rawMeaning, dictMode);
         if (!isTranslationError(shortMeaning)) {
-          const family = findWordFamily(root, text);
-          const newAnnotation = { root, meaning: shortMeaning, pos: "", count: family.length };
+          const newAnnotation = { root, meaning: shortMeaning, pos: "", count: 1 };
           setAnnotations((prev) => ({
             ...prev,
             [root]: newAnnotation,
@@ -1021,14 +943,14 @@ export default function Home() {
         }
       }
     },
-    [annotations, text, dictMode, addToGlobalVocabulary, lookupAllLocalMeanings]
+    [annotations, currentBook, dictMode, addToGlobalVocabulary, lookupAllLocalMeanings]
   );
 
   // Annotate all occurrences of a word
   const annotateAll = useCallback(
     async (word: string) => {
       const cleanWord = word.toLowerCase().trim();
-      const root = getCanonicalLemma(cleanWord);
+      const root = lemmatize(cleanWord);
 
       const existing = annotations[root];
       const isEnglishMode = dictMode === 'en' || dictMode === 'en-simple';
@@ -1047,16 +969,41 @@ export default function Home() {
       setSelectedWord(null);
       setAnnotating(true);
       try {
-        let rawMeaning = lookupLocalMeaning(root, cleanWord, dictMode);
+        let rawMeaning = "";
 
-        if (!rawMeaning) {
-          const lookupKey = root || cleanWord;
-          if (dictMode === 'en-simple') {
-            rawMeaning = await translateWordEnSimple(lookupKey);
-          } else if (dictMode === 'en') {
-            rawMeaning = await translateWordEn(lookupKey);
-          } else {
-            rawMeaning = await translateWord(lookupKey);
+        if (isEnglishMode) {
+          const enEntry = getWordMeaningEn(root);
+          if (enEntry) {
+            rawMeaning = enEntry;
+          }
+
+          if (!rawMeaning) {
+            const extEnMeaning = lookupExternalDictEn(root) || lookupExternalDictEn(cleanWord);
+            if (extEnMeaning) {
+              rawMeaning = extEnMeaning;
+            }
+          }
+
+          if (!rawMeaning) {
+            rawMeaning = dictMode === 'en-simple'
+              ? await translateWordEnSimple(root || cleanWord)
+              : await translateWordEn(root || cleanWord);
+          }
+        } else {
+          const entry = getWordMeaning(root);
+          if (entry?.meaning) {
+            rawMeaning = entry.meaning;
+          }
+
+          if (!rawMeaning) {
+            const extMeaning = lookupExternalDict(cleanWord);
+            if (extMeaning) {
+              rawMeaning = extMeaning;
+            }
+          }
+
+          if (!rawMeaning) {
+            rawMeaning = await translateWord(cleanWord);
           }
         }
 
@@ -1098,7 +1045,7 @@ export default function Home() {
     if (prevVocabLevelRef.current !== vocabLevel) {
       dismissedCefrRef.current.clear();
     }
-    if (!processingComplete || !processedContent || vocabLevel === 'off') {
+    if (!processedContent || vocabLevel === 'off') {
       if (prevVocabLevelRef.current !== 'off' && vocabLevel === 'off') {
         setAnnotations((prev) => {
           const next = { ...prev };
@@ -1115,45 +1062,47 @@ export default function Home() {
 
     const threshold = vocabLevel as CEFRLevel;
     const isEnMode = dictMode === 'en' || dictMode === 'en-simple';
-    const contentSnapshot = processedContent;
+    const batch: Record<string, { root: string; meaning: string; pos: string; count: number; cefrLevel: string }> = {};
 
-    const cancelIdle = scheduleIdleTask(() => {
-      const batch: Record<string, { root: string; meaning: string; pos: string; count: number; cefrLevel: string }> = {};
-      const seen = new Set<string>();
+    const seen = new Set<string>();
+    for (const para of processedContent) {
+      for (const seg of para.segments) {
+        if (seg.type !== 'word') continue;
+        const original = seg.text.toLowerCase();
+        const root = seg.lemma || lemmatize(original);
+        const lookupKey = original === root ? root : original;
+        if (seen.has(lookupKey)) continue;
+        seen.add(lookupKey);
+        if (root !== original) seen.add(root);
+        if (dismissedCefrRef.current.has(lookupKey)) continue;
 
-      for (const para of contentSnapshot) {
-        for (const seg of para.segments) {
-          if (seg.type !== 'word') continue;
-          const original = seg.text.toLowerCase();
-          const root = seg.lemma || lemmatizeInflection(original);
-          if (seen.has(root)) continue;
-          seen.add(root);
-          if (dismissedCefrRef.current.has(root)) continue;
+        const levelOriginal = getWordLevel(original);
+        const levelRoot = original !== root ? getWordLevel(root) : null;
+        const level = levelOriginal || levelRoot;
+        if (!level || !isAtOrAbove(level, threshold)) continue;
 
-          const levelOriginal = getWordLevel(original);
-          const levelRoot = original !== root ? getWordLevel(root) : null;
-          const level = levelOriginal || levelRoot;
-          if (!level || !isAtOrAbove(level, threshold)) continue;
-
-          const meaning = lookupLocalMeaning(root, original, isEnMode ? 'en' : 'zh');
-          if (!meaning) continue;
-
-          const shortened = shortenTranslation(meaning, dictMode);
-          batch[root] = { root, meaning: shortened, pos: '', count: 1, cefrLevel: level };
+        let meaning = '';
+        if (isEnMode) {
+          meaning = getWordMeaningEn(root) || lookupExternalDictEn(root) || lookupExternalDictEn(original) || '';
+        } else {
+          const entry = getWordMeaning(root);
+          meaning = entry?.meaning || lookupExternalDict(root) || lookupExternalDict(original) || '';
         }
+        if (!meaning) continue;
+
+        const shortened = shortenTranslation(meaning, dictMode);
+        batch[lookupKey] = { root: lookupKey, meaning: shortened, pos: '', count: 1, cefrLevel: level };
       }
+    }
 
-      setAnnotations((prev) => {
-        const next = { ...prev };
-        for (const key of Object.keys(next)) {
-          if (next[key].cefrLevel) delete next[key];
-        }
-        return { ...next, ...batch };
-      });
+    setAnnotations((prev) => {
+      const next = { ...prev };
+      for (const key of Object.keys(next)) {
+        if (next[key].cefrLevel) delete next[key];
+      }
+      return { ...next, ...batch };
     });
-
-    return cancelIdle;
-  }, [vocabLevel, processedContent, dictMode, processingComplete, vocabLevelsReady]);
+  }, [vocabLevel, processedContent, dictMode]);
 
   const prevDictModeRef = useRef(dictMode);
   useEffect(() => {
@@ -1193,26 +1142,21 @@ export default function Home() {
 
   // Remove annotation
   const removeAnnotation = useCallback((word: string, lemmaOverride?: string) => {
-    const canonical = getCanonicalLemma(word, lemmaOverride);
+    const root =
+      lemmaOverride !== undefined && lemmaOverride.trim().length > 0
+        ? lemmaOverride.trim()
+        : lemmatize(word.toLowerCase());
+    const original = word.toLowerCase();
     setAnnotations((prev) => {
       const next = { ...prev };
-      for (const key of Object.keys(next)) {
-        if (lemmatizeInflection(key) === canonical) {
-          if (next[key]?.cefrLevel) dismissedCefrRef.current.add(canonical);
-          delete next[key];
-        }
-      }
+      if (next[root]?.cefrLevel) dismissedCefrRef.current.add(root);
+      if (original !== root && next[original]?.cefrLevel) dismissedCefrRef.current.add(original);
+      delete next[root];
+      if (original !== root) delete next[original];
       return next;
     });
-    removeFromGlobalVocabulary(canonical);
-    const surface = word.toLowerCase();
-    if (surface !== canonical) removeFromGlobalVocabulary(surface);
-    if (lemmaOverride) {
-      const lemmaLower = lemmaOverride.toLowerCase();
-      if (lemmaLower !== canonical && lemmaLower !== surface) {
-        removeFromGlobalVocabulary(lemmaLower);
-      }
-    }
+    removeFromGlobalVocabulary(root);
+    if (original !== root) removeFromGlobalVocabulary(original);
     setSelectedWord(null);
   }, [removeFromGlobalVocabulary]);
 
@@ -1317,11 +1261,7 @@ export default function Home() {
 
 
   // Search functionality
-  const performSearch = useCallback((
-    query: string,
-    content: string,
-    processed: ProcessedContent | null,
-  ) => {
+  const performSearch = useCallback((query: string, content: string) => {
     if (!query.trim()) {
       setSearchResults([]);
       setCurrentSearchIndex(0);
@@ -1329,9 +1269,7 @@ export default function Home() {
     }
 
     const results: Array<{ paragraphIndex: number; charIndex: number }> = [];
-    const paragraphs = processed?.length
-      ? processed.map((p) => p.segments.map((s) => s.text).join(''))
-      : content.split(/\n\n+/).filter(Boolean);
+    const paragraphs = content.split(/\n\n+/);
     const lowerQuery = query.toLowerCase();
 
     paragraphs.forEach((paragraph, pIndex) => {
@@ -1363,9 +1301,9 @@ export default function Home() {
       clearTimeout(searchTimeoutRef.current);
     }
     searchTimeoutRef.current = setTimeout(() => {
-      performSearch(query, text, processedContent);
+      performSearch(query, text);
     }, 300);
-  }, [text, processedContent, performSearch]);
+  }, [text, performSearch]);
 
   const goToNextSearchResult = useCallback(() => {
     if (searchResults.length === 0) return;
@@ -1485,7 +1423,7 @@ export default function Home() {
   const handleReturnToBookshelf = useCallback(() => {
     flushScrollPosition();
     isProgrammaticScrollRef.current = true;
-    lastProcessedKeyRef.current = null;
+    lastProcessedBookIdRef.current = null;
     closeBook();
     setText("");
     setAnnotations({});
@@ -1505,30 +1443,33 @@ export default function Home() {
       if (dictMode === 'zh' && vocab.meaningZh) displayMeaning = vocab.meaningZh;
       else if (dictMode === 'en' && vocab.meaningEn) displayMeaning = vocab.meaningEn;
       else if (dictMode === 'en-simple' && vocab.meaningEnSimple) displayMeaning = vocab.meaningEnSimple;
-      const lemma = lemmatizeInflection(root);
-      const cefrLevel = getWordLevel(root) || (lemma !== root ? getWordLevel(lemma) : null) || undefined;
-      merged[lemma] = { root: lemma, meaning: displayMeaning, pos: vocab.pos, count: 0, cefrLevel: cefrLevel || undefined };
+      // 查 CEFR 级别：让词汇表里的分级词保留其分级颜色，超纲词使用默认 annotationColor（红）
+      const rootLemma = lemmatize(root);
+      const cefrLevel = getWordLevel(root) || (rootLemma !== root ? getWordLevel(rootLemma) : null) || undefined;
+      merged[root] = { root, meaning: displayMeaning, pos: vocab.pos, count: 0, cefrLevel: cefrLevel || undefined };
+      if (rootLemma !== root && !merged[rootLemma]) {
+        merged[rootLemma] = { root: rootLemma, meaning: displayMeaning, pos: vocab.pos, count: 0, cefrLevel: cefrLevel || undefined };
+      }
     }
-    return normalizeAnnotationsToLemma({
-      ...merged,
-      ...annotations,
-    });
+    for (const [root, ann] of Object.entries(annotations)) {
+      merged[root] = ann;
+    }
+    return merged;
   }, [annotations, globalVocabulary, dictMode]);
 
   const sidebarAnnotations = React.useMemo(() => {
-    const merged: Record<string, { root: string; meaning: string; pos: string; count: number; cefrLevel?: string }> = {};
+    const result: Record<string, { root: string; meaning: string; pos: string; count: number; cefrLevel?: string }> = {};
     for (const [root, vocab] of Object.entries(globalVocabulary)) {
       let displayMeaning = vocab.meaning;
       if (dictMode === 'zh' && vocab.meaningZh) displayMeaning = vocab.meaningZh;
       else if (dictMode === 'en' && vocab.meaningEn) displayMeaning = vocab.meaningEn;
       else if (dictMode === 'en-simple' && vocab.meaningEnSimple) displayMeaning = vocab.meaningEnSimple;
-      const lemma = lemmatizeInflection(root);
-      merged[lemma] = { root: lemma, meaning: displayMeaning, pos: vocab.pos, count: 0 };
+      result[root] = { root, meaning: displayMeaning, pos: vocab.pos, count: 0 };
     }
-    return normalizeAnnotationsToLemma({
-      ...merged,
-      ...annotations,
-    });
+    for (const [root, ann] of Object.entries(annotations)) {
+      result[root] = ann;
+    }
+    return result;
   }, [annotations, globalVocabulary, dictMode]);
 
   // Show loading while initializing
@@ -1572,7 +1513,6 @@ export default function Home() {
         deleteBook={deleteBook}
         renameBook={renameBook}
         openBook={openBook}
-        openingBookId={openingBookId}
         globalVocabulary={globalVocabulary}
         removeFromGlobalVocabulary={removeFromGlobalVocabulary}
         clearGlobalVocabulary={clearGlobalVocabulary}
@@ -1726,7 +1666,6 @@ export default function Home() {
       addToGlobalVocabulary={addToGlobalVocabulary}
       mergeGlobalVocabulary={mergeGlobalVocabulary}
       markWordAsMastered={markWordAsMastered}
-      lookupOnlineWord={lookupOnlineWord}
     />
   );
 }

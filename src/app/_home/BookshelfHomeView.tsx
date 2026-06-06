@@ -58,8 +58,7 @@ export interface BookshelfHomeViewProps {
   addBook: (title: string, content: string, tableOfContents?: TocEntry[]) => Book;
   deleteBook: (id: string) => void;
   renameBook: (id: string, newTitle: string) => void;
-  openBook: (id: string) => void | Promise<void>;
-  openingBookId?: string | null;
+  openBook: (id: string) => void;
   // Vocabulary
   globalVocabulary: Record<string, { root: string; meaning: string; pos: string; correctCount: number }>;
   removeFromGlobalVocabulary: (word: string) => void;
@@ -106,7 +105,6 @@ export function BookshelfHomeView({
   deleteBook,
   renameBook,
   openBook,
-  openingBookId = null,
   globalVocabulary,
   removeFromGlobalVocabulary,
   clearGlobalVocabulary,
@@ -153,7 +151,6 @@ export function BookshelfHomeView({
             onDeleteBook={deleteBook}
             onRenameBook={renameBook}
             onOpenBook={openBook}
-            openingBookId={openingBookId}
             onSyncClick={() => setSyncPanelOpen(true)}
             onAddSuccess={() => {
               if (syncCode) {

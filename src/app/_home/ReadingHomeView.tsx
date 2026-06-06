@@ -12,7 +12,6 @@ import { useTTS, SPEED_OPTIONS } from "@/hooks/useTTS";
 import type { FontFamilySetting, CefrColorPaletteId, AnnotationDisplayMode } from "@/hooks/useReadingSettings";
 import type { ReadingStatsReturn } from "@/hooks/useReadingStats";
 import type { Book, ProcessedContent, SentenceAnnotation } from "@/hooks/useBookshelf";
-import { resolveAnnotation } from "@/lib/dictionary";
 interface AnnotatedWord {
   root: string;
   meaning: string;
@@ -177,7 +176,6 @@ export interface ReadingHomeViewProps {
     word: string,
     supplemental?: { meaning?: string; pos?: string; meaningZh?: string; meaningEn?: string; meaningEnSimple?: string },
   ) => void;
-  lookupOnlineWord: (word: string, lemma: string) => Promise<string | null>;
 }
 
 const noteInputColors = {
@@ -315,7 +313,6 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
     addToGlobalVocabulary,
     mergeGlobalVocabulary,
     markWordAsMastered,
-    lookupOnlineWord,
   } = props;
 
   const [showNoteInput, setShowNoteInput] = React.useState(false);
@@ -1418,25 +1415,12 @@ export function ReadingHomeView(props: ReadingHomeViewProps) {
             removeAnnotation(selectedWord.word, selectedWord.lemma)
           }
           onClose={closeTooltip}
-          isAnnotated={
-            !!resolveAnnotation(
-              mergedAnnotationsForRender,
-              selectedWord.word,
-              selectedWord.lemma,
-            )
-          }
-          annotation={
-            resolveAnnotation(
-              mergedAnnotationsForRender,
-              selectedWord.word,
-              selectedWord.lemma,
-            ) ?? null
-          }
+          isAnnotated={!!mergedAnnotationsForRender[selectedWord.lemma]}
+          annotation={mergedAnnotationsForRender[selectedWord.lemma] ?? null}
           dictMode={dictMode}
           isDarkMode={isDarkMode}
           textColor={textColor}
           accentColor={annotationColor}
-          onOnlineLookup={lookupOnlineWord}
         />
       )}
 

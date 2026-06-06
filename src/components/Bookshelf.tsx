@@ -15,8 +15,7 @@ interface BookshelfProps {
   onAddBook: (title: string, content: string, tableOfContents?: TocEntry[]) => Book;
   onDeleteBook: (id: string) => void;
   onRenameBook: (id: string, newTitle: string) => void;
-  onOpenBook: (id: string) => void | Promise<void>;
-  openingBookId?: string | null;
+  onOpenBook: (id: string) => void;
   onSyncClick: () => void;
   onAddSuccess?: () => void;
   lastSyncAt?: number | null;
@@ -49,7 +48,6 @@ export function Bookshelf({
   onDeleteBook,
   onRenameBook,
   onOpenBook,
-  openingBookId = null,
   onSyncClick,
   onAddSuccess,
   lastSyncAt,
@@ -80,7 +78,7 @@ export function Bookshelf({
 
   const handleAddBook = (title: string, content: string, tableOfContents?: TocEntry[]) => {
     const newBook = onAddBook(title, content, tableOfContents);
-    void onOpenBook(newBook.id);
+    onOpenBook(newBook.id);
     onAddSuccess?.();
   };
 
@@ -276,12 +274,11 @@ export function Bookshelf({
               book={book}
               progress={getProgress(book)}
               lastRead={formatLastRead(book.lastReadAt)}
-              onOpen={() => { void onOpenBook(book.id); }}
+              onOpen={() => onOpenBook(book.id)}
               onDelete={() => onDeleteBook(book.id)}
               onRename={(newTitle) => onRenameBook(book.id, newTitle)}
               coverPalette={t.coverPalette}
               isDarkTheme={!!t.isDark}
-              isOpening={openingBookId === book.id}
             />
           ))}
 
@@ -291,11 +288,10 @@ export function Bookshelf({
             book={book}
             progress={getProgress(book)}
             lastRead={formatLastRead(book.lastReadAt)}
-            onOpen={() => { void onOpenBook(book.id); }}
+            onOpen={() => onOpenBook(book.id)}
             onDelete={() => {}}
             coverPalette={t.coverPalette}
             isDarkTheme={!!t.isDark}
-            isOpening={openingBookId === book.id}
           />
         ))}
       </div>

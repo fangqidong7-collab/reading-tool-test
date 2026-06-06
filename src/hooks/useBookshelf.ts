@@ -2,15 +2,6 @@
 
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { idbGet, idbSet } from "@/lib/storage";
-import {
-  BOOKS_MANIFEST_KEY,
-  deleteBookContent,
-  loadBookContent,
-  migrateInlineContentToPerBook,
-  saveBookContent,
-  toManifestBook,
-} from "@/lib/bookContentStorage";
-import { removeProcessedContentCacheForBook } from "@/lib/processedContentCache";
 import { isTranslationError } from "@/lib/translate";
 
 // Processed content segment type
@@ -64,8 +55,6 @@ export interface Book {
   /** 上次成功同步后本地正文的 SHA-256；一致时可省略正文上传 */
   syncContentHash?: string;
   content: string;
-  /** 未加载正文时的字符数（用于预估，不必读 IDB） */
-  contentCharLength?: number;
   annotations: Record<string, { root: string; meaning: string; pos: string; count: number }>;
   sentenceAnnotations?: SentenceAnnotation[];
   createdAt: number;
@@ -166,7 +155,7 @@ function dedupeBooksByNormalizedTitle(books: Book[], preferExistingIds: Set<stri
   return combined;
 }
 
-const STORAGE_KEY = BOOKS_MANIFEST_KEY;
+const STORAGE_KEY = "english-reader-books";
 const GLOBAL_VOCAB_KEY = "english-reader-global-vocabulary";
 const MASTERED_WORDS_KEY = "english-reader-mastered-words";
 const MASTERED_VOCAB_KEY = "english-reader-mastered-vocabulary";
@@ -210,7 +199,6 @@ export function useBookshelf() {
     return sessionStorage.getItem(CURRENT_BOOK_KEY) || null;
   });
   const [isLoaded, setIsLoaded] = useState(false);
-  const [openingBookId, setOpeningBookId] = useState<string | null>(null);
 
   useEffect(() => {
     if (currentBookId) {
@@ -229,9 +217,7 @@ const [masteredVocabulary, setMasteredVocabulary] = useState<
 const masteredWords = useMemo(() => new Set(Object.keys(masteredVocabulary)), [masteredVocabulary]);
 
   const booksRef = useRef(books);
-  const currentBookIdRef = useRef(currentBookId);
   useEffect(() => { booksRef.current = books; }, [books]);
-  useEffect(() => { currentBookIdRef.current = currentBookId; }, [currentBookId]);
 
   /**
    * Immediately persist books to IndexedDB.
@@ -256,12 +242,12 @@ const masteredWords = useMemo(() => new Set(Object.keys(masteredVocabulary)), [m
           : b
       );
     }
-    const manifest = snapshot.map((book) => toManifestBook(book));
-    idbSet(STORAGE_KEY, JSON.stringify(manifest)).catch(() => {});
-    for (const book of snapshot) {
-      if (book.isSample || !book.content) continue;
-      saveBookContent(book.id, book.content).catch(() => {});
-    }
+    const toSave = snapshot.map((book) => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { processedContent: _pc, ...rest } = book;
+      return rest;
+    });
+    idbSet(STORAGE_KEY, JSON.stringify(toSave)).catch(() => {});
   }, []);
 
   // Load books from IndexedDB (异步加载)
@@ -275,28 +261,18 @@ const masteredWords = useMemo(() => new Set(Object.keys(masteredVocabulary)), [m
         if (saved) {
           try {
             const parsed = JSON.parse(saved) as Book[];
-            const manifest = await migrateInlineContentToPerBook(parsed);
-            let booksWithMeta = manifest.map((b) => ({
+            const booksWithContent = parsed.map((b) => ({
               ...b,
-              content: b.isSample ? SAMPLE_BOOK.content : "",
-              contentCharLength: b.contentCharLength ?? b.content?.length ?? 0,
+              // 如果 content 为空，用 SAMPLE_BOOK 的内容填充（如果是示例书）
+              content: b.content || (b.isSample ? SAMPLE_BOOK.content : ""),
               annotations: b.annotations || {},
               bookmarks: b.bookmarks || [],
             }));
-            const resumeId =
-              typeof window !== "undefined"
-                ? sessionStorage.getItem(CURRENT_BOOK_KEY)
-                : null;
-            if (resumeId) {
-              const stored = await loadBookContent(resumeId);
-              if (stored !== null) {
-                booksWithMeta = booksWithMeta.map((b) =>
-                  b.id === resumeId ? { ...b, content: stored, contentCharLength: stored.length } : b,
-                );
-              }
-            }
-            const hasSample = booksWithMeta.some((b) => b.id === SAMPLE_BOOK.id);
-            const withoutDupes = dedupeBooksByNormalizedTitle(booksWithMeta, new Set());
+            const hasSample = booksWithContent.some((b) => b.id === SAMPLE_BOOK.id);
+            const withoutDupes = dedupeBooksByNormalizedTitle(
+              booksWithContent,
+              new Set()
+            );
             if (hasSample) {
               setBooks(withoutDupes);
             } else {
@@ -373,15 +349,26 @@ const masteredWords = useMemo(() => new Set(Object.keys(masteredVocabulary)), [m
     const timeoutId = setTimeout(() => {
       (async () => {
         try {
-          const manifest = books.map((book) => toManifestBook(book));
-          await idbSet(STORAGE_KEY, JSON.stringify(manifest));
-          await Promise.all(
-            books
-              .filter((b) => !b.isSample && b.content && b.content.length > 0)
-              .map((b) => saveBookContent(b.id, b.content)),
-          );
+          const booksToSave = books.map((book) => {
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const { processedContent: _pc, ...rest } = book;
+            return rest;
+          });
+          await idbSet(STORAGE_KEY, JSON.stringify(booksToSave));
         } catch (error) {
           console.warn("IndexedDB 保存失败:", error);
+          // fallback: 尝试不含 content 的精简版
+          try {
+            const metadata = books.map((book) => {
+              // eslint-disable-next-line @typescript-eslint/no-unused-vars
+              const { content: _c, processedContent: _pc, ...meta } = book;
+              return meta;
+            });
+            await idbSet(STORAGE_KEY, JSON.stringify(metadata));
+            console.warn("仅保存了元数据（无content）");
+          } catch (e2) {
+            console.error("连元数据都存不下:", e2);
+          }
         }
       })();
     }, 500);
@@ -478,12 +465,10 @@ const masteredWords = useMemo(() => new Set(Object.keys(masteredVocabulary)), [m
   // Add a new book
   const addBook = useCallback(
     (title: string, content: string, tableOfContents?: TocEntry[]): Book => {
-      const trimmed = content.trim();
       const newBook: Book = {
         id: `book-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         title: title.trim() || "未命名书籍",
-        content: trimmed,
-        contentCharLength: trimmed.length,
+        content: content.trim(),
         annotations: {},
         createdAt: Date.now(),
         lastReadAt: Date.now(),
@@ -491,7 +476,6 @@ const masteredWords = useMemo(() => new Set(Object.keys(masteredVocabulary)), [m
         bookmarks: [],
         tableOfContents: tableOfContents || [],
       };
-      void saveBookContent(newBook.id, trimmed);
       setBooks((prev) => [newBook, ...prev]);
       return newBook;
     },
@@ -505,8 +489,6 @@ const masteredWords = useMemo(() => new Set(Object.keys(masteredVocabulary)), [m
       if (book?.isSample) return prev; // Cannot delete sample books
       return prev.filter((b) => b.id !== id);
     });
-    void removeProcessedContentCacheForBook(id);
-    void deleteBookContent(id);
     // If current book is deleted, go back to bookshelf
     if (currentBookId === id) {
       setCurrentBookId(null);
@@ -531,11 +513,10 @@ const masteredWords = useMemo(() => new Set(Object.keys(masteredVocabulary)), [m
 
   // Update book content
   const updateBookContent = useCallback((id: string, content: string) => {
-    void saveBookContent(id, content);
     setBooks((prev) =>
       prev.map((b) =>
         b.id === id
-          ? { ...b, content, contentCharLength: content.length, lastReadAt: Date.now() }
+          ? { ...b, content, lastReadAt: Date.now() }
           : b
       )
     );
@@ -903,14 +884,9 @@ const masteredWords = useMemo(() => new Set(Object.keys(masteredVocabulary)), [m
           const existing = booksMap.get(remoteBook.id);
 
           if (!existing) {
-            const remoteContent = remoteBook.content || "";
-            if (remoteContent.length > 0) {
-              void saveBookContent(remoteBook.id, remoteContent);
-            }
+            // 本地不存在该书：插入（去掉 processedContent 避免脏缓存）
             booksMap.set(remoteBook.id, {
               ...remoteBook,
-              content: remoteBook.id === currentBookIdRef.current ? remoteContent : "",
-              contentCharLength: remoteContent.length || remoteBook.contentCharLength,
               processedContent: undefined,
             });
           } else if (existing.isSample) {
@@ -921,24 +897,11 @@ const masteredWords = useMemo(() => new Set(Object.keys(masteredVocabulary)), [m
             const merged: Book = { ...existing };
 
             // content：优先保留「非空且更长」的字符串
-            // 本地可能 lazy-unloaded（content=""），用 contentCharLength 做长度比较
             const remoteContent = remoteBook.content || '';
             const localContent = existing.content || '';
-            const localEffectiveLength = localContent.length || existing.contentCharLength || 0;
-            let mergedContent: string;
-            if (localContent.length > 0 && localContent.length >= remoteContent.length) {
-              mergedContent = localContent;
-            } else if (remoteContent.length >= localEffectiveLength) {
-              mergedContent = remoteContent;
-            } else {
-              // 远端比本地实际 charLength 短，且本地未加载 — 保留本地（不覆盖 IDB）
-              mergedContent = localContent; // "" — IDB 中仍有原始内容
-            }
-            if (mergedContent.length > 0) {
-              void saveBookContent(existing.id, mergedContent);
-            }
-            merged.content = existing.id === currentBookIdRef.current ? mergedContent : "";
-            merged.contentCharLength = Math.max(mergedContent.length, localEffectiveLength);
+            merged.content = remoteContent.length >= localContent.length
+              ? remoteContent
+              : localContent;
 
             merged.lastScrollPosition = Math.max(
               remoteBook.lastScrollPosition ?? 0,
@@ -1049,85 +1012,21 @@ const masteredWords = useMemo(() => new Set(Object.keys(masteredVocabulary)), [m
     );
   }, []);
 
-  const ensureBookContentLoaded = useCallback(async (id: string): Promise<void> => {
-    const book = booksRef.current.find((b) => b.id === id);
-    if (!book) return;
-    if (book.isSample) {
-      if (!book.content) {
-        setBooks((prev) =>
-          prev.map((b) =>
-            b.id === id ? { ...b, content: SAMPLE_BOOK.content, contentCharLength: SAMPLE_BOOK.content.length } : b,
-          ),
-        );
-      }
-      return;
-    }
-    if (book.content && book.content.length > 0) return;
-    const stored = await loadBookContent(id);
-    if (stored === null) return;
+  const openBook = useCallback((id: string) => {
     setBooks((prev) =>
       prev.map((b) =>
-        b.id === id ? { ...b, content: stored, contentCharLength: stored.length } : b,
-      ),
+        b.id === id
+          ? { ...b, lastReadAt: Date.now() }
+          : b
+      )
     );
+    setCurrentBookId(id);
   }, []);
-
-  const resolveBookContent = useCallback(async (id: string): Promise<string> => {
-    const book = booksRef.current.find((b) => b.id === id);
-    if (book?.isSample) return book.content || SAMPLE_BOOK.content;
-    if (book?.content) return book.content;
-    const stored = await loadBookContent(id);
-    return stored ?? "";
-  }, []);
-
-  const openingRef = useRef(false);
-  const openBook = useCallback(async (id: string) => {
-    if (openingRef.current) return;
-    openingRef.current = true;
-    setOpeningBookId(id);
-    try {
-      await ensureBookContentLoaded(id);
-      setBooks((prev) => {
-        const now = Date.now();
-        return prev.map((b) => {
-          if (b.id === id) {
-            return { ...b, lastReadAt: now };
-          }
-          if (!b.isSample && b.content) {
-            void saveBookContent(b.id, b.content);
-            return {
-              ...b,
-              content: "",
-              contentCharLength: b.content.length || b.contentCharLength,
-            };
-          }
-          return b;
-        });
-      });
-      setCurrentBookId(id);
-    } finally {
-      openingRef.current = false;
-      setOpeningBookId(null);
-    }
-  }, [ensureBookContentLoaded]);
 
   // Close the current book and return to bookshelf
   const closeBook = useCallback(() => {
-    const closingId = currentBookId;
     setCurrentBookId(null);
-    if (!closingId) return;
-    setBooks((prev) =>
-      prev.map((b) => {
-        if (b.id !== closingId || b.isSample || !b.content) return b;
-        void saveBookContent(b.id, b.content);
-        return {
-          ...b,
-          content: "",
-          contentCharLength: b.content.length || b.contentCharLength,
-        };
-      }),
-    );
-  }, [currentBookId]);
+  }, []);
 
   // Reorder books with new book first
   const reorderBooks = useCallback(() => {
@@ -1184,20 +1083,12 @@ const masteredWords = useMemo(() => new Set(Object.keys(masteredVocabulary)), [m
     }
 
     if (remote.books) {
-      const remoteBooks: Book[] = remote.books.map((b) => {
-        const remoteContent = b.content || "";
-        if (remoteContent.length > 0) {
-          void saveBookContent(b.id, remoteContent);
-        }
-        return {
-          ...b,
-          content: b.id === currentBookIdRef.current ? remoteContent : "",
-          contentCharLength: remoteContent.length || b.contentCharLength,
-          processedContent: undefined,
-          annotations: (b.annotations ?? {}) as Book['annotations'],
-          bookmarks: (b.bookmarks ?? []) as Book['bookmarks'],
-        };
-      });
+      const remoteBooks: Book[] = remote.books.map((b) => ({
+        ...b,
+        processedContent: undefined,
+        annotations: (b.annotations ?? {}) as Book['annotations'],
+        bookmarks: (b.bookmarks ?? []) as Book['bookmarks'],
+      }));
 
       if (remote.bookProgress) {
         for (const rb of remoteBooks) {
@@ -1225,12 +1116,11 @@ const masteredWords = useMemo(() => new Set(Object.keys(masteredVocabulary)), [m
         const base = hasSampleInRemote ? remoteBooks : (sample ? [sample, ...remoteBooks] : remoteBooks);
 
         // Preserve the currently open book so it's never dropped mid-reading
-        const activeBookId = currentBookIdRef.current;
-        if (activeBookId) {
-          const inBase = base.some((b) => b.id === activeBookId);
+        if (currentBookId) {
+          const inBase = base.some((b) => b.id === currentBookId);
           if (!inBase) {
-            const activeBook = prev.find((b) => b.id === activeBookId);
-            if (activeBook) base.push(activeBook);
+            const openBook = prev.find((b) => b.id === currentBookId);
+            if (openBook) base.push(openBook);
           }
         }
 
@@ -1268,14 +1158,13 @@ const masteredWords = useMemo(() => new Set(Object.keys(masteredVocabulary)), [m
         };
       }));
     }
-  }, []);
+  }, [globalVocabulary]);
 
   return {
     books,
     currentBook,
     currentBookId,
     isLoaded,
-    openingBookId,
     getProgress,
     formatLastRead,
     addBook,
@@ -1310,8 +1199,6 @@ const masteredWords = useMemo(() => new Set(Object.keys(masteredVocabulary)), [m
     updateBooksSyncHashes,
     replaceAllFromRemote,
     flushBooksToStorage,
-    ensureBookContentLoaded,
-    resolveBookContent,
   };
 
 }

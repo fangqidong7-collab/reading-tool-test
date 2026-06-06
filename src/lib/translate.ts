@@ -1,5 +1,3 @@
-import { recordLookupTiming } from '@/lib/lookupTiming';
-
 const FAILED_MEANINGS = new Set([
   '翻译失败', '翻译超时', '未找到释义',
   'Definition failed', 'Timeout', 'No definition found',
@@ -10,176 +8,170 @@ export function isTranslationError(s: string | undefined | null): boolean {
   return FAILED_MEANINGS.has(s.replace(/\.{3}$/, ''));
 }
 
-const CACHE_KEY = 'reading_translation_cache_v2';
-const LEGACY_CACHE_KEY = 'translation_cache';
-const CACHE_MAX_ENTRIES = 5000;
-const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+// Translation cache (with sessionStorage persistence)
+let translationCache: Record<string, string> = {};
 
-interface CacheEntry {
-  value: string;
-  savedAt: number;
-}
+try {
+  const saved = sessionStorage.getItem('translation_cache');
+  if (saved) translationCache = JSON.parse(saved);
+} catch {}
 
-let translationCache: Record<string, CacheEntry> = {};
-const inFlightRequests = new Map<string, Promise<string>>();
-
-function loadCacheFromStorage(): void {
-  if (typeof window === 'undefined') return;
+function saveCacheToSession() {
   try {
-    const saved = localStorage.getItem(CACHE_KEY);
-    if (saved) {
-      translationCache = JSON.parse(saved) as Record<string, CacheEntry>;
-      pruneTranslationCache();
-      return;
-    }
-    const legacy = sessionStorage.getItem(LEGACY_CACHE_KEY);
-    if (legacy) {
-      const legacyMap = JSON.parse(legacy) as Record<string, string>;
-      const now = Date.now();
-      for (const [key, value] of Object.entries(legacyMap)) {
-        if (value && !isTranslationError(value)) {
-          translationCache[key] = { value, savedAt: now };
-        }
-      }
-      saveCacheToStorage();
-      sessionStorage.removeItem(LEGACY_CACHE_KEY);
-    }
-  } catch {
-    translationCache = {};
+    sessionStorage.setItem('translation_cache', JSON.stringify(translationCache));
+  } catch {}
+}
+
+/**
+ * Post-process Chinese translation
+ */
+function postProcessTranslation(
+  translation: string,
+  maxLength: number = 15
+): string {
+  let result = translation
+    .replace(/\*\*/g, "")
+    .replace(/\*/g, "")
+    .replace(/`/g, "")
+    .trim();
+
+  const fillers = [
+    /^意思是[：:]/,
+    /^中文意思是[：:]/,
+    /^翻译[：:]/,
+    /^英文单词[：:]/,
+    /^表示[：:]/,
+    /^(这个|该)?(词|单词|词的意思|含义)是[：:]/,
+  ];
+
+  for (const filler of fillers) {
+    result = result.replace(filler, "");
   }
-}
 
-function saveCacheToStorage(): void {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(translationCache));
-  } catch {
-    pruneTranslationCache(true);
-    try {
-      localStorage.setItem(CACHE_KEY, JSON.stringify(translationCache));
-    } catch {
-      /* ignore quota errors */
+  result = result.trim();
+
+  const chineseChars = (result.match(/[\u4e00-\u9fa5]/g) || []).length;
+  if (chineseChars > maxLength) {
+    let truncAt = 0;
+    let count = 0;
+    for (let i = 0; i < result.length && count < maxLength; i++) {
+      const char = result[i];
+      if (/[\u4e00-\u9fa5]/.test(char)) count++;
+      truncAt = i + 1;
     }
+    result = result.substring(0, truncAt) + "...";
   }
+
+  return result;
 }
 
-function pruneTranslationCache(aggressive = false): void {
-  const now = Date.now();
-  for (const [key, entry] of Object.entries(translationCache)) {
-    if (!entry?.value || now - entry.savedAt > CACHE_TTL_MS) {
-      delete translationCache[key];
-    }
+/**
+ * Post-process English definition
+ */
+function postProcessTranslationEn(
+  translation: string,
+  maxLength: number = 60
+): string {
+  let result = translation
+    .replace(/\*\*/g, "")
+    .replace(/\*/g, "")
+    .replace(/`/g, "")
+    .trim();
+
+  const fillers = [
+    /^The word ["']?/i,
+    /^["']/i,
+    /^Definition[:\s]*/i,
+    /^Meaning[:\s]*/i,
+    /^It (means|refers to|is|represents)[:\s]*/i,
+    /^This word (means|refers to|is|represents)[:\s]*/i,
+  ];
+
+  for (const filler of fillers) {
+    result = result.replace(filler, "");
   }
-  const keys = Object.keys(translationCache);
-  const limit = aggressive ? Math.floor(CACHE_MAX_ENTRIES * 0.7) : CACHE_MAX_ENTRIES;
-  if (keys.length <= limit) return;
-  keys
-    .sort((a, b) => translationCache[a].savedAt - translationCache[b].savedAt)
-    .slice(0, keys.length - limit)
-    .forEach((key) => delete translationCache[key]);
-}
 
-function getCachedTranslation(cacheKey: string): string | null {
-  const entry = translationCache[cacheKey];
-  if (!entry) return null;
-  if (Date.now() - entry.savedAt > CACHE_TTL_MS) {
-    delete translationCache[cacheKey];
-    return null;
+  result = result.trim();
+
+  if (result.length > maxLength) {
+    result = result.substring(0, maxLength).trim() + "...";
   }
-  return entry.value;
-}
 
-function setCachedTranslation(cacheKey: string, value: string): void {
-  if (!value || isTranslationError(value)) return;
-  translationCache[cacheKey] = { value, savedAt: Date.now() };
-  pruneTranslationCache();
-  saveCacheToStorage();
+  return result;
 }
-
-loadCacheFromStorage();
 
 async function requestTranslation(
   word: string,
-  lang: 'zh' | 'en' | 'en-simple' = 'zh',
+  lang: "zh" | "en" | "en-simple" = "zh"
 ): Promise<string> {
   const lowerWord = word.toLowerCase().trim();
   const cacheKey = `${lang}:${lowerWord}`;
-  const isEnglishLang = lang === 'en' || lang === 'en-simple';
 
-  const cached = getCachedTranslation(cacheKey);
-  if (cached) {
-    recordLookupTiming('ai-cache', 0);
-    return cached;
+  if (translationCache[cacheKey]) {
+    return translationCache[cacheKey];
   }
 
-  const pending = inFlightRequests.get(cacheKey);
-  if (pending) return pending;
+  const isEnglishLang = lang === "en" || lang === "en-simple";
 
-  const promise = (async () => {
-    const start = typeof performance !== 'undefined' ? performance.now() : 0;
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-      const response = await fetch('/api/translate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ word: lowerWord, lang }),
-        signal: controller.signal,
-      });
+    const response = await fetch("/api/translate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ word: lowerWord, lang }),
+      signal: controller.signal,
+    });
 
-      clearTimeout(timeoutId);
+    clearTimeout(timeoutId);
 
-      if (!response.ok) {
-        throw new Error('Translation API error');
-      }
-
-      const data = await response.json();
-      const translation =
-        data.translation || (isEnglishLang ? 'No definition found' : '未找到释义');
-
-      if (typeof performance !== 'undefined') {
-        recordLookupTiming('ai-network', performance.now() - start);
-      }
-
-      setCachedTranslation(cacheKey, translation);
-      return translation;
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') {
-        return isEnglishLang ? 'Timeout' : '翻译超时';
-      }
-      console.error('Translation error:', error);
-      return isEnglishLang ? 'Definition failed' : '翻译失败';
-    } finally {
-      inFlightRequests.delete(cacheKey);
+    if (!response.ok) {
+      throw new Error("Translation API error");
     }
-  })();
 
-  inFlightRequests.set(cacheKey, promise);
-  return promise;
+    const data = await response.json();
+
+    let translation =
+      data.translation || (isEnglishLang ? "No definition found" : "未找到释义");
+
+    translation = isEnglishLang
+      ? postProcessTranslationEn(translation, lang === "en-simple" ? 150 : 60)
+      : postProcessTranslation(translation);
+
+    translationCache[cacheKey] = translation;
+    saveCacheToSession();
+    return translation;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      return isEnglishLang ? "Timeout" : "翻译超时";
+    }
+    console.error("Translation error:", error);
+    return isEnglishLang ? "Definition failed" : "翻译失败";
+  }
 }
 
 /**
  * Translate English word to Chinese
  */
 export async function translateWord(word: string): Promise<string> {
-  return requestTranslation(word, 'zh');
+  return requestTranslation(word, "zh");
 }
 
 /**
  * Define English word in English (short)
  */
 export async function translateWordEn(word: string): Promise<string> {
-  return requestTranslation(word, 'en');
+  return requestTranslation(word, "en");
 }
 
 /**
  * Define English word in easy English (longer, using basic vocabulary)
  */
 export async function translateWordEnSimple(word: string): Promise<string> {
-  return requestTranslation(word, 'en-simple');
+  return requestTranslation(word, "en-simple");
 }
 
 /**
@@ -189,54 +181,38 @@ export async function translateSentence(sentence: string): Promise<string> {
   const trimmed = sentence.trim();
   const cacheKey = `sentence:${trimmed}`;
 
-  const cached = getCachedTranslation(cacheKey);
-  if (cached) {
-    recordLookupTiming('ai-cache', 0);
-    return cached;
+  if (translationCache[cacheKey]) {
+    return translationCache[cacheKey];
   }
 
-  const pending = inFlightRequests.get(cacheKey);
-  if (pending) return pending;
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-  const promise = (async () => {
-    const start = typeof performance !== 'undefined' ? performance.now() : 0;
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
+    const response = await fetch("/api/translate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "sentence", sentence: trimmed }),
+      signal: controller.signal,
+    });
 
-      const response = await fetch('/api/translate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'sentence', sentence: trimmed }),
-        signal: controller.signal,
-      });
+    clearTimeout(timeoutId);
 
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        throw new Error('Sentence translation API error');
-      }
-
-      const data = await response.json();
-      const translation = data.translation || '翻译失败';
-
-      if (typeof performance !== 'undefined') {
-        recordLookupTiming('ai-network', performance.now() - start);
-      }
-
-      setCachedTranslation(cacheKey, translation);
-      return translation;
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') {
-        return '翻译超时';
-      }
-      console.error('Sentence translation error:', error);
-      return '翻译失败';
-    } finally {
-      inFlightRequests.delete(cacheKey);
+    if (!response.ok) {
+      throw new Error("Sentence translation API error");
     }
-  })();
 
-  inFlightRequests.set(cacheKey, promise);
-  return promise;
+    const data = await response.json();
+    const translation = data.translation || "翻译失败";
+
+    translationCache[cacheKey] = translation;
+    saveCacheToSession();
+    return translation;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      return "翻译超时";
+    }
+    console.error("Sentence translation error:", error);
+    return "翻译失败";
+  }
 }

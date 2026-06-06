@@ -5,11 +5,12 @@ import { ProcessedContent, SentenceAnnotation } from "@/hooks/useBookshelf";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { getLevelColor, type CEFRLevel } from "@/lib/vocabLevel";
 import type { CefrColorPaletteId } from "@/lib/cefrColorPalettes";
-import { resolveAnnotation, getCanonicalLemma } from "@/lib/dictionary";
 import {
   aboveModeParagraphPaddingTop,
   type AnnotationDisplayMode,
 } from "@/lib/readingAnnotationLayout";
+
+// Layout constants
 const READING_PADDING_HORIZONTAL = 32;
 const MOBILE_READING_PADDING_HORIZONTAL = 12;
 const MOBILE_BREAKPOINT = 768;
@@ -428,7 +429,7 @@ const Paragraph = React.memo(({
         
         const lemma = segment.lemma;
         const original = segment.text.toLowerCase();
-        const annotation = resolveAnnotation(annotations, original, lemma);
+        const annotation = annotations?.[original] || annotations?.[lemma];
         const isAnnotated = !!annotation;
         // 已有单词标注的不叠加句级下划线，避免与释义样式冲突
         const hasUnderline = !!matchedSA && !isAnnotated;
@@ -447,7 +448,7 @@ const Paragraph = React.memo(({
         const handleAnnotationClick = (e: React.MouseEvent) => {
           e.stopPropagation();
           if (onRemoveAnnotation) {
-            onRemoveAnnotation(segment.text, getCanonicalLemma(original, lemma));
+            onRemoveAnnotation(segment.text, lemma);
           }
         };
         

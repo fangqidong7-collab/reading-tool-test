@@ -381,7 +381,7 @@ export const useStore = create<Store>((set) => ({
 #### 3. 同步数据说明
 
 - 同步码有效期 **90 天**（TTL 存储在 JSON 元数据中，过期后 `get` 返回 null，下次 `set` 自动覆盖）
-- 单条数据上限 **20 MB**，超过限制请删除部分书籍后重试
+- 单条数据上限 **10 MB**，超过限制请删除部分书籍后重试
 - 对象存储 Key 格式：`sync/{syncCode}`（如 `sync/ABC123`）
 - 同步数据不会写入项目 `.sync-data/` 目录（仅开发模式使用）
 
