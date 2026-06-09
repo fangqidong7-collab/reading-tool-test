@@ -101,3 +101,6 @@ Desktop.ini
 .turbo
 
 .coze-logs
+
+# Preview files
+.preview
