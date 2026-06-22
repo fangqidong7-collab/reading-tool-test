@@ -5,7 +5,7 @@ import { X } from "lucide-react";
 import type { ProcessedContent } from "@/hooks/useBookshelf";
 import { getWordLevel, getLevelColors, LEVEL_LABELS, type CEFRLevel } from "@/lib/vocabLevel";
 import type { CefrColorPaletteId } from "@/lib/cefrColorPalettes";
-import { lemmatize, getWordMeaning, getWordMeaningEn } from "@/lib/dictionary";
+import { lemmatize, lemmatizeInflection, getWordMeaning, getWordMeaningEn } from "@/lib/dictionary";
 import { lookupExternalDict, lookupExternalDictEn } from "@/lib/dictLoader";
 import { translateWord, translateWordEn, translateWordEnSimple, isTranslationError } from "@/lib/translate";
 import { shortenTranslation } from "@/lib/annotationText";
@@ -153,7 +153,7 @@ export function BookVocabAnalysis({
       for (const seg of para.segments) {
         if (seg.type !== 'word') continue;
         totalWords++;
-        const root = seg.lemma || lemmatize(seg.text.toLowerCase());
+        const root = seg.lemma || lemmatizeInflection(seg.text.toLowerCase());
         if (STOPWORDS.has(root) || root.length <= 1) continue;
         const existing = wordCounts.get(root);
         if (existing) {

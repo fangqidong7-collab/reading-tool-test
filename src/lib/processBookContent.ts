@@ -1,5 +1,5 @@
 import type { ProcessedContent, ProcessedSegment, ProcessedParagraph } from "@/hooks/useBookshelf";
-import { lemmatize } from "@/lib/dictionary";
+import { lemmatizeInflection } from "@/lib/dictionary";
 
 /**
  * Process text into structured segments with lemmas.
@@ -35,7 +35,7 @@ export async function processTextToSegmentsAsync(
             const baseWord = possessive[1];
             segs.push({
               text: baseWord,
-              lemma: lemmatize(baseWord.toLowerCase()),
+              lemma: lemmatizeInflection(baseWord.toLowerCase()),
               type: "word",
             });
             segs.push({ text: possessive[2], lemma: "", type: "punctuation" });
@@ -45,7 +45,7 @@ export async function processTextToSegmentsAsync(
           const isContraction = /['\u2019]/.test(token);
           segs.push({
             text: token,
-            lemma: isContraction ? "" : lemmatize(token.toLowerCase()),
+            lemma: isContraction ? "" : lemmatizeInflection(token.toLowerCase()),
             type: isContraction ? "punctuation" : "word",
           });
         } else {

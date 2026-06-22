@@ -149,7 +149,7 @@ export const irregularVerbs: Record<string, string> = {
   "shook": "shake",
   "shaken": "shake",
   "shone": "shine",
-  "shot": "shot",
+  "shot": "shoot",
   "showed": "show",
   "shown": "show",
   "shrank": "shrink",
@@ -974,6 +974,91 @@ export function lemmatize(word: string): string {
   
   // 6. 返回原单词（小写）
   return lowerWord;
+}
+
+/**
+ * 屈折还原（词汇分组/标注用）：合并时态、复数、进行式等到词根。
+ * 不做派生词缀 -er/-est/-ly，避免 teacher→teach 类误匹配。
+ * 不依赖词典是否收录词根。
+ */
+const DOUBLE_CONSONANTS = ['b', 'd', 'g', 'm', 'n', 'p', 'r', 't'];
+function isVowel(ch: string): boolean { return 'aeiou'.includes(ch); }
+
+export function lemmatizeInflection(word: string): string {
+  const lower = word.toLowerCase();
+
+  if (irregularVerbs[lower]) return irregularVerbs[lower];
+  if (verbForms[lower]) return verbForms[lower];
+  if (irregularNouns[lower]) return irregularNouns[lower];
+
+  // Double-consonant undoubling for -ing/-ed (running→run, stopped→stop)
+  for (const sfx of ['ing', 'ed'] as const) {
+    if (!lower.endsWith(sfx) || lower.length < sfx.length + 3) continue;
+    const base = lower.slice(0, -sfx.length);
+    if (base.length >= 3) {
+      const a = base[base.length - 1];
+      const b = base[base.length - 2];
+      const c = base[base.length - 3];
+      if (
+        a === b &&
+        DOUBLE_CONSONANTS.includes(a) &&
+        isVowel(c) &&
+        (base.length < 4 || !isVowel(base[base.length - 4]))
+      ) {
+        return base.slice(0, -1);
+      }
+    }
+  }
+
+  // -ied → y (studied→study)
+  if (lower.endsWith('ied') && lower.length > 4) {
+    return lower.slice(0, -3) + 'y';
+  }
+  // -ies → y (studies→study)
+  if (lower.endsWith('ies') && lower.length > 4) {
+    return lower.slice(0, -3) + 'y';
+  }
+  // -ing
+  if (lower.endsWith('ing') && lower.length > 4) {
+    const base = lower.slice(0, -3);
+    if (base.length >= 3) {
+      return stemIngBase(base);
+    }
+  }
+  // -ed
+  if (lower.endsWith('ed') && lower.length > 3) {
+    const baseEd = lower.slice(0, -2);
+    if (baseEd.length >= 3 && !baseEd.endsWith('e')) return baseEd;
+    const baseD = lower.slice(0, -1);
+    if (baseD.endsWith('e') && baseD.length >= 3) return baseD;
+  }
+  // -es plurals: boxes, watches, wishes, buses, dresses, houses, places
+  if (lower.endsWith('es') && lower.length > 3) {
+    const baseMinusEs = lower.slice(0, -2);
+    if (baseMinusEs.length >= 2 && /[xz]$|ss$|[cs]h$/.test(baseMinusEs)) return baseMinusEs;
+    if (baseMinusEs.length <= 3 && baseMinusEs.endsWith('s')) return baseMinusEs;
+    const baseMinusS = lower.slice(0, -1);
+    if (baseMinusS.endsWith('e') && baseMinusS.length >= 3) return baseMinusS;
+  }
+  // -s plurals (flaws→flaw, books→book)
+  if (
+    lower.endsWith('s') &&
+    lower.length > 3 &&
+    !lower.endsWith('ss') &&
+    !lower.endsWith('us')
+  ) {
+    return lower.slice(0, -1);
+  }
+
+  return lower;
+}
+
+/** -ing 词干还原：making→make, backing→back, writing→write, fixing→fix */
+function stemIngBase(base: string): string {
+  if (base.endsWith('x') || base.endsWith('ck') || base.endsWith('ng')) return base;
+  if (base.length <= 3) return base + 'e';
+  if (/[aeiou][b-df-hj-np-tv-z]$/.test(base) && !base.endsWith('w')) return base + 'e';
+  return base;
 }
 
 /**
