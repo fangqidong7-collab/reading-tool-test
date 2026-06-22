@@ -978,19 +978,36 @@ export function lemmatize(word: string): string {
 
 /**
  * 屈折还原（词汇分组/标注用）：合并时态、复数、进行式等到词根。
- * 不做派生词缀 -er/-est/-ly，避免 teacher→teach 类误匹配。
- * 不依赖词典是否收录词根。
+ * 混合策略：规则生成候选词根 + 词典验证。词典验证失败时保守返回原词。
  */
 const DOUBLE_CONSONANTS = ['b', 'd', 'g', 'm', 'n', 'p', 'r', 't'];
 function isVowel(ch: string): boolean { return 'aeiou'.includes(ch); }
 
-export function lemmatizeInflection(word: string): string {
-  const lower = word.toLowerCase();
+function needsSilentE(base: string): boolean {
+  if (base.endsWith('x') || base.endsWith('ck') || base.endsWith('ng')) return false;
+  if (base.endsWith('y') || base.endsWith('w')) return false;
+  if (base.length >= 3) {
+    const last = base[base.length - 1];
+    const prev = base[base.length - 2];
+    const prevPrev = base[base.length - 3];
+    if (!isVowel(last) && isVowel(prev) && isVowel(prevPrev)) {
+      const pair = prevPrev + prev;
+      if (pair !== 'ie' && pair !== 'ei') return false;
+    }
+  }
+  if (/[aeiou][b-df-hj-np-tv-z]$/.test(base)) return true;
+  return false;
+}
 
-  if (irregularVerbs[lower]) return irregularVerbs[lower];
-  if (verbForms[lower]) return verbForms[lower];
-  if (irregularNouns[lower]) return irregularNouns[lower];
+function stemBase(base: string): string {
+  return needsSilentE(base) ? base + 'e' : base;
+}
 
+/**
+ * Pure rule-based candidate generation (may produce non-words).
+ * Results are validated by isKnownWord before being used.
+ */
+function computeInflectionCandidate(lower: string): string {
   // Double-consonant undoubling for -ing/-ed (running→run, stopped→stop)
   for (const sfx of ['ing', 'ed'] as const) {
     if (!lower.endsWith(sfx) || lower.length < sfx.length + 3) continue;
@@ -1021,14 +1038,12 @@ export function lemmatizeInflection(word: string): string {
   // -ing
   if (lower.endsWith('ing') && lower.length > 4) {
     const base = lower.slice(0, -3);
-    if (base.length >= 3) {
-      return stemIngBase(base);
-    }
+    if (base.length >= 3) return stemBase(base);
   }
   // -ed
   if (lower.endsWith('ed') && lower.length > 3) {
     const baseEd = lower.slice(0, -2);
-    if (baseEd.length >= 3 && !baseEd.endsWith('e')) return baseEd;
+    if (baseEd.length >= 3 && !baseEd.endsWith('e')) return stemBase(baseEd);
     const baseD = lower.slice(0, -1);
     if (baseD.endsWith('e') && baseD.length >= 3) return baseD;
   }
@@ -1053,12 +1068,24 @@ export function lemmatizeInflection(word: string): string {
   return lower;
 }
 
-/** -ing 词干还原：making→make, backing→back, writing→write, fixing→fix */
-function stemIngBase(base: string): string {
-  if (base.endsWith('x') || base.endsWith('ck') || base.endsWith('ng')) return base;
-  if (base.length <= 3) return base + 'e';
-  if (/[aeiou][b-df-hj-np-tv-z]$/.test(base) && !base.endsWith('w')) return base + 'e';
-  return base;
+export function lemmatizeInflection(word: string): string {
+  const lower = word.toLowerCase();
+
+  // 1. Lookup tables (fast path, always correct)
+  if (irregularVerbs[lower]) return irregularVerbs[lower];
+  if (verbForms[lower]) return verbForms[lower];
+  if (irregularNouns[lower]) return irregularNouns[lower];
+
+  // 2. Rule-based candidate generation
+  const candidate = computeInflectionCandidate(lower);
+
+  // 3. Validate: only accept if the candidate is a known word
+  if (candidate !== lower && isKnownWord(candidate)) {
+    return candidate;
+  }
+
+  // 4. Fallback: return original word (never produce non-words)
+  return lower;
 }
 
 /**
