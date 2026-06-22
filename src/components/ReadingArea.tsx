@@ -698,6 +698,7 @@ export const ReadingArea = forwardRef(function ReadingArea({
   const [containerHeight, setContainerHeight] = useState(600);
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const lastSwipeTimeRef = useRef(0);
+  const currentVisibleRef = useRef<{ index: number; offsetRatio: number }>({ index: Math.max(0, initialParagraphIndex), offsetRatio: initialParagraphOffsetRatio });
 
   const virtualizer = useVirtualizer({
     count: processedContent ? processedContent.length : 0,
@@ -808,26 +809,58 @@ export const ReadingArea = forwardRef(function ReadingArea({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [scrollReadingPage, clickToTurnPage]);
 
+  const prevClickToTurnPageRef = useRef(clickToTurnPage);
   useEffect(() => {
+    const wasPageMode = prevClickToTurnPageRef.current;
+    prevClickToTurnPageRef.current = clickToTurnPage;
+
     if (clickToTurnPage) {
-      requestAnimationFrame(() => requestAnimationFrame(() => updatePageMask()));
+      // Entering paginated mode: snap to current paragraph and show mask
+      const saved = currentVisibleRef.current;
+      if (saved.index > 0) {
+        virtualizer.scrollToIndex(saved.index, { align: "start" });
+        requestAnimationFrame(() => {
+          const el = containerRef.current;
+          if (el) {
+            const items = virtualizer.getVirtualItems();
+            const target = items.find(item => item.index === saved.index);
+            if (target && saved.offsetRatio > 0) {
+              el.scrollTop = target.start + saved.offsetRatio * target.size;
+            }
+          }
+          requestAnimationFrame(() => updatePageMask());
+        });
+      } else {
+        requestAnimationFrame(() => requestAnimationFrame(() => updatePageMask()));
+      }
       return;
     }
     if (bottomMaskRef.current) {
       bottomMaskRef.current.style.display = "none";
     }
-    // 切回滑动模式时强制 virtualizer 重新测量、并触发一次 scroll 事件，
-    // 让浏览器重新计算 overflow / touch-action 后的可滚动区域，避免短时滑不动。
+    if (!wasPageMode) return;
+    // Switching from paginated → scroll mode: restore paragraph position
+    const saved = currentVisibleRef.current;
     const el = containerRef.current;
     if (!el) return;
     requestAnimationFrame(() => {
-      try {
-        virtualizer.measure();
-      } catch { /* ignore */ }
-      const prev = el.scrollTop;
-      el.scrollTop = prev + 1;
-      el.scrollTop = prev;
-      el.dispatchEvent(new Event('scroll'));
+      try { virtualizer.measure(); } catch { /* ignore */ }
+      if (saved.index > 0) {
+        virtualizer.scrollToIndex(saved.index, { align: "start" });
+        requestAnimationFrame(() => {
+          const items = virtualizer.getVirtualItems();
+          const target = items.find(item => item.index === saved.index);
+          if (target && saved.offsetRatio > 0 && containerRef.current) {
+            containerRef.current.scrollTop = target.start + saved.offsetRatio * target.size;
+          }
+          el.dispatchEvent(new Event('scroll'));
+        });
+      } else {
+        const prev = el.scrollTop;
+        el.scrollTop = prev + 1;
+        el.scrollTop = prev;
+        el.dispatchEvent(new Event('scroll'));
+      }
     });
   }, [clickToTurnPage, updatePageMask, virtualizer]);
 
@@ -1085,9 +1118,12 @@ export const ReadingArea = forwardRef(function ReadingArea({
           if (onProgressChange && !isRestoringRef.current) {
             onProgressChange(percent);
           }
-          if (onParagraphIndexChange && !isRestoringRef.current) {
+          if (!isRestoringRef.current) {
             const info = getFirstVisibleInfo();
-            onParagraphIndexChange(info.index, info.offsetRatio);
+            currentVisibleRef.current = info;
+            if (onParagraphIndexChange) {
+              onParagraphIndexChange(info.index, info.offsetRatio);
+            }
           }
           ticking = false;
         });
